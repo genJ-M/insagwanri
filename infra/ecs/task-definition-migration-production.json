@@ -1,0 +1,35 @@
+{
+  "family": "gwanri-migration-production",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/gwanri-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "migration",
+      "image": "ACCOUNT_ID.dkr.ecr.ap-northeast-2.amazonaws.com/gwanri-wang-backend:latest",
+      "essential": true,
+      "command": ["npm", "run", "migration:run"],
+      "environment": [
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "DB_PORT",  "value": "5432" },
+        { "name": "DB_NAME",  "value": "gwanri_wang" }
+      ],
+      "secrets": [
+        { "name": "DB_HOST",     "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:ACCOUNT_ID:secret:gwanri/production/db:host::" },
+        { "name": "DB_USERNAME", "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:ACCOUNT_ID:secret:gwanri/production/db:username::" },
+        { "name": "DB_PASSWORD", "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:ACCOUNT_ID:secret:gwanri/production/db:password::" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/ecs/gwanri-migration-production",
+          "awslogs-region":        "ap-northeast-2",
+          "awslogs-stream-prefix": "migration"
+        }
+      }
+    }
+  ]
+}

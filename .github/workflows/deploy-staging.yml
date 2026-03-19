@@ -1,0 +1,95 @@
+name: Deploy — Staging
+
+# develop 브랜치 push 시 스테이징 자동 배포
+on:
+  push:
+    branches: [develop]
+
+env:
+  AWS_REGION:    ap-northeast-2
+  ECR_REGISTRY:  ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
+  ECR_REPO:      gwanri-wang-backend
+  ECS_CLUSTER:   gwanri-staging
+  ECS_SERVICE:   gwanri-backend-staging
+  CONTAINER:     backend
+
+jobs:
+  deploy-backend:
+    name: Backend → ECS Staging
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── AWS 인증 ──
+      - name: AWS 인증
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      # ── ECR 로그인 ──
+      - name: ECR 로그인
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ── Docker 이미지 빌드 & 푸시 ──
+      - name: Docker 이미지 빌드 및 ECR 푸시
+        id: build-image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:staging
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:staging-${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:staging
+          cache-to:   type=inline
+
+      # ── ECS Task Definition 업데이트 ──
+      - name: ECS Task Definition 에 새 이미지 적용
+        id: update-task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: infra/ecs/task-definition-staging.json
+          container-name:  ${{ env.CONTAINER }}
+          image:           ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:staging-${{ github.sha }}
+
+      # ── ECS 서비스 배포 ──
+      - name: ECS 서비스 배포
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.update-task.outputs.task-definition }}
+          service:         ${{ env.ECS_SERVICE }}
+          cluster:         ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true   # 배포 완료까지 대기
+
+      # ── DB 마이그레이션 ──
+      - name: DB 마이그레이션 실행
+        run: |
+          aws ecs run-task \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --task-definition gwanri-migration-staging \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.SUBNET_IDS }}],securityGroups=[${{ secrets.SG_ID }}]}"
+
+  # Frontend는 Vercel이 자동 Preview 배포 처리
+  notify-staging:
+    name: 배포 결과 알림
+    runs-on: ubuntu-latest
+    needs: [deploy-backend]
+    if: always()
+
+    steps:
+      - name: 슬랙 알림
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            *스테이징 배포 ${{ needs.deploy-backend.result == 'success' && '✅ 완료' || '❌ 실패' }}*
+            Branch: `${{ github.ref_name }}`
+            Commit: `${{ github.sha }}`
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -1,0 +1,56 @@
+{
+  "family": "gwanri-backend-staging",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/gwanri-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "backend",
+      "image": "ACCOUNT_ID.dkr.ecr.ap-northeast-2.amazonaws.com/gwanri-wang-backend:staging",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3001,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "NODE_ENV",    "value": "staging" },
+        { "name": "PORT",        "value": "3001" },
+        { "name": "DB_PORT",     "value": "5432" },
+        { "name": "DB_NAME",     "value": "gwanri_wang_staging" }
+      ],
+      "secrets": [
+        { "name": "DB_HOST",              "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:ACCOUNT_ID:secret:gwanri/staging/db:host::" },
+        { "name": "DB_USERNAME",          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:ACCOUNT_ID:secret:gwanri/staging/db:username::" },
+        { "name": "DB_PASSWORD",          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:ACCOUNT_ID:secret:gwanri/staging/db:password::" },
+        { "name": "REDIS_HOST",           "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:ACCOUNT_ID:secret:gwanri/staging/redis:host::" },
+        { "name": "REDIS_PASSWORD",       "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:ACCOUNT_ID:secret:gwanri/staging/redis:password::" },
+        { "name": "JWT_ACCESS_SECRET",    "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:ACCOUNT_ID:secret:gwanri/staging/jwt:accessSecret::" },
+        { "name": "JWT_REFRESH_SECRET",   "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:ACCOUNT_ID:secret:gwanri/staging/jwt:refreshSecret::" },
+        { "name": "OPENAI_API_KEY",       "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:ACCOUNT_ID:secret:gwanri/staging/openai:apiKey::" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/ecs/gwanri-backend-staging",
+          "awslogs-region":        "ap-northeast-2",
+          "awslogs-stream-prefix": "backend"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -f http://localhost:3001/api/v1/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

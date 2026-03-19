@@ -1,0 +1,156 @@
+name: Deploy — Production
+
+# main 브랜치 push 시 프로덕션 배포 (수동 승인 필요)
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION:    ap-northeast-2
+  ECR_REGISTRY:  ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
+  ECR_REPO:      gwanri-wang-backend
+  ECS_CLUSTER:   gwanri-production
+  ECS_SERVICE:   gwanri-backend-production
+  CONTAINER:     backend
+
+jobs:
+  deploy-backend:
+    name: Backend → ECS Production
+    runs-on: ubuntu-latest
+    environment: production   # GitHub Environment 보호 규칙 (수동 승인 게이트)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── AWS 인증 ──
+      - name: AWS 인증
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      # ── ECR 로그인 ──
+      - name: ECR 로그인
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ── Docker 이미지 빌드 & 푸시 ──
+      - name: Docker 이미지 빌드 및 ECR 푸시
+        id: build-image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:latest
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:latest
+          cache-to:   type=inline
+
+      # ── ECS Task Definition 업데이트 ──
+      - name: ECS Task Definition 에 새 이미지 적용
+        id: update-task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: infra/ecs/task-definition-production.json
+          container-name:  ${{ env.CONTAINER }}
+          image:           ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:${{ github.sha }}
+
+      # ── DB 마이그레이션 (배포 전) ──
+      - name: DB 마이그레이션 실행
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --task-definition gwanri-migration-production \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.SUBNET_IDS }}],securityGroups=[${{ secrets.SG_ID }}],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
+          echo "Migration task ARN: $TASK_ARN"
+
+          # 마이그레이션 완료 대기 (최대 5분)
+          aws ecs wait tasks-stopped \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --tasks "$TASK_ARN"
+
+          # 종료 코드 확인
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' \
+            --output text)
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Migration failed with exit code $EXIT_CODE"
+            exit 1
+          fi
+
+          echo "Migration completed successfully"
+
+      # ── ECS 서비스 배포 (롤링 업데이트) ──
+      - name: ECS 서비스 배포
+        id: deploy
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.update-task.outputs.task-definition }}
+          service:         ${{ env.ECS_SERVICE }}
+          cluster:         ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true   # 배포 완료까지 대기
+
+      # ── 스모크 테스트 ──
+      - name: 스모크 테스트
+        run: |
+          sleep 10  # ALB 타겟 등록 안정화 대기
+
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            https://api.gwanriwang.com/api/v1/health \
+            --max-time 15)
+
+          if [ "$RESPONSE" != "200" ]; then
+            echo "Smoke test failed: HTTP $RESPONSE"
+            exit 1
+          fi
+
+          echo "Smoke test passed: HTTP $RESPONSE"
+
+      # ── 배포 실패 시 자동 롤백 ──
+      - name: 롤백 (배포 실패 시)
+        if: failure() && steps.deploy.outcome == 'failure'
+        run: |
+          echo "Deployment failed. Rolling back to previous task definition..."
+
+          PREV_TASK_DEF=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --query 'services[0].deployments[?status==`PRIMARY`].taskDefinition' \
+            --output text)
+
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --task-definition "$PREV_TASK_DEF" \
+            --force-new-deployment
+
+          echo "Rollback initiated to: $PREV_TASK_DEF"
+
+  notify-production:
+    name: 배포 결과 알림
+    runs-on: ubuntu-latest
+    needs: [deploy-backend]
+    if: always()
+
+    steps:
+      - name: 슬랙 알림
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            *프로덕션 배포 ${{ needs.deploy-backend.result == 'success' && '✅ 완료' || '❌ 실패' }}*
+            Branch: `${{ github.ref_name }}`
+            Commit: `${{ github.sha }}`
+            Actor: `${{ github.actor }}`
+            ${{ needs.deploy-backend.result != 'success' && '⚠️ 자동 롤백이 시작되었습니다.' || '' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

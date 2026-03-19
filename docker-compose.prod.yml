@@ -1,0 +1,35 @@
+# 프로덕션 오버라이드
+# 사용법: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+version: '3.9'
+
+services:
+  backend:
+    build:
+      target: runner           # 프로덕션은 최소 이미지 사용
+    command: node dist/main
+    restart: always
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first     # 무중단 배포: 새 컨테이너 먼저 시작
+      rollback_config:
+        parallelism: 1
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    # 개발용 볼륨 마운트 제거
+    volumes: []
+
+  postgres:
+    # 프로덕션에서는 RDS 사용 → 컨테이너 비활성화
+    profiles: ['local-only']
+
+  redis:
+    deploy:
+      resources:
+        limits:
+          memory: 256M

@@ -1,0 +1,157 @@
+# 로컬 개발 환경 전체 스택
+# 사용법: docker compose up -d
+
+version: '3.9'
+
+services:
+  # ─────────────────────────────────────────
+  # PostgreSQL
+  # ─────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: gwanri_postgres
+    restart: unless-stopped
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER:     ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB:       ${DB_NAME:-gwanri_wang}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME:-postgres}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────
+  # Redis
+  # ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: gwanri_redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redispass} --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD:-redispass}', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────
+  # Backend (NestJS)
+  # ─────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: builder          # 개발에서는 builder stage 사용
+    container_name: gwanri_backend
+    restart: unless-stopped
+    ports:
+      - '3001:3001'
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV:    development
+      DB_HOST:     postgres
+      DB_PORT:     5432
+      REDIS_HOST:  redis
+      REDIS_PORT:  6379
+      REDIS_URL:   redis://:${REDIS_PASSWORD:-redispass}@redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src   # 소스 핫리로드 (개발용)
+    command: npm run start:dev
+
+  # ─────────────────────────────────────────
+  # Web (Next.js)
+  # ─────────────────────────────────────────
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      target: dev
+    container_name: gwanri_web
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:3001/api/v1
+    depends_on:
+      - backend
+    volumes:
+      - ./web:/app               # 전체 소스 마운트 (핫리로드)
+      - /app/node_modules        # 컨테이너 내 node_modules 보존
+
+  # ─────────────────────────────────────────
+  # Admin Backend (NestJS :4001)
+  # ─────────────────────────────────────────
+  admin-backend:
+    build:
+      context: ./admin-backend
+      dockerfile: Dockerfile
+      target: builder
+    container_name: gwanri_admin_backend
+    restart: unless-stopped
+    ports:
+      - '4001:4001'
+    env_file:
+      - ./admin-backend/.env
+    environment:
+      NODE_ENV:    development
+      DB_HOST:     postgres
+      DB_PORT:     5432
+      REDIS_HOST:  redis
+      REDIS_PORT:  6379
+      REDIS_URL:   redis://:${REDIS_PASSWORD:-redispass}@redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./admin-backend/src:/app/src
+    command: npm run start:dev
+
+  # ─────────────────────────────────────────
+  # MinIO (S3 호환 로컬 파일 스토리지)
+  # ─────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: gwanri_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - '9000:9000'   # API
+      - '9001:9001'   # 웹 콘솔
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-minioadmin}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+
+networks:
+  default:
+    name: gwanri_network
