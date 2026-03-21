@@ -1,7 +1,43 @@
 # 배포 가이드 — Vercel (Frontend) + Render (Backend)
 
+---
+
+## ⚠️ AI AGENT 필독 — 작업 시작 전 반드시 준수
+
+> **이 섹션은 이 문서를 읽는 모든 AI Agent에게 강제되는 규칙입니다.**
+> 배포 관련 작업을 시작하기 전에 아래 체크리스트를 반드시 확인하고, 각 항목을 지키지 않으면 작업을 시작하지 마세요.
+
+### 작업 시작 전 필수 확인 체크리스트
+
+- [ ] `git remote -v` 로 현재 remote URL이 `https://github.com/genJ-M/insagwanri.git` 인지 확인
+- [ ] `render.yaml`의 `buildCommand`에 `--legacy-peer-deps --include=dev` 포함 여부 확인
+- [ ] `render.yaml`의 Redis에 `ipAllowList: []` 존재 여부 확인
+- [ ] `render.yaml`의 DB `plan`이 `free` (starter 아님) 확인
+- [ ] `render.yaml`의 백엔드 `runtime`이 `node` (docker 아님) 확인
+- [ ] `backend/data-source.prod.ts` 파일 존재 여부 확인
+- [ ] `web/vercel.json`의 모든 URL이 `insagwanri-backend.onrender.com` 인지 확인
+
+### AI Agent가 절대 하면 안 되는 것
+
+1. **`runtime: docker` 사용 금지** — NestJS 배포 시 `dist/main` 못 찾는 오류 발생
+2. **`startCommand`를 docker runtime에 추가 금지** — Render Blueprint 파싱 오류
+3. **DB plan을 `starter`로 설정 금지** — deprecated, Blueprint 오류
+4. **Redis에 `ipAllowList` 없이 설정 금지** — Blueprint 오류
+5. **`npm install` 단독 사용 금지** — 반드시 `--legacy-peer-deps --include=dev` 포함
+6. **push 전 remote URL 확인 없이 진행 금지** — 잘못된 레포에 push 위험
+7. **vercel.json 수정 시 CSP의 `wss://` URL 누락 금지** — WebSocket 연결 차단
+
+### 이 문서가 업데이트되어야 하는 시점
+
+새로운 배포 오류가 발생하고 해결됐을 때, 반드시:
+1. 이 문서의 트러블슈팅 섹션에 오류 추가
+2. 위 체크리스트에 해당 항목 추가
+3. `memory/render-deployment-lessons.md` 업데이트
+4. `memory/MEMORY.md` 인덱스 업데이트
+
+---
+
 > 이 문서는 실제 배포 과정에서 겪은 오류와 해결책을 포함한 실전 가이드입니다.
-> AI Agent가 배포 작업을 수행할 때 이 문서를 먼저 참조하세요.
 
 ---
 

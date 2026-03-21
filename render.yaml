@@ -4,7 +4,7 @@ services:
     name: insagwanri-backend
     runtime: node
     rootDir: backend
-    buildCommand: npm install --legacy-peer-deps && npm run build
+    buildCommand: npm install --legacy-peer-deps --include=dev && npm run build
     startCommand: node node_modules/typeorm/cli.js migration:run -d dist/data-source.prod.js && node dist/main
     plan: free
     region: singapore
