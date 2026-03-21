@@ -26,6 +26,8 @@
 5. **`npm install` 단독 사용 금지** — 반드시 `--legacy-peer-deps --include=dev` 포함
 6. **push 전 remote URL 확인 없이 진행 금지** — 잘못된 레포에 push 위험
 7. **vercel.json 수정 시 CSP의 `wss://` URL 누락 금지** — WebSocket 연결 차단
+8. **`tsconfig.build.json` 없이 NestJS 배포 금지** — 루트에 ts 파일 있으면 `dist/src/main.js`로 컴파일됨 (`dist/main.js` 아님)
+9. **`data-source.prod.ts`를 루트에 두면 안 됨** — 반드시 `src/` 안에 위치해야 정상 컴파일
 
 ### 이 문서가 업데이트되어야 하는 시점
 
@@ -69,7 +71,8 @@
 ### 필수 파일 체크리스트
 
 - [ ] `render.yaml` — 루트 디렉토리에 존재
-- [ ] `backend/data-source.prod.ts` — 프로덕션 TypeORM DataSource
+- [ ] `backend/tsconfig.build.json` — rootDir: "src" 설정 (없으면 dist/main.js 경로 틀어짐)
+- [ ] `backend/src/data-source.prod.ts` — 프로덕션 TypeORM DataSource (src/ 안에 있어야 함)
 - [ ] `web/vercel.json` — Vercel 설정 (API URL, CSP, rewrites)
 
 ---
