@@ -49,58 +49,54 @@ function validateForm(form: ScheduleForm): string {
 function ScheduleFormFields({ form, setForm }: { form: ScheduleForm; setForm: (f: ScheduleForm) => void }) {
   return (
     <div className="space-y-3">
-      {/* 제목 */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">제목 *</label>
+        <label className="label">제목 *</label>
         <input
           value={form.title}
           onChange={(e) => setForm({ ...form, title: e.target.value })}
-          className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="input"
         />
       </div>
 
-      {/* 종일 체크박스 */}
       <label className="flex items-center gap-2 cursor-pointer">
         <input
           type="checkbox"
           checked={form.is_all_day}
           onChange={(e) => setForm({ ...form, is_all_day: e.target.checked, start_at: '', end_at: '' })}
-          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          className="rounded border-border text-primary-500 focus:ring-primary-100"
         />
-        <span className="text-sm text-gray-700">종일 일정</span>
+        <span className="text-sm text-text-primary">종일 일정</span>
       </label>
 
-      {/* 시작/종료 */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">시작 *</label>
+          <label className="label">시작 *</label>
           <input
             type={form.is_all_day ? 'date' : 'datetime-local'}
             value={form.start_at}
             onChange={(e) => setForm({ ...form, start_at: e.target.value })}
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="input"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">종료 *</label>
+          <label className="label">종료 *</label>
           <input
             type={form.is_all_day ? 'date' : 'datetime-local'}
             value={form.end_at}
             min={form.start_at}
             onChange={(e) => setForm({ ...form, end_at: e.target.value })}
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="input"
           />
         </div>
       </div>
 
-      {/* 유형 + 장소 */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">유형</label>
+          <label className="label">유형</label>
           <select
             value={form.type}
             onChange={(e) => setForm({ ...form, type: e.target.value })}
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="input"
           >
             {Object.entries(SCHEDULE_TYPE_KO).map(([v, l]) => (
               <option key={v} value={v}>{l}</option>
@@ -108,19 +104,18 @@ function ScheduleFormFields({ form, setForm }: { form: ScheduleForm; setForm: (f
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">장소</label>
+          <label className="label">장소</label>
           <input
             value={form.location}
             onChange={(e) => setForm({ ...form, location: e.target.value })}
             placeholder="선택 사항"
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="input"
           />
         </div>
       </div>
 
-      {/* 색상 */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">색상</label>
+        <label className="label">색상</label>
         <div className="flex gap-2">
           {COLOR_PRESETS.map((c) => (
             <button
@@ -165,7 +160,7 @@ function CreateScheduleModal({ open, onClose }: { open: boolean; onClose: () => 
     const err = validateForm(form);
     if (err) { setError(err); return; }
     setError('');
-    const toISO = (v: string) => form.is_all_day ? new Date(v).toISOString() : new Date(v).toISOString();
+    const toISO = (v: string) => new Date(v).toISOString();
     mutation.mutate({ ...form, start_at: toISO(form.start_at), end_at: toISO(form.end_at) });
   };
 
@@ -194,12 +189,8 @@ function EditScheduleModal({ schedule, onClose }: { schedule: Schedule; onClose:
   const [form, setForm] = useState<ScheduleForm>({
     title: schedule.title,
     type: schedule.type,
-    start_at: schedule.isAllDay
-      ? schedule.startAt.split('T')[0]
-      : toLocal(schedule.startAt),
-    end_at: schedule.isAllDay
-      ? schedule.endAt.split('T')[0]
-      : toLocal(schedule.endAt),
+    start_at: schedule.isAllDay ? schedule.startAt.split('T')[0] : toLocal(schedule.startAt),
+    end_at: schedule.isAllDay ? schedule.endAt.split('T')[0] : toLocal(schedule.endAt),
     location: schedule.location ?? '',
     is_all_day: schedule.isAllDay,
     color: schedule.color ?? '#3B82F6',
@@ -252,7 +243,7 @@ function EditScheduleModal({ schedule, onClose }: { schedule: Schedule; onClose:
         <button
           onClick={handleDelete}
           disabled={deleteMutation.isPending}
-          className="flex items-center gap-1.5 text-sm text-red-500 hover:text-red-700 disabled:opacity-50"
+          className="flex items-center gap-1.5 text-sm text-red-500 hover:text-red-700 disabled:opacity-50 transition-colors"
         >
           <Trash2 className="h-4 w-4" /> 삭제
         </button>
@@ -287,23 +278,29 @@ export default function SchedulePage() {
     <div className="flex-1 overflow-y-auto">
       <Header title="스케줄" />
 
-      <main className="p-6 space-y-4">
+      <main className="p-8 space-y-4 max-w-[1200px]">
         {/* 월 네비게이션 */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-              className="p-2 rounded-lg hover:bg-gray-100">
-              <ChevronLeft className="h-5 w-5 text-gray-600" />
+            <button
+              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+              className="p-2 rounded-lg hover:bg-background text-text-secondary transition-colors"
+            >
+              <ChevronLeft className="h-5 w-5" />
             </button>
-            <h2 className="text-base font-semibold text-gray-900">
+            <h2 className="text-base font-semibold text-text-primary">
               {format(currentMonth, 'yyyy년 M월', { locale: ko })}
             </h2>
-            <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-              className="p-2 rounded-lg hover:bg-gray-100">
-              <ChevronRight className="h-5 w-5 text-gray-600" />
+            <button
+              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+              className="p-2 rounded-lg hover:bg-background text-text-secondary transition-colors"
+            >
+              <ChevronRight className="h-5 w-5" />
             </button>
-            <button onClick={() => setCurrentMonth(new Date())}
-              className="text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 font-medium">
+            <button
+              onClick={() => setCurrentMonth(new Date())}
+              className="text-xs px-2.5 py-1 rounded-full bg-primary-50 text-primary-500 hover:bg-primary-100 font-medium transition-colors"
+            >
               오늘
             </button>
           </div>
@@ -315,7 +312,7 @@ export default function SchedulePage() {
         {/* 일정 목록 */}
         <Card>
           {!schedules.length ? (
-            <p className="text-sm text-gray-400 text-center py-8">이번 달 일정이 없습니다.</p>
+            <p className="text-sm text-text-muted text-center py-8">이번 달 일정이 없습니다.</p>
           ) : (
             <ul className="space-y-2">
               {[...schedules]
@@ -324,22 +321,22 @@ export default function SchedulePage() {
                   <li key={s.id}>
                     <button
                       onClick={() => setEditTarget(s)}
-                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 text-left transition-colors"
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-background text-left transition-colors"
                     >
                       <div
                         className="w-1 h-10 rounded-full flex-shrink-0"
                         style={{ backgroundColor: s.color ?? SCHEDULE_COLORS[s.type] ?? '#6B7280' }}
                       />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{s.title}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">
+                        <p className="text-sm font-medium text-text-primary truncate">{s.title}</p>
+                        <p className="text-xs text-text-muted mt-0.5">
                           {s.isAllDay
                             ? format(parseISO(s.startAt), 'M월 d일 (EEE)', { locale: ko }) + ' 종일'
                             : `${format(parseISO(s.startAt), 'M/d HH:mm')} ~ ${format(parseISO(s.endAt), 'HH:mm')}`}
                           {s.location && ` · ${s.location}`}
                         </p>
                       </div>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 flex-shrink-0">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-background border border-border text-text-secondary flex-shrink-0">
                         {SCHEDULE_TYPE_KO[s.type]}
                       </span>
                     </button>

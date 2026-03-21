@@ -15,10 +15,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!isAuthenticated) return null;
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-background">
       <Sidebar />
-      {/* lg에서만 사이드바 너비 보정 (모바일은 overlay라 불필요) */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden lg:ml-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {children}
       </div>
     </div>

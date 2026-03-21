@@ -108,6 +108,7 @@ export interface Channel {
 
 export interface Message {
   id: string;
+  channelId: string;
   content: string;
   contentType: 'text' | 'image' | 'file';
   parentMessageId: string | null;

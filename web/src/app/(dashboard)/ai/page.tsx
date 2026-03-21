@@ -12,14 +12,12 @@ import api from '@/lib/api';
 import { AiResult, AiFeature, AiHistoryRecord } from '@/types';
 import { clsx } from 'clsx';
 
-// ── 기능 탭 정의 ──────────────────────────────
 const AI_FEATURES: {
   id: AiFeature;
   label: string;
   description: string;
   placeholder: string;
   endpoint: string;
-  extraFields?: React.ReactNode;
 }[] = [
   {
     id: 'draft',
@@ -77,20 +75,20 @@ function ResultPanel({ result }: { result: AiResult }) {
 
   return (
     <div className="mt-4 space-y-3">
-      <div className="relative bg-gray-50 rounded-xl border border-gray-200 p-4">
+      <div className="relative bg-background rounded-xl border border-border p-4">
         <button
           onClick={handleCopy}
-          className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors"
+          className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-border text-text-muted transition-colors"
           title="복사"
         >
-          {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+          {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
         </button>
-        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed pr-8">
+        <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed pr-8">
           {result.output_text}
         </p>
       </div>
 
-      {/* 면책 문구 — 접기/펼치기 (정책상 항상 접근 가능해야 함) */}
+      {/* 면책 문구 */}
       <div className="border border-amber-200 rounded-lg overflow-hidden">
         <button
           onClick={() => setDisclaimerOpen((v) => !v)}
@@ -107,8 +105,7 @@ function ResultPanel({ result }: { result: AiResult }) {
         )}
       </div>
 
-      {/* 메타 정보 */}
-      <p className="text-xs text-gray-400 text-right">
+      <p className="text-xs text-text-muted text-right">
         {result.model_name} · {result.tokens_used} tokens
       </p>
     </div>
@@ -147,7 +144,7 @@ function HistoryPanel() {
     return (
       <div className="space-y-3 mt-2">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-16 bg-gray-100 animate-pulse rounded-xl" />
+          <div key={i} className="h-16 bg-slate-100 animate-pulse rounded-xl" />
         ))}
       </div>
     );
@@ -155,7 +152,7 @@ function HistoryPanel() {
 
   if (!data?.records?.length) {
     return (
-      <div className="text-center py-10 text-sm text-gray-400">
+      <div className="text-center py-10 text-sm text-text-muted">
         AI 생성 기록이 없습니다.
       </div>
     );
@@ -166,43 +163,43 @@ function HistoryPanel() {
       {data.records.map((record) => {
         const isExpanded = expandedId === record.id;
         return (
-          <div key={record.id} className="border border-gray-200 rounded-xl overflow-hidden">
+          <div key={record.id} className="border border-border rounded-xl overflow-hidden">
             <button
               onClick={() => setExpandedId(isExpanded ? null : record.id)}
-              className="w-full flex items-start gap-3 px-4 py-3 bg-white hover:bg-gray-50 transition-colors text-left"
+              className="w-full flex items-start gap-3 px-4 py-3 bg-white hover:bg-background transition-colors text-left"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">
                     {FEATURE_LABELS[record.feature]}
                   </span>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-text-muted">
                     {formatDistanceToNow(new Date(record.created_at), { addSuffix: true, locale: ko })}
                   </span>
-                  <span className="text-xs text-gray-300">{record.tokens_used} tokens</span>
+                  <span className="text-xs text-text-muted">{record.tokens_used} tokens</span>
                 </div>
-                <p className="text-sm text-gray-700 mt-1 truncate">{record.output_text}</p>
+                <p className="text-sm text-text-secondary mt-1 truncate">{record.output_text}</p>
               </div>
               {isExpanded
-                ? <ChevronUp className="h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5" />
-                : <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                ? <ChevronUp className="h-4 w-4 text-text-muted flex-shrink-0 mt-0.5" />
+                : <ChevronDown className="h-4 w-4 text-text-muted flex-shrink-0 mt-0.5" />
               }
             </button>
 
             {isExpanded && (
-              <div className="px-4 pb-4 bg-gray-50 border-t border-gray-100">
-                <div className="relative mt-3 bg-white rounded-lg border border-gray-200 p-3">
+              <div className="px-4 pb-4 bg-background border-t border-border">
+                <div className="relative mt-3 bg-white rounded-lg border border-border p-3">
                   <button
                     onClick={() => handleCopy(record)}
-                    className="absolute top-2 right-2 p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+                    className="absolute top-2 right-2 p-1.5 rounded-lg hover:bg-background text-text-muted transition-colors"
                     title="복사"
                   >
                     {copiedId === record.id
-                      ? <Check className="h-3.5 w-3.5 text-green-500" />
+                      ? <Check className="h-3.5 w-3.5 text-emerald-500" />
                       : <Copy className="h-3.5 w-3.5" />
                     }
                   </button>
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed pr-8">
+                  <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed pr-8">
                     {record.output_text}
                   </p>
                 </div>
@@ -218,15 +215,15 @@ function HistoryPanel() {
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
-            className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50"
+            className="px-3 py-1.5 text-xs rounded-lg border border-border disabled:opacity-40 hover:bg-background transition-colors"
           >
             이전
           </button>
-          <span className="text-xs text-gray-500">{page} / {data.total_pages}</span>
+          <span className="text-xs text-text-secondary">{page} / {data.total_pages}</span>
           <button
             onClick={() => setPage((p) => Math.min(data.total_pages, p + 1))}
             disabled={page === data.total_pages}
-            className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50"
+            className="px-3 py-1.5 text-xs rounded-lg border border-border disabled:opacity-40 hover:bg-background transition-colors"
           >
             다음
           </button>
@@ -249,7 +246,6 @@ export default function AiPage() {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      // schedule_summary는 배열 형식으로 변환
       const payload =
         activeFeature === 'schedule_summary'
           ? { schedules: inputText.split('\n').filter(Boolean), period: 'daily' }
@@ -281,7 +277,7 @@ export default function AiPage() {
     <div className="flex-1 overflow-y-auto">
       <Header title="AI 도구" />
 
-      <main className="p-6 max-w-3xl mx-auto space-y-5">
+      <main className="p-8 max-w-3xl space-y-5">
         {/* 헤더 */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -289,16 +285,16 @@ export default function AiPage() {
               <Sparkles className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-gray-900">AI 문서 보조</h2>
-              <p className="text-xs text-gray-500">업무 문서 작성을 도와주는 AI 보조 도구</p>
+              <h2 className="text-base font-semibold text-text-primary">AI 문서 보조</h2>
+              <p className="text-xs text-text-secondary">업무 문서 작성을 도와주는 AI 보조 도구</p>
             </div>
           </div>
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          <div className="flex gap-1 bg-background border border-border rounded-lg p-1">
             <button
               onClick={() => setView('generate')}
               className={clsx(
                 'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
-                view === 'generate' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+                view === 'generate' ? 'bg-white text-text-primary shadow-sm' : 'text-text-secondary hover:text-text-primary',
               )}
             >
               <Sparkles className="h-3.5 w-3.5" />
@@ -308,7 +304,7 @@ export default function AiPage() {
               onClick={() => setView('history')}
               className={clsx(
                 'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
-                view === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+                view === 'history' ? 'bg-white text-text-primary shadow-sm' : 'text-text-secondary hover:text-text-primary',
               )}
             >
               <History className="h-3.5 w-3.5" />
@@ -326,129 +322,124 @@ export default function AiPage() {
 
         {view === 'generate' && (
           <>
-        {/* 기능 선택 탭 */}
-        <div className="flex flex-wrap gap-2">
-          {AI_FEATURES.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => handleFeatureChange(f.id)}
-              className={clsx(
-                'px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors border',
-                activeFeature === f.id
-                  ? 'bg-purple-600 text-white border-purple-600'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-purple-300 hover:text-purple-600',
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+            {/* 기능 선택 탭 */}
+            <div className="flex flex-wrap gap-2">
+              {AI_FEATURES.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => handleFeatureChange(f.id)}
+                  className={clsx(
+                    'px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors border',
+                    activeFeature === f.id
+                      ? 'bg-purple-600 text-white border-purple-600'
+                      : 'bg-white text-text-secondary border-border hover:border-purple-300 hover:text-purple-600',
+                  )}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
 
-        {/* 입력 영역 */}
-        <Card>
-          <CardHeader
-            title={feature.label}
-            description={feature.description}
-          />
+            {/* 입력 영역 */}
+            <Card>
+              <CardHeader title={feature.label} description={feature.description} />
 
-          <div className="space-y-3">
-            <textarea
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder={feature.placeholder}
-              rows={activeFeature === 'schedule_summary' ? 6 : 4}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm
-                         focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500
-                         resize-none placeholder:text-gray-400"
-            />
+              <div className="space-y-3">
+                <textarea
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  placeholder={feature.placeholder}
+                  rows={activeFeature === 'schedule_summary' ? 6 : 4}
+                  className="input resize-none"
+                />
 
-            {/* 문체 선택 (schedule_summary 제외) */}
-            {activeFeature !== 'schedule_summary' && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 flex-shrink-0">문체:</span>
-                <div className="flex gap-1.5">
-                  {TONE_OPTIONS.map((t) => (
-                    <button
-                      key={t.value}
-                      onClick={() => setTone(t.value)}
-                      className={clsx(
-                        'px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
-                        tone === t.value
-                          ? 'bg-purple-100 text-purple-700'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
-                      )}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
+                {/* 문체 선택 */}
+                {activeFeature !== 'schedule_summary' && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-text-secondary flex-shrink-0">문체:</span>
+                    <div className="flex gap-1.5">
+                      {TONE_OPTIONS.map((t) => (
+                        <button
+                          key={t.value}
+                          onClick={() => setTone(t.value)}
+                          className={clsx(
+                            'px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
+                            tone === t.value
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-background border border-border text-text-secondary hover:bg-border',
+                          )}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-text-muted">{charCount}자</span>
+                  <Button
+                    onClick={() => mutation.mutate()}
+                    disabled={!inputText.trim()}
+                    loading={mutation.isPending}
+                    className="bg-purple-600 hover:bg-purple-700 gap-2"
+                  >
+                    {mutation.isPending ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> AI 생성 중...</>
+                    ) : (
+                      <><Sparkles className="h-4 w-4" /> AI 생성</>
+                    )}
+                  </Button>
                 </div>
               </div>
-            )}
 
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-400">{charCount}자</span>
-              <Button
-                onClick={() => mutation.mutate()}
-                disabled={!inputText.trim()}
-                loading={mutation.isPending}
-                className="bg-purple-600 hover:bg-purple-700 gap-2"
-              >
-                {mutation.isPending ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /> AI 생성 중...</>
-                ) : (
-                  <><Sparkles className="h-4 w-4" /> AI 생성</>
-                )}
-              </Button>
-            </div>
-          </div>
-
-          {/* 에러 */}
-          {mutation.isError && (
-            <div className="mt-3">
-              {isAuthError ? (
-                <div className="flex items-start gap-2 text-sm bg-amber-50 border border-amber-200 px-3 py-3 rounded-lg">
-                  <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-amber-800">AI 서비스가 설정되지 않았습니다</p>
-                    <p className="text-amber-700 mt-0.5 text-xs">관리자에게 OpenAI API 키 설정을 요청하세요.</p>
-                  </div>
-                </div>
-              ) : isLimitError ? (
-                <div className="flex items-start gap-2 text-sm bg-orange-50 border border-orange-200 px-3 py-3 rounded-lg">
-                  <AlertCircle className="h-4 w-4 text-orange-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-orange-800">오늘의 AI 사용 한도에 도달했습니다</p>
-                    <p className="text-orange-700 mt-0.5 text-xs">내일 다시 사용하거나 플랜을 업그레이드하세요.</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
-                  <AlertCircle className="h-4 w-4" />
-                  {errorMsg ?? 'AI 요청 중 오류가 발생했습니다.'}
+              {/* 에러 */}
+              {mutation.isError && (
+                <div className="mt-3">
+                  {isAuthError ? (
+                    <div className="flex items-start gap-2 text-sm bg-amber-50 border border-amber-200 px-3 py-3 rounded-lg">
+                      <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-amber-800">AI 서비스가 설정되지 않았습니다</p>
+                        <p className="text-amber-700 mt-0.5 text-xs">관리자에게 OpenAI API 키 설정을 요청하세요.</p>
+                      </div>
+                    </div>
+                  ) : isLimitError ? (
+                    <div className="flex items-start gap-2 text-sm bg-orange-50 border border-orange-200 px-3 py-3 rounded-lg">
+                      <AlertCircle className="h-4 w-4 text-orange-500 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-orange-800">오늘의 AI 사용 한도에 도달했습니다</p>
+                        <p className="text-orange-700 mt-0.5 text-xs">내일 다시 사용하거나 플랜을 업그레이드하세요.</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+                      <AlertCircle className="h-4 w-4" />
+                      {errorMsg ?? 'AI 요청 중 오류가 발생했습니다.'}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
 
-          {/* 사용 한도 */}
-          {planLimit !== null && (
-            <div className="mt-3 flex items-center justify-between text-xs text-gray-500 bg-gray-50 px-3 py-2 rounded-lg">
-              <span>오늘 사용량</span>
-              <span className={clsx('font-medium', usedCount >= planLimit ? 'text-red-500' : 'text-gray-700')}>
-                {usedCount} / {planLimit}회
-              </span>
-            </div>
-          )}
+              {/* 사용 한도 */}
+              {planLimit !== null && (
+                <div className="mt-3 flex items-center justify-between text-xs text-text-secondary bg-background px-3 py-2 rounded-lg border border-border">
+                  <span>오늘 사용량</span>
+                  <span className={clsx('font-medium', usedCount >= planLimit ? 'text-red-500' : 'text-text-primary')}>
+                    {usedCount} / {planLimit}회
+                  </span>
+                </div>
+              )}
 
-          {/* 결과 */}
-          {result && <ResultPanel result={result} />}
-        </Card>
+              {/* 결과 */}
+              {result && <ResultPanel result={result} />}
+            </Card>
 
-        {/* 사용 안내 */}
-        <p className="text-xs text-gray-400 text-center leading-relaxed">
-          AI는 문서 작성 보조 목적으로만 사용됩니다. 경영 판단이나 인사 결정은 포함되지 않습니다.
-          <br />생성된 결과는 반드시 검토 후 사용하시기 바랍니다.
-        </p>
+            {/* 사용 안내 */}
+            <p className="text-xs text-text-muted text-center leading-relaxed">
+              AI는 문서 작성 보조 목적으로만 사용됩니다. 경영 판단이나 인사 결정은 포함되지 않습니다.
+              <br />생성된 결과는 반드시 검토 후 사용하시기 바랍니다.
+            </p>
           </>
         )}
       </main>

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Clock, ClipboardList, FileText,
-  Calendar, MessageSquare, Sparkles, Building2, LogOut,
+  Calendar, MessageSquare, Sparkles, LogOut,
   Users, Settings,
 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -22,8 +22,8 @@ const mainNav = [
 ];
 
 const bottomNav = [
-  { href: '/team',     icon: Users,    label: '팀 관리', roles: ['owner', 'manager'] },
-  { href: '/settings', icon: Settings, label: '설정',   roles: null },
+  { href: '/team',     icon: Users,    label: '직원 관리', roles: ['owner', 'manager'] },
+  { href: '/settings', icon: Settings, label: '설정',     roles: null },
 ];
 
 export default function Sidebar() {
@@ -47,82 +47,90 @@ export default function Sidebar() {
       {/* 모바일 백드롭 */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/30 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
-    <aside className={clsx(
-      'flex flex-col w-60 bg-gray-900 text-white',
-      // 데스크톱: 항상 표시 (relative)
-      'lg:relative lg:translate-x-0 lg:min-h-screen',
-      // 모바일: fixed overlay, sidebarOpen에 따라 슬라이드
-      'fixed inset-y-0 left-0 z-50 min-h-screen transition-transform duration-200',
-      sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
-    )}>
-      {/* Logo */}
-      <div className="flex items-center gap-2 px-5 h-16 border-b border-gray-700">
-        <Building2 className="h-6 w-6 text-blue-400" />
-        <span className="font-bold text-lg">관리왕</span>
-      </div>
 
-      {/* Main Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {mainNav.map(({ href, icon: Icon, label }) => {
-          const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
-          return (
-            <Link key={href} href={href}
-              className={clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                isActive ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white',
-              )}
-            >
-              <Icon className="h-4 w-4 flex-shrink-0" />
-              {label}
-            </Link>
-          );
-        })}
-
-        {/* 하단 네비 (팀, 설정) */}
-        <div className="pt-2 mt-2 border-t border-gray-700/50 space-y-0.5">
-          {bottomNav
-            .filter(({ roles }) => !roles || roles.includes(user?.role ?? ''))
-            .map(({ href, icon: Icon, label }) => {
-              const isActive = pathname.startsWith(href);
-              return (
-                <Link key={href} href={href}
-                  className={clsx(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                    isActive ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white',
-                  )}
-                >
-                  <Icon className="h-4 w-4 flex-shrink-0" />
-                  {label}
-                </Link>
-              );
-            })}
+      <aside className={clsx(
+        'flex flex-col w-[220px] bg-white border-r border-border',
+        'lg:relative lg:translate-x-0 lg:min-h-screen',
+        'fixed inset-y-0 left-0 z-50 min-h-screen transition-transform duration-200',
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+      )}>
+        {/* 로고 */}
+        <div className="flex items-center px-6 h-16 border-b border-border">
+          <span className="font-bold text-xl text-primary-500 tracking-tight">관리왕</span>
         </div>
-      </nav>
 
-      {/* User + Logout */}
-      <div className="px-3 py-4 border-t border-gray-700">
-        <div className="flex items-center gap-3 px-3 py-2 mb-1">
-          <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-sm font-bold flex-shrink-0">
-            {user?.name?.charAt(0) ?? '?'}
+        {/* 메인 네비 */}
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+          {mainNav.map(({ href, icon: Icon, label }) => {
+            const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setSidebarOpen(false)}
+                className={clsx(
+                  'flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-colors',
+                  isActive
+                    ? 'bg-primary-50 text-primary-500 font-medium'
+                    : 'text-text-secondary hover:bg-primary-50 hover:text-primary-500',
+                )}
+              >
+                <Icon className="w-5 h-5 flex-shrink-0" />
+                {label}
+              </Link>
+            );
+          })}
+
+          {/* 하단 네비 */}
+          <div className="pt-2 mt-2 border-t border-border space-y-0.5">
+            {bottomNav
+              .filter(({ roles }) => !roles || roles.includes(user?.role ?? ''))
+              .map(({ href, icon: Icon, label }) => {
+                const isActive = pathname.startsWith(href);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={() => setSidebarOpen(false)}
+                    className={clsx(
+                      'flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-colors',
+                      isActive
+                        ? 'bg-primary-50 text-primary-500 font-medium'
+                        : 'text-text-secondary hover:bg-primary-50 hover:text-primary-500',
+                    )}
+                  >
+                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    {label}
+                  </Link>
+                );
+              })}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{user?.name}</p>
-            <p className="text-xs text-gray-400 truncate">{user?.email}</p>
+        </nav>
+
+        {/* 유저 정보 + 로그아웃 */}
+        <div className="px-3 py-4 border-t border-border">
+          <div className="flex items-center gap-3 px-3 py-2 mb-1">
+            <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-sm font-semibold text-primary-600 flex-shrink-0">
+              {user?.name?.charAt(0) ?? '?'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-text-primary truncate">{user?.name}</p>
+              <p className="text-xs text-text-muted truncate">{user?.email}</p>
+            </div>
           </div>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 w-full px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-background rounded-lg transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            로그아웃
+          </button>
         </div>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-3 w-full px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-        >
-          <LogOut className="h-4 w-4" />
-          로그아웃
-        </button>
-      </div>
-    </aside>
+      </aside>
     </>
   );
 }

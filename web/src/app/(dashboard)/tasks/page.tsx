@@ -14,6 +14,7 @@ import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { SkeletonTableRows } from '@/components/ui/Skeleton';
 import { Task, TaskStatus } from '@/types';
+import { clsx } from 'clsx';
 
 const STATUS_TABS = [
   { value: '', label: '전체' },
@@ -75,30 +76,30 @@ function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () => void
     <Modal open={open} onClose={onClose} title="업무 생성">
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">업무 제목 *</label>
+          <label className="label">업무 제목 *</label>
           <input
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
             placeholder="업무 제목을 입력하세요"
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="input"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">내용</label>
+          <label className="label">내용</label>
           <textarea
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             rows={3}
             placeholder="업무 내용을 입력하세요"
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            className="input resize-none"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">담당자</label>
+          <label className="label">담당자</label>
           <select
             value={form.assignee_id}
             onChange={(e) => setForm({ ...form, assignee_id: e.target.value })}
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="input"
           >
             <option value="">미배정</option>
             {members?.map((m) => (
@@ -108,16 +109,16 @@ function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () => void
             ))}
           </select>
           {members?.length === 0 && (
-            <p className="text-xs text-gray-400 mt-1">팀원이 없습니다. 먼저 팀원을 초대해주세요.</p>
+            <p className="text-xs text-text-muted mt-1">팀원이 없습니다. 먼저 팀원을 초대해주세요.</p>
           )}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">우선순위</label>
+            <label className="label">우선순위</label>
             <select
               value={form.priority}
               onChange={(e) => setForm({ ...form, priority: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="input"
             >
               {Object.entries(PRIORITY_KO).map(([v, l]) => (
                 <option key={v} value={v}>{l}</option>
@@ -125,12 +126,12 @@ function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () => void
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">마감일</label>
+            <label className="label">마감일</label>
             <input
               type="date"
               value={form.due_date}
               onChange={(e) => setForm({ ...form, due_date: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="input"
             />
           </div>
         </div>
@@ -180,55 +181,57 @@ function TaskDetailModal({ task, onClose }: { task: Task; onClose: () => void })
         {/* 제목 + 우선순위 */}
         <div>
           <div className="flex items-start gap-2 mb-1">
-            <h3 className="text-base font-semibold text-gray-900 flex-1">{task.title}</h3>
+            <h3 className="text-base font-semibold text-text-primary flex-1">{task.title}</h3>
             <Badge value={task.priority} colorMap={TASK_PRIORITY_BADGE} label={PRIORITY_KO[task.priority]} />
           </div>
           {task.description && (
-            <p className="text-sm text-gray-600 whitespace-pre-wrap">{task.description}</p>
+            <p className="text-sm text-text-secondary whitespace-pre-wrap">{task.description}</p>
           )}
         </div>
 
         {/* 메타 정보 */}
-        <div className="grid grid-cols-2 gap-3 text-sm border-t border-gray-100 pt-4">
+        <div className="grid grid-cols-2 gap-3 text-sm border-t border-border pt-4">
           <div>
-            <p className="text-xs text-gray-400 mb-0.5">현재 상태</p>
+            <p className="text-xs text-text-muted mb-0.5">현재 상태</p>
             <Badge value={task.status} colorMap={TASK_STATUS_BADGE} label={STATUS_KO[task.status]} />
           </div>
           <div>
-            <p className="text-xs text-gray-400 mb-0.5">담당자</p>
-            <p className="font-medium">{task.assignee?.name ?? '미배정'}</p>
+            <p className="text-xs text-text-muted mb-0.5">담당자</p>
+            <p className="font-medium text-text-primary">{task.assignee?.name ?? '미배정'}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400 mb-0.5">마감일</p>
-            <p className={isOverdue ? 'font-medium text-red-600 flex items-center gap-1' : 'font-medium'}>
+            <p className="text-xs text-text-muted mb-0.5">마감일</p>
+            <p className={isOverdue ? 'font-medium text-red-600 flex items-center gap-1' : 'font-medium text-text-primary'}>
               {isOverdue && <AlertCircle className="h-3.5 w-3.5" />}
               {task.dueDate ?? '-'}
             </p>
           </div>
           <div>
-            <p className="text-xs text-gray-400 mb-0.5">생성자</p>
-            <p className="font-medium">{task.creator?.name ?? '-'}</p>
+            <p className="text-xs text-text-muted mb-0.5">생성자</p>
+            <p className="font-medium text-text-primary">{task.creator?.name ?? '-'}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400 mb-0.5">생성일</p>
-            <p className="font-medium">{task.createdAt ? format(new Date(task.createdAt), 'yyyy-MM-dd') : '-'}</p>
+            <p className="text-xs text-text-muted mb-0.5">생성일</p>
+            <p className="font-medium text-text-primary">{task.createdAt ? format(new Date(task.createdAt), 'yyyy-MM-dd') : '-'}</p>
           </div>
         </div>
 
-        {/* 상태 변경 (관리자 또는 담당자) */}
+        {/* 상태 변경 */}
         {(user?.role !== 'employee' || task.assignee?.id === user?.id) && task.status !== 'cancelled' && (
-          <div className="border-t border-gray-100 pt-4">
-            <p className="text-xs text-gray-400 mb-2">상태 변경</p>
+          <div className="border-t border-border pt-4">
+            <p className="text-xs text-text-muted mb-2">상태 변경</p>
             <div className="flex flex-wrap gap-2">
               {nextStatuses.map((s) => (
-                <button
+                <Button
                   key={s}
+                  variant="ghost"
+                  size="sm"
                   onClick={() => statusMutation.mutate(s)}
                   disabled={statusMutation.isPending}
-                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  className="border border-border"
                 >
                   {STATUS_KO[s]}으로 변경
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -274,16 +277,16 @@ export default function TasksPage() {
     <div className="flex-1 overflow-y-auto">
       <Header title="업무 관리" />
 
-      <main className="p-6 space-y-4">
+      <main className="p-8 space-y-4 max-w-[1200px]">
         {/* 상단 */}
         <div className="flex items-center gap-3">
           <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="업무 검색"
-              className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="input pl-9"
             />
           </div>
           {user?.role !== 'employee' && (
@@ -295,20 +298,21 @@ export default function TasksPage() {
         </div>
 
         {/* 상태 탭 */}
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+        <div className="flex gap-1 bg-background border border-border p-1 rounded-lg w-fit">
           {STATUS_TABS.map((tab) => (
             <button
               key={tab.value}
               onClick={() => setActiveTab(tab.value)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              className={clsx(
+                'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
                 activeTab === tab.value
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+                  ? 'bg-white text-text-primary shadow-sm'
+                  : 'text-text-secondary hover:text-text-primary',
+              )}
             >
               {tab.label}
               {tab.value && summary[tab.value] != null && (
-                <span className="ml-1.5 text-xs text-gray-400">{summary[tab.value]}</span>
+                <span className="ml-1.5 text-xs text-text-muted">{summary[tab.value]}</span>
               )}
             </button>
           ))}
@@ -319,9 +323,9 @@ export default function TasksPage() {
           {isLoading ? (
             <div className="px-4"><SkeletonTableRows count={6} /></div>
           ) : filtered.length === 0 ? (
-            <div className="py-12 text-center text-sm text-gray-400">업무가 없습니다.</div>
+            <div className="py-12 text-center text-sm text-text-muted">업무가 없습니다.</div>
           ) : (
-            <ul className="divide-y divide-gray-100">
+            <ul className="divide-y divide-border">
               {filtered.map((task) => {
                 const isOverdue = task.dueDate && task.status !== 'done' && task.status !== 'cancelled'
                   && task.dueDate < today;
@@ -329,14 +333,14 @@ export default function TasksPage() {
                   <li key={task.id}>
                     <button
                       onClick={() => setSelectedTask(task)}
-                      className="w-full flex items-center gap-3 px-5 py-4 hover:bg-gray-50 transition-colors text-left"
+                      className="w-full flex items-center gap-3 px-5 py-4 hover:bg-background transition-colors text-left"
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <p className="text-sm font-medium text-gray-900 truncate">{task.title}</p>
+                          <p className="text-sm font-medium text-text-primary truncate">{task.title}</p>
                           <Badge value={task.priority} colorMap={TASK_PRIORITY_BADGE} label={PRIORITY_KO[task.priority]} />
                         </div>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-xs text-text-muted">
                           담당: {task.assignee?.name ?? '미배정'} ·{' '}
                           마감:{' '}
                           <span className={isOverdue ? 'text-red-500 font-medium' : ''}>

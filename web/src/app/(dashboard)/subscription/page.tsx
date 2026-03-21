@@ -1,11 +1,14 @@
 'use client';
 import { usePageTitle } from '@/hooks/usePageTitle';
-
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
 import { toast } from 'react-hot-toast';
+import Header from '@/components/layout/Header';
+import Card, { CardHeader } from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Modal from '@/components/ui/Modal';
 
 interface Subscription {
   id: string;
@@ -44,11 +47,11 @@ interface PaymentMethod {
 }
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  trialing:  { label: '무료 체험 중', color: 'bg-blue-100 text-blue-700' },
-  active:    { label: '구독 중', color: 'bg-green-100 text-green-700' },
-  past_due:  { label: '결제 실패', color: 'bg-red-100 text-red-700' },
-  suspended: { label: '정지됨', color: 'bg-gray-100 text-gray-700' },
-  canceled:  { label: '해지됨', color: 'bg-gray-100 text-gray-500' },
+  trialing:  { label: '무료 체험 중', color: 'bg-primary-100 text-primary-600' },
+  active:    { label: '구독 중',       color: 'bg-emerald-100 text-emerald-700' },
+  past_due:  { label: '결제 실패',    color: 'bg-red-100 text-red-700' },
+  suspended: { label: '정지됨',       color: 'bg-background text-text-secondary border border-border' },
+  canceled:  { label: '해지됨',       color: 'bg-background text-text-muted border border-border' },
 };
 
 const INVOICE_STATUS: Record<string, string> = {
@@ -121,294 +124,290 @@ export default function SubscriptionPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      <div className="flex-1 overflow-y-auto">
+        <Header title="구독 관리" />
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500" />
+        </div>
       </div>
     );
   }
 
   const sub = data?.currentSubscription;
-  const statusInfo = sub ? STATUS_LABEL[sub.status] ?? { label: sub.status, color: 'bg-gray-100 text-gray-700' } : null;
+  const statusInfo = sub ? STATUS_LABEL[sub.status] ?? { label: sub.status, color: 'bg-background text-text-secondary' } : null;
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">구독 관리</h1>
-        <p className="text-gray-500 mt-1">플랜 변경, 결제 수단, 인보이스를 관리합니다.</p>
-      </div>
+    <div className="flex-1 overflow-y-auto">
+      <Header title="구독 관리" />
 
-      {/* 현재 구독 현황 */}
-      <section className="bg-white border border-gray-200 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">현재 구독</h2>
-        {sub ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <span className="text-xl font-bold text-gray-900">{sub.plan_display_name}</span>
-              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusInfo?.color}`}>
-                {statusInfo?.label}
-              </span>
-            </div>
-
-            {sub.status === 'trialing' && sub.daysRemaining !== null && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-700 font-medium">
-                  무료 체험 {Math.max(0, sub.daysRemaining)}일 남음
-                </p>
-                <p className="text-xs text-blue-600 mt-1">
-                  체험 기간 종료 전에 유료 플랜으로 전환하세요.
-                </p>
-                <Link
-                  href="/onboarding/plan"
-                  className="mt-3 inline-block bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-700"
-                >
-                  플랜 선택하기
-                </Link>
+      <main className="p-8 space-y-6 max-w-4xl">
+        {/* 현재 구독 현황 */}
+        <Card>
+          <CardHeader
+            title="현재 구독"
+            description="플랜 변경, 결제 수단, 인보이스를 관리합니다."
+          />
+          {sub ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <span className="text-xl font-bold text-text-primary">{sub.plan_display_name}</span>
+                <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusInfo?.color}`}>
+                  {statusInfo?.label}
+                </span>
               </div>
-            )}
 
-            {sub.status === 'past_due' && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <p className="text-sm text-red-700 font-medium">결제에 실패했습니다</p>
-                <p className="text-xs text-red-600 mt-1">
-                  등록된 결제 수단으로 재시도가 진행됩니다 (D+1, D+3, D+7).
-                  결제가 계속 실패하면 서비스가 정지될 수 있습니다.
-                </p>
-                <div className="mt-3 flex gap-2">
+              {sub.status === 'trialing' && sub.daysRemaining !== null && (
+                <div className="bg-primary-50 border border-primary-100 rounded-xl p-4">
+                  <p className="text-sm text-primary-700 font-medium">
+                    무료 체험 {Math.max(0, sub.daysRemaining)}일 남음
+                  </p>
+                  <p className="text-xs text-primary-500 mt-1">
+                    체험 기간 종료 전에 유료 플랜으로 전환하세요.
+                  </p>
+                  <Link
+                    href="/onboarding/plan"
+                    className="mt-3 inline-block bg-primary-500 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary-600 transition-colors"
+                  >
+                    플랜 선택하기
+                  </Link>
+                </div>
+              )}
+
+              {sub.status === 'past_due' && (
+                <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+                  <p className="text-sm text-red-700 font-medium">결제에 실패했습니다</p>
+                  <p className="text-xs text-red-500 mt-1">
+                    등록된 결제 수단으로 재시도가 진행됩니다 (D+1, D+3, D+7).
+                    결제가 계속 실패하면 서비스가 정지될 수 있습니다.
+                  </p>
                   <Link
                     href="/onboarding/payment"
-                    className="inline-block bg-red-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-red-700"
+                    className="mt-3 inline-block bg-red-500 text-white text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-red-600 transition-colors"
                   >
                     결제 수단 변경
                   </Link>
                 </div>
-              </div>
-            )}
+              )}
 
-            {sub.status === 'suspended' && (
-              <div className="bg-gray-100 border border-gray-200 rounded-lg p-4">
-                <p className="text-sm text-gray-700 font-medium">서비스가 정지되었습니다</p>
-                <p className="text-xs text-gray-600 mt-1">
-                  결제 수단을 업데이트하거나 플랜을 선택하면 즉시 재개됩니다.
-                </p>
-                <Link
-                  href="/onboarding/plan"
-                  className="mt-3 inline-block bg-gray-800 text-white text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-gray-900"
-                >
-                  플랜 선택하기
-                </Link>
-              </div>
-            )}
-
-            {sub.status === 'active' && (
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500">결제 주기</span>
-                  <p className="font-medium text-gray-900 mt-1">
-                    {sub.billing_cycle === 'yearly' ? '연간 결제' : '월간 결제'}
+              {sub.status === 'suspended' && (
+                <div className="bg-background border border-border rounded-xl p-4">
+                  <p className="text-sm text-text-primary font-medium">서비스가 정지되었습니다</p>
+                  <p className="text-xs text-text-secondary mt-1">
+                    결제 수단을 업데이트하거나 플랜을 선택하면 즉시 재개됩니다.
                   </p>
+                  <Link
+                    href="/onboarding/plan"
+                    className="mt-3 inline-block bg-text-primary text-white text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-text-secondary transition-colors"
+                  >
+                    플랜 선택하기
+                  </Link>
                 </div>
-                <div>
-                  <span className="text-gray-500">다음 결제일</span>
-                  <p className="font-medium text-gray-900 mt-1">{formatDate(sub.next_billing_at)}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">현재 기간 만료</span>
-                  <p className="font-medium text-gray-900 mt-1">{formatDate(sub.current_period_end)}</p>
-                </div>
-              </div>
-            )}
+              )}
 
-            {sub.cancel_at_period_end && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <p className="text-sm text-amber-700">
-                  현재 기간 종료({new Date(sub.current_period_end).toLocaleDateString('ko-KR')}) 후 해지 예정입니다.
-                </p>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-3 pt-2">
               {sub.status === 'active' && (
-                <p className="text-xs text-gray-400">
-                  플랜 변경 시 현재 기간 잔여 금액이 일할 계산되어 적용됩니다. 변경은 즉시 반영됩니다.
-                </p>
-              )}
-              <div className="flex gap-3">
-              <Link
-                href="/onboarding/plan"
-                className="text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-200 px-4 py-2 rounded-lg hover:bg-blue-50"
-              >
-                플랜 변경
-              </Link>
-              {sub.status === 'active' && !sub.cancel_at_period_end && (
-                <button
-                  onClick={() => setShowCancelModal(true)}
-                  className="text-sm font-medium text-red-600 hover:text-red-700 border border-red-200 px-4 py-2 rounded-lg hover:bg-red-50"
-                >
-                  구독 해지
-                </button>
-              )}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="text-center py-6">
-            <p className="text-gray-500 mb-4">구독 정보가 없습니다.</p>
-            <Link href="/onboarding/plan" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium">
-              플랜 선택하기
-            </Link>
-          </div>
-        )}
-      </section>
-
-      {/* 결제 수단 */}
-      <section className="bg-white border border-gray-200 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-800">결제 수단</h2>
-          <Link
-            href="/onboarding/payment"
-            className="text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50"
-          >
-            + 카드 추가
-          </Link>
-        </div>
-
-        {paymentMethods && paymentMethods.length > 0 ? (
-          <ul className="space-y-3">
-            {paymentMethods.map((pm) => (
-              <li key={pm.id} className="flex items-center justify-between p-4 border border-gray-100 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-7 bg-gray-100 rounded flex items-center justify-center text-xs font-bold text-gray-600">
-                    {pm.card_brand ?? '카드'}
+                <div className="grid grid-cols-2 gap-4 text-sm border border-border rounded-xl p-4 bg-background">
+                  <div>
+                    <p className="text-xs text-text-muted mb-1">결제 주기</p>
+                    <p className="font-medium text-text-primary">
+                      {sub.billing_cycle === 'yearly' ? '연간 결제' : '월간 결제'}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {pm.card_issuer} {pm.card_number_masked}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {pm.card_expiry_year}/{pm.card_expiry_month}
-                    </p>
+                    <p className="text-xs text-text-muted mb-1">다음 결제일</p>
+                    <p className="font-medium text-text-primary">{formatDate(sub.next_billing_at)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted mb-1">현재 기간 만료</p>
+                    <p className="font-medium text-text-primary">{formatDate(sub.current_period_end)}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {pm.is_default && (
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">기본</span>
-                  )}
-                  <button
-                    onClick={() => setDeleteTargetId(pm.id)}
-                    className="text-xs text-gray-400 hover:text-red-500"
-                  >
-                    삭제
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-gray-400 text-center py-6">등록된 결제 수단이 없습니다.</p>
-        )}
-      </section>
+              )}
 
-      {/* 인보이스 */}
-      <section className="bg-white border border-gray-200 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">결제 내역</h2>
-        {invoices && invoices.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left border-b border-gray-100">
-                  <th className="pb-3 font-medium text-gray-500">인보이스</th>
-                  <th className="pb-3 font-medium text-gray-500">기간</th>
-                  <th className="pb-3 font-medium text-gray-500 text-right">금액</th>
-                  <th className="pb-3 font-medium text-gray-500">상태</th>
-                  <th className="pb-3 font-medium text-gray-500">결제일</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {invoices.map((inv) => (
-                  <tr key={inv.id} className="py-3">
-                    <td className="py-3 font-mono text-xs text-gray-600">{inv.invoice_number}</td>
-                    <td className="py-3 text-gray-600">
-                      {formatDate(inv.billing_period_start)} ~ {formatDate(inv.billing_period_end)}
-                    </td>
-                    <td className="py-3 text-right font-medium text-gray-900">
-                      {Number(inv.total_amount_krw).toLocaleString()}원
-                    </td>
-                    <td className="py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        inv.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {INVOICE_STATUS[inv.status] ?? inv.status}
-                      </span>
-                    </td>
-                    <td className="py-3 text-gray-500 text-xs">{formatDate(inv.paid_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              {sub.cancel_at_period_end && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-sm text-amber-700">
+                    현재 기간 종료({new Date(sub.current_period_end).toLocaleDateString('ko-KR')}) 후 해지 예정입니다.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3 pt-2">
+                {sub.status === 'active' && (
+                  <p className="text-xs text-text-muted">
+                    플랜 변경 시 현재 기간 잔여 금액이 일할 계산되어 적용됩니다. 변경은 즉시 반영됩니다.
+                  </p>
+                )}
+                <div className="flex gap-3">
+                  <Link
+                    href="/onboarding/plan"
+                    className="text-sm font-medium text-primary-500 hover:text-primary-600 border border-primary-200 px-4 py-2 rounded-lg hover:bg-primary-50 transition-colors"
+                  >
+                    플랜 변경
+                  </Link>
+                  {sub.status === 'active' && !sub.cancel_at_period_end && (
+                    <button
+                      onClick={() => setShowCancelModal(true)}
+                      className="text-sm font-medium text-red-500 hover:text-red-600 border border-red-200 px-4 py-2 rounded-lg hover:bg-red-50 transition-colors"
+                    >
+                      구독 해지
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-6">
+              <p className="text-text-secondary mb-4">구독 정보가 없습니다.</p>
+              <Link
+                href="/onboarding/plan"
+                className="bg-primary-500 text-white px-6 py-2 rounded-lg hover:bg-primary-600 text-sm font-medium transition-colors"
+              >
+                플랜 선택하기
+              </Link>
+            </div>
+          )}
+        </Card>
+
+        {/* 결제 수단 */}
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <CardHeader title="결제 수단" />
+            <Link
+              href="/onboarding/payment"
+              className="text-sm font-medium text-primary-500 hover:text-primary-600 border border-primary-200 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors"
+            >
+              + 카드 추가
+            </Link>
           </div>
-        ) : (
-          <p className="text-sm text-gray-400 text-center py-6">결제 내역이 없습니다.</p>
-        )}
-      </section>
+
+          {paymentMethods && paymentMethods.length > 0 ? (
+            <ul className="space-y-3">
+              {paymentMethods.map((pm) => (
+                <li key={pm.id} className="flex items-center justify-between p-4 border border-border rounded-xl hover:bg-background transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-7 bg-background border border-border rounded flex items-center justify-center text-xs font-bold text-text-secondary">
+                      {pm.card_brand ?? '카드'}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-text-primary">
+                        {pm.card_issuer} {pm.card_number_masked}
+                      </p>
+                      <p className="text-xs text-text-muted">
+                        {pm.card_expiry_year}/{pm.card_expiry_month}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {pm.is_default && (
+                      <span className="text-xs bg-primary-100 text-primary-600 px-2 py-0.5 rounded-full">기본</span>
+                    )}
+                    <button
+                      onClick={() => setDeleteTargetId(pm.id)}
+                      className="text-xs text-text-muted hover:text-red-500 transition-colors"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-text-muted text-center py-6">등록된 결제 수단이 없습니다.</p>
+          )}
+        </Card>
+
+        {/* 인보이스 */}
+        <Card padding="none">
+          <div className="px-6 py-4 border-b border-border">
+            <CardHeader title="결제 내역" />
+          </div>
+          {invoices && invoices.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    {['인보이스', '기간', '금액', '상태', '결제일'].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase tracking-wider bg-background">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoices.map((inv) => (
+                    <tr key={inv.id} className="border-b border-border/60 hover:bg-background transition-colors">
+                      <td className="px-4 py-3.5 font-mono text-xs text-text-secondary">{inv.invoice_number}</td>
+                      <td className="px-4 py-3.5 text-sm text-text-secondary">
+                        {formatDate(inv.billing_period_start)} ~ {formatDate(inv.billing_period_end)}
+                      </td>
+                      <td className="px-4 py-3.5 text-sm font-medium text-text-primary text-right">
+                        {Number(inv.total_amount_krw).toLocaleString()}원
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          inv.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {INVOICE_STATUS[inv.status] ?? inv.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 text-sm text-text-muted">{formatDate(inv.paid_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-text-muted text-center py-8">결제 내역이 없습니다.</p>
+          )}
+        </Card>
+      </main>
 
       {/* 카드 삭제 confirm */}
-      {deleteTargetId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-sm">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">결제 수단 삭제</h3>
-            <p className="text-sm text-gray-600 mb-5">이 카드를 삭제하시겠습니까? 기본 결제 수단인 경우 구독 갱신에 영향을 줄 수 있습니다.</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDeleteTargetId(null)}
-                className="flex-1 border border-gray-200 text-gray-700 py-2 rounded-lg text-sm hover:bg-gray-50"
-              >
-                취소
-              </button>
-              <button
-                onClick={() => deletePaymentMethodMutation.mutate(deleteTargetId)}
-                disabled={deletePaymentMethodMutation.isPending}
-                className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
-              >
-                {deletePaymentMethodMutation.isPending ? '삭제 중...' : '삭제'}
-              </button>
-            </div>
-          </div>
+      <Modal open={!!deleteTargetId} onClose={() => setDeleteTargetId(null)} title="결제 수단 삭제" size="sm">
+        <p className="text-sm text-text-secondary mb-5">
+          이 카드를 삭제하시겠습니까? 기본 결제 수단인 경우 구독 갱신에 영향을 줄 수 있습니다.
+        </p>
+        <div className="flex gap-3">
+          <Button variant="secondary" className="flex-1" onClick={() => setDeleteTargetId(null)}>
+            취소
+          </Button>
+          <Button
+            variant="danger"
+            className="flex-1"
+            loading={deletePaymentMethodMutation.isPending}
+            onClick={() => deleteTargetId && deletePaymentMethodMutation.mutate(deleteTargetId)}
+          >
+            삭제
+          </Button>
         </div>
-      )}
+      </Modal>
 
       {/* 해지 모달 */}
-      {showCancelModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">구독 해지</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              현재 기간 종료 후 해지됩니다. 데이터는 30일간 보존됩니다.
-            </p>
-            <textarea
-              value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              placeholder="해지 사유를 입력해 주세요 (선택)"
-              rows={3}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowCancelModal(false)}
-                className="flex-1 border border-gray-200 text-gray-700 py-2 rounded-lg text-sm hover:bg-gray-50"
-              >
-                취소
-              </button>
-              <button
-                onClick={() => cancelMutation.mutate(cancelReason || '사유 미입력')}
-                disabled={cancelMutation.isPending}
-                className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
-              >
-                {cancelMutation.isPending ? '처리 중...' : '해지 확인'}
-              </button>
-            </div>
-          </div>
+      <Modal open={showCancelModal} onClose={() => setShowCancelModal(false)} title="구독 해지" size="sm">
+        <p className="text-sm text-text-secondary mb-4">
+          현재 기간 종료 후 해지됩니다. 데이터는 30일간 보존됩니다.
+        </p>
+        <textarea
+          value={cancelReason}
+          onChange={(e) => setCancelReason(e.target.value)}
+          placeholder="해지 사유를 입력해 주세요 (선택)"
+          rows={3}
+          className="input resize-none mb-4"
+        />
+        <div className="flex gap-3">
+          <Button variant="secondary" className="flex-1" onClick={() => setShowCancelModal(false)}>
+            취소
+          </Button>
+          <Button
+            variant="danger"
+            className="flex-1"
+            loading={cancelMutation.isPending}
+            onClick={() => cancelMutation.mutate(cancelReason || '사유 미입력')}
+          >
+            해지 확인
+          </Button>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

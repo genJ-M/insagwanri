@@ -43,7 +43,7 @@ function PwChecklist({ value }: { value: string }) {
       {PW_RULES.map(({ label, test }) => {
         const ok = test(value);
         return (
-          <li key={label} className={clsx('flex items-center gap-1.5 text-xs', ok ? 'text-green-600' : 'text-gray-400')}>
+          <li key={label} className={clsx('flex items-center gap-1.5 text-xs', ok ? 'text-green-600' : 'text-text-muted')}>
             <Check className={clsx('h-3.5 w-3.5', ok ? 'opacity-100' : 'opacity-30')} />
             {label}
           </li>
@@ -112,7 +112,7 @@ function ProfileSection() {
   const toggleShowPw = (key: keyof typeof showPwFields) =>
     setShowPwFields((f) => ({ ...f, [key]: !f[key] }));
 
-  const inputCls = 'w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const inputCls = 'w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all';
 
   return (
     <>
@@ -129,8 +129,8 @@ function ProfileSection() {
               fallback={form.name.charAt(0).toUpperCase() || '?'}
             />
             <div>
-              <p className="text-sm font-medium text-gray-900">{user?.email}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{user?.role === 'owner' ? '대표' : user?.role === 'manager' ? '관리자' : '직원'}</p>
+              <p className="text-sm font-medium text-text-primary">{user?.email}</p>
+              <p className="text-xs text-text-muted mt-0.5">{user?.role === 'owner' ? '대표' : user?.role === 'manager' ? '관리자' : '직원'}</p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -141,7 +141,7 @@ function ProfileSection() {
               { key: 'position', label: '직책' },
             ].map(({ key, label }) => (
               <div key={key}>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+                <label className="label">{label}</label>
                 <input
                   value={form[key as keyof typeof form]}
                   onChange={(e) => { setForm({ ...form, [key]: e.target.value }); setIsDirty(true); }}
@@ -172,7 +172,7 @@ function ProfileSection() {
             { key: 'confirmPassword', label: '새 비밀번호 확인' },
           ] as const).map(({ key, label }) => (
             <div key={key}>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+              <label className="label">{label}</label>
               <div className="relative">
                 <input
                   type={showPwFields[key] ? 'text' : 'password'}
@@ -183,7 +183,7 @@ function ProfileSection() {
                 <button
                   type="button"
                   onClick={() => toggleShowPw(key)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
                 >
                   {showPwFields[key] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -239,7 +239,7 @@ function CompanySection() {
     },
   });
 
-  const inputCls = 'w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const inputCls = 'w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all';
 
   return (
     <>
@@ -248,7 +248,7 @@ function CompanySection() {
         <div className="mt-4 space-y-4">
           {/* 회사 로고 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">회사 로고</label>
+            <label className="label">회사 로고</label>
             <ImageUploader
               currentUrl={logoUrl}
               onUpload={(url) => { setLogoUrl(url); setIsDirty(true); }}
@@ -263,14 +263,14 @@ function CompanySection() {
             { key: 'phone', label: '대표 전화' },
           ].map(({ key, label }) => (
             <div key={key}>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+              <label className="label">{label}</label>
               <input value={form[key as keyof typeof form]}
                 onChange={(e) => { setForm({ ...form, [key]: e.target.value }); setIsDirty(true); }}
                 className={inputCls} />
             </div>
           ))}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">주소</label>
+            <label className="label">주소</label>
             <textarea rows={2} value={form.address}
               onChange={(e) => { setForm({ ...form, address: e.target.value }); setIsDirty(true); }}
               className={inputCls} />
@@ -330,7 +330,7 @@ function WorkSection() {
     setIsDirty(true);
   };
 
-  const inputCls = 'px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const inputCls = 'input';
 
   return (
     <>
@@ -339,34 +339,34 @@ function WorkSection() {
         <div className="mt-4 space-y-5">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">출근 시간</label>
+              <label className="label">출근 시간</label>
               <input type="time" value={form.workStartTime}
                 onChange={(e) => { setForm({ ...form, workStartTime: e.target.value }); setIsDirty(true); }}
-                className={inputCls + ' w-full'} />
+                className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">퇴근 시간</label>
+              <label className="label">퇴근 시간</label>
               <input type="time" value={form.workEndTime}
                 onChange={(e) => { setForm({ ...form, workEndTime: e.target.value }); setIsDirty(true); }}
-                className={inputCls + ' w-full'} />
+                className="input" />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              지각 허용 시간 <span className="font-normal text-gray-400">({form.lateThresholdMin}분)</span>
+            <label className="label">
+              지각 허용 시간 <span className="font-normal text-text-muted">({form.lateThresholdMin}분)</span>
             </label>
             <input type="range" min={0} max={60} step={5}
               value={form.lateThresholdMin}
               onChange={(e) => { setForm({ ...form, lateThresholdMin: Number(e.target.value) }); setIsDirty(true); }}
               className="w-full" />
-            <div className="flex justify-between text-xs text-gray-400 mt-1">
+            <div className="flex justify-between text-xs text-text-muted mt-1">
               <span>0분</span><span>30분</span><span>60분</span>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">근무 요일</label>
+            <label className="label">근무 요일</label>
             <div className="flex gap-2">
               {DAYS.map((d) => (
                 <button
@@ -375,8 +375,8 @@ function WorkSection() {
                   className={clsx(
                     'h-9 w-9 rounded-full text-sm font-medium transition-colors',
                     form.workDays.includes(d.value)
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
+                      ? 'bg-primary-500 text-white'
+                      : 'bg-background border border-border text-text-secondary hover:bg-border',
                   )}
                 >
                   {d.label}
@@ -470,7 +470,7 @@ function GpsSection() {
     });
   };
 
-  const inputCls = 'w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const inputCls = 'w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all';
 
   return (
     <>
@@ -480,14 +480,14 @@ function GpsSection() {
           {/* 활성화 토글 */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-900">GPS 출퇴근 활성화</p>
-              <p className="text-xs text-gray-500 mt-0.5">반경 외 출퇴근 시 기록은 허용되며 플래그 처리됩니다</p>
+              <p className="text-sm font-medium text-text-primary">GPS 출퇴근 활성화</p>
+              <p className="text-xs text-text-secondary mt-0.5">반경 외 출퇴근 시 기록은 허용되며 플래그 처리됩니다</p>
             </div>
             <button
               onClick={() => { setForm((f) => ({ ...f, gpsEnabled: !f.gpsEnabled })); setIsDirty(true); }}
               className={clsx(
                 'relative inline-flex h-6 w-11 rounded-full transition-colors',
-                form.gpsEnabled ? 'bg-blue-600' : 'bg-gray-200',
+                form.gpsEnabled ? 'bg-primary-500' : 'bg-border',
               )}
             >
               <span className={clsx(
@@ -503,12 +503,12 @@ function GpsSection() {
               <div className="space-y-3">
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">위도</label>
+                    <label className="block text-xs font-medium text-text-primary mb-1">위도</label>
                     <input value={form.gpsLat} onChange={(e) => { setForm({ ...form, gpsLat: e.target.value }); setIsDirty(true); }}
                       placeholder="37.5665" className={inputCls} />
                   </div>
                   <div className="flex-1">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">경도</label>
+                    <label className="block text-xs font-medium text-text-primary mb-1">경도</label>
                     <input value={form.gpsLng} onChange={(e) => { setForm({ ...form, gpsLng: e.target.value }); setIsDirty(true); }}
                       placeholder="126.9780" className={inputCls} />
                   </div>
@@ -529,17 +529,17 @@ function GpsSection() {
 
               {/* 반경 슬라이더 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  허용 반경 <span className="font-bold text-blue-600">{form.gpsRadiusM}m</span>
+                <label className="label">
+                  허용 반경 <span className="font-bold text-primary-500">{form.gpsRadiusM}m</span>
                 </label>
                 <input type="range" min={50} max={500} step={25}
                   value={form.gpsRadiusM}
                   onChange={(e) => { setForm({ ...form, gpsRadiusM: Number(e.target.value) }); setIsDirty(true); }}
                   className="w-full" />
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
+                <div className="flex justify-between text-xs text-text-muted mt-1">
                   <span>50m (정밀)</span><span>500m (넓음)</span>
                 </div>
-                <p className="text-xs text-gray-400 mt-2">
+                <p className="text-xs text-text-muted mt-2">
                   💡 일반 사무실은 100m, 층고가 높거나 건물이 넓은 경우 200~300m를 권장합니다.
                   GPS 오차(~15m)를 고려해 최소 50m 이상으로 설정하세요.
                 </p>
@@ -548,14 +548,14 @@ function GpsSection() {
               {/* 엄격 모드 */}
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">반경 외 즉시 알림</p>
-                  <p className="text-xs text-gray-500 mt-0.5">반경 밖에서 출퇴근 시 관리자에게 즉시 알림을 발송합니다</p>
+                  <p className="text-sm font-medium text-text-primary">반경 외 즉시 알림</p>
+                  <p className="text-xs text-text-secondary mt-0.5">반경 밖에서 출퇴근 시 관리자에게 즉시 알림을 발송합니다</p>
                 </div>
                 <button
                   onClick={() => { setForm((f) => ({ ...f, gpsStrictMode: !f.gpsStrictMode })); setIsDirty(true); }}
                   className={clsx(
                     'relative inline-flex h-6 w-11 rounded-full transition-colors',
-                    form.gpsStrictMode ? 'bg-orange-500' : 'bg-gray-200',
+                    form.gpsStrictMode ? 'bg-orange-500' : 'bg-border',
                   )}
                 >
                   <span className={clsx(
@@ -612,15 +612,15 @@ export default function SettingsPage() {
                   className={clsx(
                     'flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left',
                     disabled
-                      ? 'text-gray-300 cursor-not-allowed'
+                      ? 'text-text-muted cursor-not-allowed'
                       : section === key
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-600 hover:bg-gray-100',
+                        ? 'bg-primary-50 text-primary-500'
+                        : 'text-text-secondary hover:bg-background',
                   )}
                 >
                   <Icon className="h-4 w-4 flex-shrink-0" />
                   <span className="flex-1">{label}</span>
-                  {disabled && <span className="text-xs text-gray-300">준비 중</span>}
+                  {disabled && <span className="text-xs text-text-muted">준비 중</span>}
                 </button>
               ))}
             </nav>
@@ -635,7 +635,7 @@ export default function SettingsPage() {
             {section === 'notification' && (
               <Card>
                 <CardHeader title="알림 설정" description="준비 중입니다" />
-                <p className="text-sm text-gray-400 mt-4">알림 시스템 구현 후 활성화됩니다.</p>
+                <p className="text-sm text-text-muted mt-4">알림 시스템 구현 후 활성화됩니다.</p>
               </Card>
             )}
           </div>
