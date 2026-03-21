@@ -94,7 +94,7 @@ services:
 databases:
   # ─── PostgreSQL ─────────────────────────────────────────
   - name: insagwanri-db
-    plan: starter
+    plan: free
     region: singapore
     databaseName: gwanri_wang
     user: gwanri
