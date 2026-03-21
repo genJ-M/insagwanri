@@ -5,7 +5,7 @@ services:
     runtime: node
     rootDir: backend
     buildCommand: npm install --legacy-peer-deps --include=dev && npm run build
-    startCommand: node node_modules/typeorm/cli.js migration:run -d dist/data-source.prod.js && node dist/main
+    startCommand: node node_modules/typeorm/cli.js migration:run -d dist/data-source.prod.js && node dist/main.js
     plan: free
     region: singapore
     healthCheckPath: /api/v1/health
