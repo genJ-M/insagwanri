@@ -1,0 +1,99 @@
+services:
+  # ─── Backend (NestJS) ──────────────────────────────────
+  - type: web
+    name: insagwanri-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    region: singapore
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+
+      # DB — Render 내부 PostgreSQL 연결
+      - key: DB_HOST
+        fromDatabase:
+          name: insagwanri-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: insagwanri-db
+          property: port
+      - key: DB_USERNAME
+        fromDatabase:
+          name: insagwanri-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: insagwanri-db
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: insagwanri-db
+          property: database
+
+      # Redis
+      - key: REDIS_URL
+        fromService:
+          name: insagwanri-redis
+          type: redis
+          property: connectionString
+
+      # Frontend CORS (Vercel URL)
+      - key: FRONTEND_URL
+        value: https://insagwanri-nine.vercel.app
+
+      # 아래 항목은 Render 대시보드 Environment에서 직접 입력
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: JWT_ACCESS_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o
+      - key: OPENAI_MAX_TOKENS
+        value: 2000
+      - key: OPENAI_TIMEOUT_MS
+        value: 30000
+      - key: AI_RATE_LIMIT_FREE
+        value: 10
+      - key: AI_RATE_LIMIT_BASIC
+        value: 50
+      - key: AI_RATE_LIMIT_PRO
+        value: 200
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: noreply@insagwanri.com
+      - key: AWS_REGION
+        value: ap-northeast-2
+      - key: AWS_S3_BUCKET
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+
+  # ─── Redis ─────────────────────────────────────────────
+  - type: redis
+    name: insagwanri-redis
+    plan: starter
+    region: singapore
+    maxmemoryPolicy: allkeys-lru
+
+databases:
+  # ─── PostgreSQL ─────────────────────────────────────────
+  - name: insagwanri-db
+    plan: starter
+    region: singapore
+    databaseName: gwanri_wang
+    user: gwanri
