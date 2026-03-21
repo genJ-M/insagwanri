@@ -5,7 +5,7 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: starter
+    plan: free
     region: singapore
     healthCheckPath: /api/v1/health
     envVars:
@@ -86,7 +86,7 @@ services:
   # ─── Redis ─────────────────────────────────────────────
   - type: redis
     name: insagwanri-redis
-    plan: starter
+    plan: free
     region: singapore
     maxmemoryPolicy: allkeys-lru
     ipAllowList: []
