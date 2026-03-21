@@ -54,4 +54,4 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD wget -qO- http://localhost:3001/api/v1/health || exit 1
 
-CMD ["sh", "-c", "node node_modules/typeorm/cli.js migration:run -d dist/data-source.prod.js && node dist/main"]
+CMD ["node", "dist/main"]
