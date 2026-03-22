@@ -12,7 +12,7 @@ const paddings = { none: '', sm: 'p-4', md: 'p-6', lg: 'p-8' };
 export default function Card({ children, className, padding = 'md' }: CardProps) {
   return (
     <div className={clsx(
-      'bg-white rounded-xl border border-border shadow-sm hover:shadow-md transition-shadow',
+      'bg-white rounded-xl border border-border shadow-card hover:shadow-card-hover transition-all duration-200',
       paddings[padding],
       className,
     )}>
@@ -25,10 +25,10 @@ export function CardHeader({ title, description, action }: {
   title: string; description?: string; action?: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between mb-4">
+    <div className="flex items-start justify-between mb-5">
       <div>
-        <h3 className="text-base font-semibold text-text-primary">{title}</h3>
-        {description && <p className="text-sm text-text-secondary mt-0.5">{description}</p>}
+        <h3 className="text-[15px] font-semibold text-text-primary">{title}</h3>
+        {description && <p className="text-xs text-text-muted mt-0.5">{description}</p>}
       </div>
       {action && <div>{action}</div>}
     </div>

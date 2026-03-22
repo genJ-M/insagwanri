@@ -47,24 +47,29 @@ export default function Sidebar() {
       {/* 모바일 백드롭 */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/30 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       <aside className={clsx(
-        'flex flex-col w-[220px] bg-white border-r border-border',
+        'flex flex-col w-[240px] bg-sidebar-bg',
         'lg:relative lg:translate-x-0 lg:min-h-screen',
         'fixed inset-y-0 left-0 z-50 min-h-screen transition-transform duration-200',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
       )}>
         {/* 로고 */}
-        <div className="flex items-center px-6 h-16 border-b border-border">
-          <span className="font-bold text-xl text-primary-500 tracking-tight">관리왕</span>
+        <div className="flex items-center px-5 h-16 border-b border-sidebar-border">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-primary-500 flex items-center justify-center flex-shrink-0">
+              <span className="text-white text-xs font-bold">관</span>
+            </div>
+            <span className="font-bold text-[15px] text-white tracking-tight">관리왕</span>
+          </div>
         </div>
 
         {/* 메인 네비 */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto scrollbar-hide">
           {mainNav.map(({ href, icon: Icon, label }) => {
             const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
             return (
@@ -73,20 +78,21 @@ export default function Sidebar() {
                 href={href}
                 onClick={() => setSidebarOpen(false)}
                 className={clsx(
-                  'flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-colors',
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium transition-all duration-150',
                   isActive
-                    ? 'bg-primary-50 text-primary-500 font-medium'
-                    : 'text-text-secondary hover:bg-primary-50 hover:text-primary-500',
+                    ? 'bg-sidebar-active text-white'
+                    : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
                 )}
               >
-                <Icon className="w-5 h-5 flex-shrink-0" />
+                <Icon className={clsx('w-4 h-4 flex-shrink-0', isActive ? 'text-primary-400' : '')} />
                 {label}
               </Link>
             );
           })}
 
           {/* 하단 네비 */}
-          <div className="pt-2 mt-2 border-t border-border space-y-0.5">
+          <div className="pt-3 mt-3 border-t border-sidebar-border space-y-0.5">
+            <p className="px-3 pb-1.5 text-[11px] font-semibold text-sidebar-muted uppercase tracking-wider">관리</p>
             {bottomNav
               .filter(({ roles }) => !roles || roles.includes(user?.role ?? ''))
               .map(({ href, icon: Icon, label }) => {
@@ -97,13 +103,13 @@ export default function Sidebar() {
                     href={href}
                     onClick={() => setSidebarOpen(false)}
                     className={clsx(
-                      'flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-colors',
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium transition-all duration-150',
                       isActive
-                        ? 'bg-primary-50 text-primary-500 font-medium'
-                        : 'text-text-secondary hover:bg-primary-50 hover:text-primary-500',
+                        ? 'bg-sidebar-active text-white'
+                        : 'text-sidebar-text hover:bg-sidebar-hover hover:text-white',
                     )}
                   >
-                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    <Icon className={clsx('w-4 h-4 flex-shrink-0', isActive ? 'text-primary-400' : '')} />
                     {label}
                   </Link>
                 );
@@ -112,19 +118,19 @@ export default function Sidebar() {
         </nav>
 
         {/* 유저 정보 + 로그아웃 */}
-        <div className="px-3 py-4 border-t border-border">
-          <div className="flex items-center gap-3 px-3 py-2 mb-1">
-            <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-sm font-semibold text-primary-600 flex-shrink-0">
+        <div className="px-3 py-4 border-t border-sidebar-border">
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sidebar-hover transition-colors cursor-default mb-1">
+            <div className="h-8 w-8 rounded-full bg-primary-600 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
               {user?.name?.charAt(0) ?? '?'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-text-primary truncate">{user?.name}</p>
-              <p className="text-xs text-text-muted truncate">{user?.email}</p>
+              <p className="text-[13px] font-semibold text-white truncate">{user?.name}</p>
+              <p className="text-[11px] text-sidebar-text truncate">{user?.email}</p>
             </div>
           </div>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-background rounded-lg transition-colors"
+            className="flex items-center gap-3 w-full px-3 py-2 text-[13px] text-sidebar-text hover:text-white hover:bg-sidebar-hover rounded-lg transition-all duration-150"
           >
             <LogOut className="w-4 h-4" />
             로그아웃

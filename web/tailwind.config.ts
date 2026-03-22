@@ -6,19 +6,28 @@ const config: Config = {
     extend: {
       colors: {
         primary: {
-          50:  '#EFF6FF',
-          100: '#DBEAFE',
-          500: '#2563EB',
-          600: '#1D4ED8',
-          700: '#1E40AF',
+          50:  '#EEF2FF',
+          100: '#E0E7FF',
+          200: '#C7D2FE',
+          500: '#6366F1',
+          600: '#4F46E5',
+          700: '#4338CA',
+        },
+        sidebar: {
+          bg:     '#0F172A',
+          hover:  '#1E293B',
+          active: '#334155',
+          border: '#1E293B',
+          text:   '#94A3B8',
+          muted:  '#475569',
         },
         surface: '#FFFFFF',
-        background: '#F8FAFC',
+        background: '#F1F5F9',
         border: '#E2E8F0',
         text: {
-          primary: '#0F172A',
+          primary:   '#0F172A',
           secondary: '#64748B',
-          muted: '#94A3B8',
+          muted:     '#94A3B8',
         },
         status: {
           checkin:    '#10B981',
@@ -32,7 +41,11 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Noto Sans KR', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        sans: ['var(--font-inter)', 'var(--font-noto-sans-kr)', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+      },
+      boxShadow: {
+        card:         '0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06)',
+        'card-hover': '0 4px 12px 0 rgb(0 0 0 / 0.08), 0 2px 4px -1px rgb(0 0 0 / 0.04)',
       },
     },
   },

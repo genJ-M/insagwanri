@@ -16,7 +16,7 @@ export default function Header({ title }: HeaderProps) {
   const user = useAuthStore((s) => s.user);
 
   return (
-    <header className="h-16 bg-white border-b border-border flex items-center px-6 gap-4 flex-shrink-0">
+    <header className="h-14 bg-white border-b border-border flex items-center px-6 gap-4 flex-shrink-0 sticky top-0 z-30">
       <button
         onClick={toggleSidebar}
         className="p-1.5 rounded-lg hover:bg-background text-text-secondary transition-colors lg:hidden"
@@ -24,22 +24,22 @@ export default function Header({ title }: HeaderProps) {
         <Menu className="h-5 w-5" />
       </button>
 
-      <h1 className="text-lg font-semibold text-text-primary flex-1">{title}</h1>
+      <h1 className="text-[15px] font-semibold text-text-primary flex-1">{title}</h1>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         {/* 알림 버튼 */}
-        <button className="relative p-2 rounded-lg hover:bg-background text-text-secondary transition-colors">
-          <Bell className="h-5 w-5" />
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500" />
+        <button className="relative p-2 rounded-lg hover:bg-background text-text-muted hover:text-text-secondary transition-colors">
+          <Bell className="h-4.5 w-4.5 h-[18px] w-[18px]" />
+          <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-red-500 ring-1 ring-white" />
         </button>
 
         {/* 역할 배지 + 아바타 */}
         {user && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-primary-50 text-primary-600">
+          <div className="flex items-center gap-2.5 pl-1">
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-primary-50 text-primary-600 border border-primary-100">
               {ROLE_LABEL[user.role] ?? user.role}
             </span>
-            <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-sm font-semibold text-primary-600">
+            <div className="h-7 w-7 rounded-full bg-primary-600 flex items-center justify-center text-xs font-bold text-white ring-2 ring-primary-100">
               {user.name?.charAt(0) ?? '?'}
             </div>
           </div>

@@ -19,17 +19,17 @@ import { useAuthStore } from '@/store/auth.store';
 import { SkeletonStatCard } from '@/components/ui/Skeleton';
 
 // ── 통계 카드 ──────────────────────────────────────────
-function StatCard({ label, value, icon: Icon, iconBg }: {
-  label: string; value: string | number; icon: any; iconBg: string;
+function StatCard({ label, value, icon: Icon, iconBg, trend }: {
+  label: string; value: string | number; icon: any; iconBg: string; trend?: string;
 }) {
   return (
     <Card className="flex items-center gap-4 p-5">
-      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+      <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
         <Icon className="h-5 w-5 text-white" />
       </div>
-      <div>
-        <p className="text-3xl font-bold text-text-primary tabular-nums">{value}</p>
-        <p className="text-sm text-text-secondary mt-1">{label}</p>
+      <div className="flex-1 min-w-0">
+        <p className="text-2xl font-bold text-text-primary tabular-nums">{value}</p>
+        <p className="text-xs font-medium text-text-muted mt-0.5">{label}</p>
       </div>
     </Card>
   );
@@ -158,7 +158,7 @@ export default function DashboardPage() {
     <div className="flex-1 overflow-y-auto">
       <Header title="대시보드" />
 
-      <main className="p-8 space-y-6 max-w-[1200px]">
+      <main className="page-container">
         {/* 구독 배너 */}
         {user?.role === 'owner' && subscriptionData?.status === 'trialing' && (
           <div className="flex items-center justify-between bg-primary-50 border border-primary-100 rounded-xl px-5 py-3.5">
@@ -194,10 +194,10 @@ export default function DashboardPage() {
         {/* 인사말 */}
         <div>
           <h2 className="text-xl font-bold text-text-primary">
-            안녕하세요, {user?.name}님 👋
+            안녕하세요, {user?.name}님
           </h2>
-          <p className="text-sm text-text-secondary mt-1">
-            오늘도 좋은 하루 되세요.
+          <p className="text-sm text-text-muted mt-0.5">
+            {format(new Date(), 'yyyy년 M월 d일 (EEEE)', { locale: ko })}
           </p>
         </div>
 

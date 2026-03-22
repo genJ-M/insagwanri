@@ -10,16 +10,16 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants = {
-  primary:   'bg-primary-500 hover:bg-primary-600 text-white disabled:bg-primary-100 disabled:text-primary-300 active:scale-[0.98]',
-  secondary: 'bg-white border-[1.5px] border-primary-500 text-primary-500 hover:bg-primary-50 disabled:opacity-50 active:scale-[0.98]',
-  ghost:     'text-text-secondary hover:bg-background disabled:opacity-50',
-  danger:    'bg-red-500 hover:bg-red-600 text-white disabled:opacity-50 active:scale-[0.98]',
+  primary:   'bg-primary-500 hover:bg-primary-600 text-white shadow-sm hover:shadow disabled:bg-primary-200 disabled:text-primary-300 active:scale-[0.98]',
+  secondary: 'bg-white border border-border text-text-primary hover:bg-background hover:border-text-muted shadow-sm disabled:opacity-50 active:scale-[0.98]',
+  ghost:     'text-text-secondary hover:bg-background hover:text-text-primary disabled:opacity-50',
+  danger:    'bg-red-500 hover:bg-red-600 text-white shadow-sm disabled:opacity-50 active:scale-[0.98]',
 };
 
 const sizes = {
   sm: 'px-3 py-1.5 text-xs',
-  md: 'px-4 py-2.5 text-sm',
-  lg: 'px-5 py-3 text-sm',
+  md: 'px-4 py-2 text-sm',
+  lg: 'px-5 py-2.5 text-sm',
 };
 
 /** Link 등 non-button 요소에 Button 스타일을 적용할 때 사용 */
