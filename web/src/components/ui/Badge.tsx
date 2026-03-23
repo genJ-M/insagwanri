@@ -13,6 +13,28 @@ const styles: Record<BadgeVariant, string> = {
   slate:  'bg-slate-100 text-slate-600',
 };
 
+// 역할 / 고용형태 뱃지
+export const ROLE_BADGE: Record<string, BadgeVariant> = {
+  owner:   'purple',
+  manager: 'green',
+  employee:'blue',
+};
+
+export const EMPLOYMENT_BADGE: Record<string, BadgeVariant> = {
+  full_time:  'slate',
+  contract:   'yellow',
+  part_time:  'orange',
+  intern:     'gray',
+};
+
+export const ROLE_LABEL: Record<string, string> = {
+  owner: '소유자', manager: '관리자', employee: '직원',
+};
+
+export const EMPLOYMENT_LABEL: Record<string, string> = {
+  full_time: '정규직', contract: '계약직', part_time: '파트타임', intern: '인턴',
+};
+
 // 상태별 색상 매핑
 export const TASK_STATUS_BADGE: Record<string, BadgeVariant> = {
   pending:     'gray',

@@ -2,7 +2,7 @@
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { UserPlus, MoreVertical, Mail, Shield, User, RefreshCw, X, Check } from 'lucide-react';
+import { UserPlus, MoreVertical, Mail, Shield, User, RefreshCw, X } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { clsx } from 'clsx';
@@ -11,24 +11,19 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { SkeletonTableRows } from '@/components/ui/Skeleton';
 import Modal from '@/components/ui/Modal';
+import Avatar from '@/components/ui/Avatar';
+import Badge, { ROLE_BADGE, ROLE_LABEL } from '@/components/ui/Badge';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import toast from 'react-hot-toast';
 
 type TabType = 'all' | 'manager' | 'employee' | 'invites';
 
-const ROLE_KO: Record<string, string> = {
-  owner: '대표', manager: '관리자', employee: '직원',
+const STATUS_BADGE: Record<string, 'green' | 'red' | 'yellow'> = {
+  active: 'green', inactive: 'red', pending: 'yellow',
 };
-const ROLE_COLOR: Record<string, string> = {
-  owner:    'bg-purple-100 text-purple-700',
-  manager:  'bg-primary-100 text-primary-600',
-  employee: 'bg-background text-text-secondary border border-border',
-};
-const STATUS_COLOR: Record<string, string> = {
-  active:   'bg-emerald-100 text-emerald-700',
-  inactive: 'bg-red-100 text-red-700',
-  pending:  'bg-amber-100 text-amber-700',
+const STATUS_LABEL: Record<string, string> = {
+  active: '재직', inactive: '비활성', pending: '대기',
 };
 
 function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -310,9 +305,7 @@ export default function TeamPage() {
                       <tr key={m.id} className="border-b border-border/60 hover:bg-background transition-colors">
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 rounded-full bg-primary-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-                              {m.name.charAt(0)}
-                            </div>
+                            <Avatar name={m.name} size="md" />
                             <div>
                               <p className="text-sm font-medium text-text-primary">{m.name}</p>
                               <p className="text-xs text-text-muted">{m.email}</p>
@@ -323,14 +316,10 @@ export default function TeamPage() {
                           {[m.department, m.position].filter(Boolean).join(' · ') || '-'}
                         </td>
                         <td className="px-4 py-3.5">
-                          <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full', ROLE_COLOR[m.role])}>
-                            {ROLE_KO[m.role]}
-                          </span>
+                          <Badge value={m.role} colorMap={ROLE_BADGE} label={ROLE_LABEL[m.role]} />
                         </td>
                         <td className="px-4 py-3.5">
-                          <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full', STATUS_COLOR[m.status])}>
-                            {m.status === 'active' ? '재직' : m.status === 'inactive' ? '비활성' : '대기'}
-                          </span>
+                          <Badge value={m.status} colorMap={STATUS_BADGE} label={STATUS_LABEL[m.status]} />
                         </td>
                         <td className="px-4 py-3.5 text-text-muted text-xs">
                           {m.lastLoginAt
@@ -416,7 +405,7 @@ export default function TeamPage() {
                   const expired = new Date(inv.expiresAt) < new Date();
                   return (
                     <div key={inv.id} className={clsx('flex items-center gap-4 py-3.5 px-4', expired && 'opacity-60')}>
-                      <div className="h-8 w-8 rounded-full bg-background border border-border flex items-center justify-center flex-shrink-0">
+                      <div className="h-8 w-8 rounded-full bg-gray-50 border border-border flex items-center justify-center flex-shrink-0">
                         <Mail className="h-4 w-4 text-text-muted" />
                       </div>
                       <div className="flex-1 min-w-0">
@@ -429,9 +418,7 @@ export default function TeamPage() {
                           )}
                         </div>
                         <p className="text-xs text-text-muted mt-0.5">
-                          <span className={clsx('mr-2 font-medium px-1.5 py-0.5 rounded-full', ROLE_COLOR[inv.role])}>
-                            {ROLE_KO[inv.role]}
-                          </span>
+                          <Badge value={inv.role} colorMap={ROLE_BADGE} label={ROLE_LABEL[inv.role]} className="mr-1" />
                           {expired ? '만료: ' : '만료 예정: '}{format(new Date(inv.expiresAt), 'M월 d일 HH:mm')}
                         </p>
                       </div>
