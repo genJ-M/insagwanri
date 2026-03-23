@@ -1,7 +1,8 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import toast from 'react-hot-toast';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+// NEXT_PUBLIC_API_URL은 Vercel 환경변수로 '/api/v1' 설정 필요 (vercel.json env는 빌드타임 미적용)
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api/v1';
 
 export const api: AxiosInstance = axios.create({
   baseURL: BASE_URL,
