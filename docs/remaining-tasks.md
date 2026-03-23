@@ -145,6 +145,14 @@ auth · attendance · tasks · schedules · collaboration · ai · users · work
 
 ---
 
+## 9-1. 확인된 버그 및 해결 이력
+
+| 항목 | 상태 | 원인 | 해결 |
+|------|------|------|------|
+| "네트워크 연결을 확인해주세요" 반복 토스트 | [DONE] | Render 무료 플랜 cold start (~60초) > axios timeout(15초) 초과 → `error.response=undefined` | `api.ts` timeout 15s→60s, timeout 시 별도 메시지("서버 응답 지연") 표시 |
+
+---
+
 ## 10. 미결 의사결정
 
 | 항목 | 선택지 | 비고 |

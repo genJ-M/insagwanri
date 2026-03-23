@@ -6,7 +6,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v
 export const api: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-  timeout: 15000,
+  timeout: 60000, // Render 무료 플랜 cold start 대응 (최대 ~60초)
 });
 
 // ── 요청 인터셉터: JWT 자동 주입 ──────────────────
@@ -74,7 +74,11 @@ api.interceptors.response.use(
 
     // 네트워크 단절 / 타임아웃 (error.response 없음)
     if (!error.response) {
-      toast.error('네트워크 연결을 확인해주세요.', { id: 'network-error' });
+      const msg =
+        error.code === 'ECONNABORTED'
+          ? '서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.' // timeout
+          : '네트워크 연결을 확인해주세요.'; // 실제 네트워크 단절
+      toast.error(msg, { id: 'network-error' });
       return Promise.reject(error);
     }
 
