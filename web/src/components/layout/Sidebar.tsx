@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Clock, ClipboardList, FileText,
   Calendar, MessageSquare, Sparkles, LogOut,
-  Users, Settings,
+  Users, Settings, Banknote,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAuthStore } from '@/store/auth.store';
@@ -22,8 +22,9 @@ const mainNav = [
 ];
 
 const bottomNav = [
-  { href: '/team',     icon: Users,    label: '직원 관리', roles: ['owner', 'manager'] },
-  { href: '/settings', icon: Settings, label: '설정',     roles: null },
+  { href: '/team',     icon: Users,     label: '직원 관리', roles: ['owner', 'manager'] },
+  { href: '/salary',   icon: Banknote,  label: '급여 관리', roles: ['owner', 'manager'] },
+  { href: '/settings', icon: Settings,  label: '설정',     roles: null },
 ];
 
 export default function Sidebar() {

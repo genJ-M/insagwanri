@@ -17,6 +17,7 @@ import { HealthModule } from './modules/health/health.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { FilesModule } from './modules/files/files.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { SalaryModule } from './modules/salary/salary.module';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
@@ -42,6 +43,7 @@ import { Notification } from './database/entities/notification.entity';
 import { DeviceToken } from './database/entities/device-token.entity';
 import { NotificationSettings } from './database/entities/notification-settings.entity';
 import { File } from './database/entities/file.entity';
+import { Salary } from './database/entities/salary.entity';
 
 @Module({
   imports: [
@@ -89,6 +91,7 @@ import { File } from './database/entities/file.entity';
             EmailVerification, PasswordResetToken,
             Notification, DeviceToken, NotificationSettings,
             File,
+            Salary,
           ],
           synchronize: false, // Migration으로 스키마 관리
           logging: config.get<string>('NODE_ENV') === 'development',
@@ -127,6 +130,7 @@ import { File } from './database/entities/file.entity';
     NotificationsModule,
     FilesModule,
     SubscriptionsModule,
+    SalaryModule,
   ],
   providers: [
     // Rate Limiting 전역 Guard
