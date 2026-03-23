@@ -1,15 +1,72 @@
 # 서비스 완성을 위한 잔여 작업 목록
 
 > 작성일: 2026-03-11
-> 최종 업데이트: 2026-03-22 (mediflow 레퍼런스 분석 후 대규모 갭 추가)
+> 최종 업데이트: 2026-03-23 (배포 환경 문제 진단 및 현실 기반 재정리)
 > 참조 문서: `saas-design.md`, `admin-system-design.md`, `infra/ARCHITECTURE.md`
 > 상세 디자인 스펙: `docs/reference-design-analysis.md`
 
 ## 완료 표기 규칙
-- `[DONE]` : 설계 또는 구현 완료. 손댈 필요 없음.
+- `[DONE]` : 코드 구현 완료 + 프로덕션 정상 동작 확인.
+- `[CODE]` : 코드 작성 완료, 프로덕션 동작 미검증.
 - `[ ]`    : 미완료. 작업 필요.
 - `[~]`    : 부분 완료. 추가 작업 필요.
-- `[MANUAL]` : 코드 외 수동 작업 필요 (콘솔/계약/법무 등). → `manual-setup.md` 참조
+- `[MANUAL]` : 코드 외 수동 작업 필요 (콘솔/계약/법무 등).
+
+> ⚠️ **중요**: 섹션 2~7의 항목들은 코드가 작성된 상태(CODE)이며,
+> 프로덕션에서 실제 동작 검증은 섹션 0의 환경 셋업 완료 후 순차적으로 진행 필요.
+
+---
+
+## 0. 프로덕션 환경 셋업 ← 지금 여기
+
+> 이 섹션이 완료되어야 나머지가 의미 있음
+
+### 0-1. 배포 인프라 (오늘 수정 완료)
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| Vercel 프론트엔드 배포 | [DONE] | `insagwanri-nine.vercel.app` |
+| Tailwind CSS 빌드 (postcss.config.js) | [DONE] | 누락으로 스타일 미적용 → 오늘 수정 |
+| API URL 폴백 (`localhost` → `/api/v1`) | [DONE] | 오늘 수정 |
+| Vercel → Render 프록시 rewrite | [DONE] | `vercel.json` rewrites |
+| Render 백엔드 배포 (health 응답) | [DONE] | `insagwanri-backend.onrender.com` |
+| DB 연결 (health에서 database:up 확인) | [DONE] | Render PostgreSQL |
+
+### 0-2. Render 환경변수 설정 ← 지금 필요
+
+| 환경변수 | 값 | 상태 |
+|----------|-----|------|
+| `NODE_ENV` | `production` | [ ] |
+| `PORT` | `3001` | [ ] |
+| `DATABASE_URL` | Render 내부 PostgreSQL URL | [ ] |
+| `REDIS_URL` | Render 내부 Redis URL | [ ] |
+| `JWT_ACCESS_SECRET` | 랜덤 64자 이상 문자열 | [ ] |
+| `JWT_REFRESH_SECRET` | 랜덤 64자 이상 문자열 (ACCESS와 다르게) | [ ] |
+| `JWT_ACCESS_EXPIRES_IN` | `15m` | [ ] |
+| `JWT_REFRESH_EXPIRES_IN` | `7d` | [ ] |
+| `FRONTEND_URL` | `https://insagwanri-nine.vercel.app` | [ ] |
+| `RESEND_API_KEY` | Resend 대시보드에서 발급 | [ ] |
+| `EMAIL_FROM` | `noreply@gwanriwang.com` 등 | [ ] |
+| `OPENAI_API_KEY` | OpenAI 대시보드에서 발급 | [ ] |
+| `AWS_REGION` / `AWS_S3_BUCKET` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | R2 설정값 | [ ] |
+
+### 0-3. DB 마이그레이션 실행
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| Render에서 migration:run 실행 | [ ] | 테이블 생성 — Render Shell 또는 migration Task |
+| 마스터 데이터 시드 실행 | [ ] | 초기 플랜/권한 데이터 |
+
+### 0-4. E2E 동작 검증 (환경변수 + 마이그레이션 후)
+
+| 항목 | 상태 |
+|------|------|
+| 회원가입 → 이메일 인증 → 로그인 | [ ] |
+| 온보딩 플랜 선택 | [ ] |
+| 대시보드 진입 | [ ] |
+| 직원 초대 | [ ] |
+| 출퇴근 기록 | [ ] |
+| 로그아웃 / 토큰 갱신 | [ ] |
 
 ---
 
@@ -38,77 +95,109 @@
 
 ---
 
-## 2. Customer 서비스 구현 (완료)
+## 2. Customer 서비스 — 코드 완성 현황
 
-### Backend 모듈 (전체 완료)
-auth · attendance · tasks · schedules · collaboration · ai · users · workspace · files · notifications · socket · subscriptions
+> [CODE] = 코드 작성 완료, 프로덕션 검증 필요 / [DONE] = 프로덕션 동작 확인
 
-### Frontend — Customer Web (전체 완료)
-/login · /register · /invite · / · /attendance · /tasks · /tasks/reports · /schedule · /messages · /ai · /team · /settings · /subscription · /onboarding/plan · /onboarding/payment
+### Backend 모듈
+
+| 모듈 | 상태 | 검증 필요 항목 |
+|------|------|--------------|
+| auth | [CODE] | 회원가입/로그인/토큰갱신/로그아웃 — 섹션 0-4에서 검증 |
+| attendance | [CODE] | 출퇴근 기록/조회 |
+| tasks | [CODE] | 업무 CRUD |
+| schedules | [CODE] | 일정 CRUD, rrule 반복 |
+| collaboration | [CODE] | 채팅/메시지 |
+| ai | [CODE] | OpenAI 연동 — OPENAI_API_KEY 필요 |
+| users | [CODE] | 직원 초대/관리 |
+| workspace | [CODE] | 워크스페이스 설정 |
+| files | [CODE] | S3/R2 업로드 — AWS 환경변수 필요 |
+| notifications | [CODE] | 이메일 알림 — RESEND_API_KEY 필요 |
+| socket | [CODE] | 실시간 이벤트 — REDIS_URL 필요 |
+| subscriptions | [CODE] | 구독/플랜 |
+
+### Frontend — Customer Web
+
+| 페이지 | 상태 |
+|--------|------|
+| /login, /register | [CODE] — 오늘 API 연결 확인 중 |
+| /invite | [CODE] |
+| / (대시보드) | [CODE] |
+| /attendance | [CODE] |
+| /tasks, /tasks/reports | [CODE] |
+| /schedule | [CODE] |
+| /messages | [CODE] |
+| /ai | [CODE] |
+| /team | [CODE] |
+| /settings | [CODE] |
+| /subscription | [CODE] |
+| /onboarding/plan, /onboarding/payment | [CODE] |
 
 ---
 
-## 3. Admin 시스템 (Phase 4 — 완료)
+## 3. Admin 시스템
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| Admin Backend (NestJS :4001) | [DONE] | admin-backend/ |
-| Admin Auth (TOTP MFA, 2단계) | [DONE] | |
-| Companies / Plans / Payments / Coupons 모듈 | [DONE] | |
-| Feature Flags (Redis TTL 5분 캐시) | [DONE] | |
-| Admin Users / AuditInterceptor / RolesGuard | [DONE] | |
-| IP 화이트리스트 미들웨어 | [DONE] | ADMIN_ALLOWED_IPS |
-| Toss Payments 빌링키 자동결제 + Dunning | [DONE] | D+1/D+3/D+7 |
-| PG 빌링키 AES-256 암호화 | [DONE] | BILLING_KEY_ENCRYPTION_KEY |
-| Admin DB 마이그레이션 | [DONE] | 1741910500000-AdminSchema |
-| Admin Web Dashboard (Next.js :3002) | [DONE] | admin-web/ — 9개 페이지 |
+| Admin Backend (NestJS :4001) | [CODE] | admin-backend/ — 미배포 |
+| Admin Auth (TOTP MFA, 2단계) | [CODE] | |
+| Companies / Plans / Payments / Coupons 모듈 | [CODE] | |
+| Feature Flags (Redis TTL 5분 캐시) | [CODE] | |
+| Admin Users / AuditInterceptor / RolesGuard | [CODE] | |
+| IP 화이트리스트 미들웨어 | [CODE] | ADMIN_ALLOWED_IPS |
+| Toss Payments 빌링키 자동결제 + Dunning | [CODE] | D+1/D+3/D+7 |
+| PG 빌링키 AES-256 암호화 | [CODE] | BILLING_KEY_ENCRYPTION_KEY |
+| Admin DB 마이그레이션 | [CODE] | 1741910500000-AdminSchema |
+| Admin Web Dashboard (Next.js :3002) | [CODE] | admin-web/ — 9개 페이지, 미배포 |
 | e-세금계산서 API 연동 | [MANUAL] | 별도 영업 계약 필요 |
 
 ---
 
-## 4. 온보딩 & 결제 UI (Phase 6 — 완료)
+## 4. 온보딩 & 결제 UI
 
 | 항목 | 상태 |
 |------|------|
-| 플랜 선택 (`/onboarding/plan`) | [DONE] |
-| Toss Payments 카드 등록 (`/onboarding/payment`) | [DONE] |
-| 구독 관리 (`/subscription`) | [DONE] |
+| 플랜 선택 (`/onboarding/plan`) | [CODE] |
+| Toss Payments 카드 등록 (`/onboarding/payment`) | [CODE] — Toss 연동 키 필요 |
+| 구독 관리 (`/subscription`) | [CODE] |
 
 ---
 
-## 5. 모바일 앱 (Phase 5 — 완료)
+## 5. 모바일 앱
 
 | 항목 | 상태 |
 |------|------|
-| Expo 프로젝트 초기 설정 (mobile/) | [DONE] |
-| 인증 / 근태(GPS) / 업무 / 채팅 / 프로필 화면 | [DONE] |
-| Expo Push Notifications (usePushNotifications) | [DONE] |
-| GPS 출퇴근 (expo-location Accuracy.High) | [DONE] |
+| Expo 프로젝트 초기 설정 (mobile/) | [CODE] |
+| 인증 / 근태(GPS) / 업무 / 채팅 / 프로필 화면 | [CODE] |
+| Expo Push Notifications (usePushNotifications) | [CODE] |
+| GPS 출퇴근 (expo-location Accuracy.High) | [CODE] |
 
 ---
 
-## 6. 보안 검증 & 운영 준비 (Phase 7 — 완료)
+## 6. 보안 검증 & 운영 준비
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| 멀티테넌트 격리 통합 테스트 | [DONE] | test/multitenant-isolation.spec.ts — 14/14 로컬 통과 확인 (2026-03-15) |
-| 출퇴근 기록 3년 보관 아카이브 | [DONE] | AttendanceArchiveService, migration 1741910403000 |
-| Redis Adapter (Socket.io 멀티서버) | [DONE] | RedisIoAdapter, src/adapters/redis-io.adapter.ts |
+| 멀티테넌트 격리 통합 테스트 | [CODE] | 로컬 14/14 통과, 프로덕션 미검증 |
+| 출퇴근 기록 3년 보관 아카이브 | [CODE] | AttendanceArchiveService |
+| Redis Adapter (Socket.io 멀티서버) | [CODE] | REDIS_URL 설정 후 동작 |
 
 ---
 
-## 7. 개발 환경 & 운영 (완료)
+## 7. 개발 환경 & 운영
 
-- [DONE] docker-compose.yml (PostgreSQL, Redis, MinIO, admin-backend)
-- [DONE] .env.example (Customer + Admin)
-- [DONE] TypeORM Migration 파일
-- [DONE] 마스터 데이터 시드
-- [DONE] GitHub Actions CI/CD (ci, deploy-staging, deploy-production)
-- [DONE] ECR / ECS Task Definition (migration 태스크 포함)
-- [DONE] Sentry (Backend + Frontend)
-- [DONE] Winston 구조화 로깅 + CloudWatch
-- [MANUAL] Vercel 프로젝트 연결
-- [MANUAL] CloudWatch 결제 실패율 알람
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| docker-compose.yml | [DONE] | 로컬 개발용 |
+| .env.example | [DONE] | |
+| TypeORM Migration 파일 | [DONE] | 코드 완성, 프로덕션 실행 필요 (섹션 0-3) |
+| 마스터 데이터 시드 | [DONE] | 코드 완성, 프로덕션 실행 필요 (섹션 0-3) |
+| GitHub Actions CI/CD | [CODE] | 로컬 작성, 미검증 |
+| Sentry (Backend + Frontend) | [CODE] | SENTRY_AUTH_TOKEN 미설정 |
+| Winston 구조화 로깅 | [CODE] | |
+| Vercel 프로젝트 연결 | [DONE] | 오늘 완료 |
+| Render 배포 | [DONE] | health 응답 확인 |
+| Render 환경변수 설정 | [ ] | 섹션 0-2 참조 |
 
 ---
 
@@ -149,7 +238,10 @@ auth · attendance · tasks · schedules · collaboration · ai · users · work
 
 | 항목 | 상태 | 원인 | 해결 |
 |------|------|------|------|
-| "네트워크 연결을 확인해주세요" 반복 토스트 | [DONE] | Render 무료 플랜 cold start (~60초) > axios timeout(15초) 초과 → `error.response=undefined` | `api.ts` timeout 15s→60s, timeout 시 별도 메시지("서버 응답 지연") 표시 |
+| Tailwind CSS 프로덕션 미적용 | [DONE] | `postcss.config.js` 누락 → Vercel 클린 빌드에서 @tailwind 미처리 | `web/postcss.config.js` 추가, Redeploy 캐시 없이 |
+| "네트워크 연결을 확인해주세요" 반복 토스트 | [DONE] | Render cold start > axios 15초 timeout | timeout 60s로 상향, timeout/네트워크 에러 메시지 구분 |
+| API 요청이 localhost:3001로 날아감 | [DONE] | `vercel.json` env는 빌드타임 NEXT_PUBLIC_* 미적용, 폴백이 localhost | `api.ts` 폴백을 `/api/v1`로 변경, Vercel 대시보드에 env 추가 |
+| 서버 500 오류 (auth) | [ ] | Render 환경변수 미설정 (JWT_SECRET 등) | 섹션 0-2 환경변수 설정 필요 |
 
 ---
 
