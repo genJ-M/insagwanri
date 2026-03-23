@@ -5,9 +5,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Pencil, Check, X, Phone, Mail, Building2,
   Briefcase, CalendarDays, Clock, Hash, ChevronRight,
-  UserCog, AlertTriangle, RefreshCw,
+  UserCog, AlertTriangle, RefreshCw, FileText, Plus,
+  Lock, Trash2, ChevronDown,
 } from 'lucide-react';
-import { format, differenceInMonths, differenceInYears } from 'date-fns';
+import { format, differenceInMonths, differenceInYears, formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { clsx } from 'clsx';
 import Link from 'next/link';
@@ -88,10 +89,192 @@ const TABS = [
   { key: 'basic',    label: '기본정보',   icon: Mail },
   { key: 'hr',       label: '인사정보',   icon: Briefcase },
   { key: 'work',     label: '근무 설정',  icon: Clock },
+  { key: 'notes',    label: '인사 노트',  icon: FileText },
   { key: 'career',   label: '경력/학력',  icon: ChevronRight },
   { key: 'docs',     label: '첨부문서',   icon: ChevronRight },
 ] as const;
 type TabKey = typeof TABS[number]['key'];
+
+// ─── 노트 탭 인라인 카테고리 ────────────────────────────
+const NOTE_CATS = [
+  { value: 'consult',    label: '상담',    color: 'bg-blue-100 text-blue-700' },
+  { value: 'warning',    label: '경고',    color: 'bg-red-100 text-red-700' },
+  { value: 'praise',     label: '칭찬',    color: 'bg-emerald-100 text-emerald-700' },
+  { value: 'assignment', label: '인사발령', color: 'bg-purple-100 text-purple-700' },
+  { value: 'other',      label: '기타',    color: 'bg-gray-100 text-gray-600' },
+];
+function NoteCatBadge({ cat }: { cat: string }) {
+  const c = NOTE_CATS.find((x) => x.value === cat) ?? NOTE_CATS[4];
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${c.color}`}>{c.label}</span>;
+}
+
+// ─── 노트 탭 컴포넌트 ────────────────────────────────────
+function NotesTab({ userId, canWrite }: { userId: string; canWrite: boolean }) {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [editNote, setEditNote] = useState<any>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const { data: notes = [], isLoading } = useQuery<any[]>({
+    queryKey: ['hr-notes', userId],
+    queryFn: async () => {
+      const { data } = await api.get('/hr-notes', { params: { target_user_id: userId } });
+      return data.data ?? [];
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/hr-notes/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-notes', userId] }); toast.success('삭제됨'); },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: any) =>
+      editNote
+        ? api.patch(`/hr-notes/${editNote.id}`, payload)
+        : api.post('/hr-notes', { ...payload, target_user_id: userId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['hr-notes', userId] });
+      toast.success(editNote ? '수정됨' : '저장됨');
+      setShowForm(false); setEditNote(null);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? '실패'),
+  });
+
+  // 인라인 폼 상태
+  const [form, setForm] = useState({ category: 'other', title: '', content: '', is_private: false });
+
+  const openEdit = (n: any) => {
+    setForm({ category: n.category, title: n.title, content: n.content, is_private: n.isPrivate });
+    setEditNote(n); setShowForm(true);
+  };
+  const openNew = () => { setForm({ category: 'other', title: '', content: '', is_private: false }); setEditNote(null); setShowForm(true); };
+
+  return (
+    <div className="space-y-4">
+      {/* 헤더 */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-text-muted">{notes.length}개의 인사 노트</p>
+        {canWrite && (
+          <button
+            onClick={openNew}
+            className="flex items-center gap-1.5 text-xs font-semibold bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" /> 노트 작성
+          </button>
+        )}
+      </div>
+
+      {/* 작성/수정 인라인 폼 */}
+      {showForm && (
+        <div className="border border-primary-200 bg-primary-50/30 rounded-xl p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              value={form.category}
+              onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+              className="border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+            >
+              {NOTE_CATS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+            <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
+              <div
+                onClick={() => setForm((f) => ({ ...f, is_private: !f.is_private }))}
+                className={`w-8 h-4.5 rounded-full relative transition-colors ${form.is_private ? 'bg-primary-500' : 'bg-gray-200'}`}
+                style={{ height: '18px' }}
+              >
+                <div className={`absolute top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform ${form.is_private ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+              </div>
+              <Lock className="h-3 w-3" /> 비공개
+            </label>
+          </div>
+          <input
+            type="text" value={form.title} maxLength={255}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            placeholder="제목 *"
+            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+          />
+          <textarea
+            value={form.content} rows={4} maxLength={5000}
+            onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
+            placeholder="내용 *"
+            className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary-300"
+          />
+          <div className="flex justify-end gap-2">
+            <button onClick={() => { setShowForm(false); setEditNote(null); }} className="px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-gray-50">취소</button>
+            <button
+              onClick={() => {
+                if (!form.title.trim() || !form.content.trim()) { toast.error('제목과 내용을 입력하세요.'); return; }
+                saveMutation.mutate(form);
+              }}
+              disabled={saveMutation.isPending}
+              className="px-3 py-1.5 text-xs font-semibold bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-60"
+            >
+              {saveMutation.isPending ? '저장 중…' : (editNote ? '수정' : '저장')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 노트 목록 */}
+      {isLoading ? (
+        <div className="space-y-3">
+          {[1,2,3].map((i) => (
+            <div key={i} className="animate-pulse bg-gray-50 rounded-xl p-4 space-y-2">
+              <div className="h-3.5 bg-gray-100 rounded w-1/3" />
+              <div className="h-3 bg-gray-100 rounded w-full" />
+              <div className="h-3 bg-gray-100 rounded w-4/5" />
+            </div>
+          ))}
+        </div>
+      ) : notes.length === 0 ? (
+        <div className="flex flex-col items-center py-12 gap-2 text-text-muted">
+          <FileText className="h-10 w-10 text-gray-200" />
+          <p className="text-sm">작성된 인사 노트가 없습니다.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {notes.map((n) => {
+            const expanded = expandedId === n.id;
+            const isLong = n.content.length > 200;
+            return (
+              <div key={n.id} className="border border-border rounded-xl p-4 hover:bg-gray-50/50 transition-colors">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <NoteCatBadge cat={n.category} />
+                    {n.isPrivate && <span className="inline-flex items-center gap-1 text-[11px] text-text-muted"><Lock className="h-3 w-3" />비공개</span>}
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <span className="text-[11px] text-text-muted whitespace-nowrap">
+                      {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true, locale: ko })}
+                    </span>
+                    {n.canEdit && (
+                      <>
+                        <button onClick={() => openEdit(n)} className="p-1 rounded hover:bg-gray-100 text-text-muted hover:text-text-primary"><Pencil className="h-3.5 w-3.5" /></button>
+                        <button onClick={() => { if (confirm('삭제할까요?')) deleteMutation.mutate(n.id); }} className="p-1 rounded hover:bg-red-50 text-text-muted hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <p className="text-sm font-semibold text-text-primary mb-1">{n.title}</p>
+                <p className="text-sm text-text-secondary whitespace-pre-line leading-relaxed">
+                  {isLong && !expanded ? n.content.slice(0, 200) + '…' : n.content}
+                </p>
+                {isLong && (
+                  <button onClick={() => setExpandedId(expanded ? null : n.id)} className="mt-1.5 text-xs font-medium text-primary-500 hover:text-primary-600 flex items-center gap-1">
+                    {expanded ? '접기' : '더보기'} <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                  </button>
+                )}
+                <p className="text-[11px] text-text-muted mt-2 pt-2 border-t border-gray-50">
+                  작성자: {n.author?.name} · {format(new Date(n.createdAt), 'yyyy.MM.dd HH:mm')}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── 퇴직/휴직 모달 ─────────────────────────────────────────
 function ActionModal({
@@ -393,6 +576,7 @@ export default function EmployeeDetailPage() {
               </div>
             )}
 
+            {tab === 'notes'  && <NotesTab userId={id} canWrite={canEdit} />}
             {tab === 'career' && <ComingSoon label="경력 / 학력" />}
             {tab === 'docs'   && <ComingSoon label="첨부 문서" />}
           </div>

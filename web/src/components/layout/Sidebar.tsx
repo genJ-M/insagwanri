@@ -22,9 +22,10 @@ const mainNav = [
 ];
 
 const bottomNav = [
-  { href: '/team',     icon: Users,     label: '직원 관리', roles: ['owner', 'manager'] },
-  { href: '/salary',   icon: Banknote,  label: '급여 관리', roles: ['owner', 'manager'] },
-  { href: '/settings', icon: Settings,  label: '설정',     roles: null },
+  { href: '/team',       icon: Users,        label: '직원 관리', roles: ['owner', 'manager'] },
+  { href: '/team/notes', icon: FileText,     label: '인사 노트', roles: ['owner', 'manager'] },
+  { href: '/salary',     icon: Banknote,     label: '급여 관리', roles: ['owner', 'manager'] },
+  { href: '/settings',   icon: Settings,     label: '설정',     roles: null },
 ];
 
 export default function Sidebar() {
