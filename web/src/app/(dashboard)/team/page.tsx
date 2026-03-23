@@ -2,6 +2,7 @@
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { UserPlus, MoreVertical, Mail, Shield, User, RefreshCw, X } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
@@ -177,6 +178,7 @@ function UserActionMenu({
 
 export default function TeamPage() {
   usePageTitle('팀 관리');
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<TabType>('all');
@@ -302,7 +304,11 @@ export default function TeamPage() {
                   </thead>
                   <tbody>
                     {paginated.map((m: any) => (
-                      <tr key={m.id} className="border-b border-border/60 hover:bg-background transition-colors">
+                      <tr
+                        key={m.id}
+                        className="border-b border-border/60 hover:bg-background transition-colors cursor-pointer"
+                        onClick={() => router.push(`/team/${m.id}`)}
+                      >
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-3">
                             <Avatar name={m.name} size="md" />
