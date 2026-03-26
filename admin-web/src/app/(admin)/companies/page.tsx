@@ -51,6 +51,7 @@ export default function CompaniesPage() {
   const [page, setPage] = useState(1);
   const [actionModal, setActionModal] = useState<{ company: Company; type: 'suspend' | 'activate' } | null>(null);
   const [reason, setReason] = useState('');
+  const [impersonating, setImpersonating] = useState<string | null>(null);
 
   const { data: stats } = useQuery({
     queryKey: ['company-stats'],
@@ -97,6 +98,22 @@ export default function CompaniesPage() {
       status: actionModal.type === 'suspend' ? 'suspended' : 'active',
       reason,
     });
+  };
+
+  const handleImpersonate = async (companyId: string, companyName: string) => {
+    if (!confirm(`[${companyName}]의 owner 권한으로 임시 접속합니다. (30분 TTL)\n계속하시겠습니까?`)) return;
+    setImpersonating(companyId);
+    try {
+      const res = await api.post(`/companies/${companyId}/impersonate`);
+      const { accessToken } = res.data.data;
+      const frontendUrl = process.env.NEXT_PUBLIC_CUSTOMER_FRONTEND_URL ?? 'https://insagwanri-nine.vercel.app';
+      window.open(`${frontendUrl}/impersonate?token=${accessToken}`, '_blank');
+      toast.success('임시 접속 토큰이 발급되었습니다.');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? '임시 접속 토큰 발급에 실패했습니다.');
+    } finally {
+      setImpersonating(null);
+    }
   };
 
   return (
@@ -200,6 +217,14 @@ export default function CompaniesPage() {
                           활성화
                         </button>
                       ) : null}
+                      <button
+                        onClick={() => handleImpersonate(c.id, c.name)}
+                        disabled={impersonating === c.id}
+                        className="text-xs text-blue-600 hover:text-blue-700 font-medium disabled:opacity-40"
+                        title="임시 접속 (30분)"
+                      >
+                        {impersonating === c.id ? '...' : '임시접속'}
+                      </button>
                     </div>
                   </td>
                 </tr>

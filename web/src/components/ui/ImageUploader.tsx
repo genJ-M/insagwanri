@@ -9,10 +9,10 @@ interface ImageUploaderProps {
   currentUrl?: string | null;
   /** 업로드 완료 후 새 URL 전달 */
   onUpload: (url: string) => void;
-  /** 'profiles' | 'logo' */
-  feature: 'profiles' | 'logo';
-  /** 원형 아바타(프로필) vs 직사각형(로고) */
-  shape?: 'circle' | 'rect';
+  /** 'profiles' | 'logo' | 'covers' */
+  feature: 'profiles' | 'logo' | 'covers';
+  /** 원형 아바타(프로필) vs 직사각형(로고) vs 커버 와이드 */
+  shape?: 'circle' | 'rect' | 'cover';
   /** fallback 텍스트 (이니셜 등) */
   fallback?: string;
   className?: string;
@@ -95,7 +95,7 @@ export default function ImageUploader({
         disabled={uploading}
         className={clsx(
           'relative overflow-hidden group flex-shrink-0',
-          shape === 'circle' ? 'h-16 w-16 rounded-full' : 'h-16 w-32 rounded-xl',
+          shape === 'circle' ? 'h-16 w-16 rounded-full' : shape === 'cover' ? 'h-32 w-full rounded-xl' : 'h-16 w-32 rounded-xl',
           'bg-gray-200 flex items-center justify-center',
           'border-2 border-transparent hover:border-blue-400 transition-colors',
           uploading && 'cursor-not-allowed',
@@ -112,7 +112,7 @@ export default function ImageUploader({
             )}
           />
         ) : (
-          <span className="text-2xl font-bold text-gray-400 select-none">
+          <span className={clsx('font-bold text-gray-400 select-none', shape === 'cover' ? 'text-sm' : 'text-2xl')}>
             {fallback ?? (shape === 'circle' ? '?' : '로고')}
           </span>
         )}

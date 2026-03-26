@@ -44,6 +44,18 @@ export class Company {
   @Column({ name: 'logo_url', type: 'text', nullable: true })
   logoUrl: string | null;
 
+  @Column({ name: 'cover_image_url', type: 'text', nullable: true })
+  coverImageUrl: string | null;
+
+  @Column({ name: 'cover_image_mobile_url', type: 'text', nullable: true })
+  coverImageMobileUrl: string | null;
+
+  @Column({ name: 'cover_mobile_crop', type: 'jsonb', nullable: true })
+  coverMobileCrop: { x: number; y: number; width: number; height: number } | null;
+
+  @Column({ name: 'branding_text_color', type: 'varchar', length: 7, default: '#FFFFFF' })
+  brandingTextColor: string;
+
   @Column({
     type: 'varchar',
     length: 20,

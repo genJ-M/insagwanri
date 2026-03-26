@@ -27,6 +27,13 @@ import { CompaniesModule } from './modules/companies/companies.module';
 import { PlansModule } from './modules/plans/plans.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { CouponsModule } from './modules/coupons/coupons.module';
+import { TaxModule } from './modules/tax/tax.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { HealthModule } from './modules/health/health.module';
+import { BroadcastModule } from './modules/broadcast/broadcast.module';
 
 // Interceptors / Filters
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
@@ -73,6 +80,13 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     PlansModule,
     PaymentsModule,
     FeatureFlagsModule,
+    AnalyticsModule,
+    SubscriptionsModule,
+    CouponsModule,
+    TaxModule,
+    AuditModule,
+    HealthModule,
+    BroadcastModule,
   ],
   providers: [
     {

@@ -9,6 +9,9 @@ import * as crypto from 'crypto';
 import { User, UserStatus } from '../../database/entities/user.entity';
 import { InviteToken, InviteStatus } from '../../database/entities/invite-token.entity';
 import { Company } from '../../database/entities/company.entity';
+import { UserCareer } from '../../database/entities/user-career.entity';
+import { UserEducation } from '../../database/entities/user-education.entity';
+import { UserDocument } from '../../database/entities/user-document.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import { EmailService } from '../notifications/email.service';
 import { ConfigService } from '@nestjs/config';
@@ -30,6 +33,15 @@ export class UsersService {
 
     @InjectRepository(Company)
     private companyRepo: Repository<Company>,
+
+    @InjectRepository(UserCareer)
+    private careerRepo: Repository<UserCareer>,
+
+    @InjectRepository(UserEducation)
+    private educationRepo: Repository<UserEducation>,
+
+    @InjectRepository(UserDocument)
+    private documentRepo: Repository<UserDocument>,
 
     private readonly emailService: EmailService,
     private readonly configService: ConfigService,
@@ -93,12 +105,16 @@ export class UsersService {
         ...(dto.department      && { department: dto.department }),
         ...(dto.position        && { position: dto.position }),
         ...(dto.joinedAt        && { joinedAt: new Date(dto.joinedAt) }),
-        ...(dto.profileImageUrl !== undefined && { profileImageUrl: dto.profileImageUrl }),
+        ...(dto.profileImageUrl !== undefined      && { profileImageUrl: dto.profileImageUrl }),
+        ...(dto.coverImageUrl !== undefined        && { coverImageUrl: dto.coverImageUrl }),
+        ...(dto.coverImageMobileUrl !== undefined  && { coverImageMobileUrl: dto.coverImageMobileUrl }),
+        ...(dto.coverMobileCrop !== undefined      && { coverMobileCrop: dto.coverMobileCrop }),
       },
     );
     return this.userRepo.findOne({
       where: { id: currentUser.id },
-      select: ['id', 'name', 'email', 'phone', 'department', 'position', 'profileImageUrl', 'joinedAt'],
+      select: ['id', 'name', 'email', 'phone', 'department', 'position', 'profileImageUrl',
+               'coverImageUrl', 'coverImageMobileUrl', 'coverMobileCrop', 'joinedAt'],
     });
   }
 
@@ -392,6 +408,270 @@ export class UsersService {
       userId: savedUser.id,
       companyId: invite.companyId,
       companyName: invite.company.name,
+    };
+  }
+
+  // ─────────────────────────────────────────
+  // 증명서 발급 데이터
+  // ─────────────────────────────────────────
+  async getCertificateData(
+    currentUser: AuthenticatedUser,
+    targetUserId: string,
+    type: string,
+  ) {
+    const isAdmin = [UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role);
+    // 본인 또는 관리자만 조회 가능
+    if (!isAdmin && currentUser.id !== targetUserId) {
+      throw new ForbiddenException('권한이 없습니다.');
+    }
+
+    const user = await this.userRepo.findOne({
+      where: { id: targetUserId, companyId: currentUser.companyId },
+      relations: ['company'],
+    });
+    if (!user) throw new NotFoundException('직원을 찾을 수 없습니다.');
+
+    const issueDate = new Date().toISOString().split('T')[0];
+
+    const base = {
+      issueDate,
+      employee: {
+        name: user.name,
+        employeeNumber: user.employeeNumber,
+        department: user.department,
+        position: user.position,
+        joinedAt: user.joinedAt ? user.joinedAt.toString().split('T')[0] : null,
+        email: user.email,
+      },
+      company: {
+        name: user.company?.name ?? '',
+        businessNumber: user.company?.businessNumber ?? null,
+        address: user.company?.address ?? null,
+        phone: user.company?.phone ?? null,
+      },
+    };
+
+    if (type === 'career') {
+      const today = new Date().toISOString().split('T')[0];
+      const joinedAt = user.joinedAt ? user.joinedAt.toString().split('T')[0] : null;
+      const yearsMonths = joinedAt
+        ? this.calcTenure(new Date(joinedAt), new Date(today))
+        : null;
+      return { ...base, type: 'career', tenure: yearsMonths };
+    }
+
+    return { ...base, type: 'employment' };
+  }
+
+  private calcTenure(from: Date, to: Date): { years: number; months: number } {
+    let years = to.getFullYear() - from.getFullYear();
+    let months = to.getMonth() - from.getMonth();
+    if (months < 0) { years -= 1; months += 12; }
+    return { years, months };
+  }
+
+  // ─────────────────────────────────────────
+  // 경력 CRUD
+  // ─────────────────────────────────────────
+  private async assertUserAccess(currentUser: AuthenticatedUser, targetUserId: string) {
+    const isAdmin = [UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role);
+    if (!isAdmin && currentUser.id !== targetUserId) {
+      throw new ForbiddenException('권한이 없습니다.');
+    }
+    const user = await this.userRepo.findOne({
+      where: { id: targetUserId, companyId: currentUser.companyId },
+      select: ['id'],
+    });
+    if (!user) throw new NotFoundException('직원을 찾을 수 없습니다.');
+  }
+
+  async getCareers(currentUser: AuthenticatedUser, userId: string) {
+    await this.assertUserAccess(currentUser, userId);
+    return this.careerRepo.find({
+      where: { userId, companyId: currentUser.companyId },
+      order: { startDate: 'DESC' },
+    });
+  }
+
+  async createCareer(currentUser: AuthenticatedUser, userId: string, dto: any) {
+    const isAdmin = [UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role);
+    if (!isAdmin && currentUser.id !== userId) throw new ForbiddenException('권한이 없습니다.');
+    await this.assertUserAccess(currentUser, userId);
+    const career = this.careerRepo.create({
+      companyId: currentUser.companyId,
+      userId,
+      companyName: dto.companyName,
+      position: dto.position ?? null,
+      department: dto.department ?? null,
+      startDate: dto.startDate,
+      endDate: dto.endDate ?? null,
+      isCurrent: dto.isCurrent ?? false,
+      description: dto.description ?? null,
+    });
+    return this.careerRepo.save(career);
+  }
+
+  async updateCareer(currentUser: AuthenticatedUser, userId: string, careerId: string, dto: any) {
+    const isAdmin = [UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role);
+    if (!isAdmin && currentUser.id !== userId) throw new ForbiddenException('권한이 없습니다.');
+    const career = await this.careerRepo.findOne({ where: { id: careerId, userId, companyId: currentUser.companyId } });
+    if (!career) throw new NotFoundException('경력을 찾을 수 없습니다.');
+    Object.assign(career, dto);
+    return this.careerRepo.save(career);
+  }
+
+  async deleteCareer(currentUser: AuthenticatedUser, userId: string, careerId: string) {
+    const isAdmin = [UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role);
+    if (!isAdmin && currentUser.id !== userId) throw new ForbiddenException('권한이 없습니다.');
+    const career = await this.careerRepo.findOne({ where: { id: careerId, userId, companyId: currentUser.companyId } });
+    if (!career) throw new NotFoundException('경력을 찾을 수 없습니다.');
+    await this.careerRepo.remove(career);
+  }
+
+  // ─────────────────────────────────────────
+  // 학력 CRUD
+  // ─────────────────────────────────────────
+  async getEducations(currentUser: AuthenticatedUser, userId: string) {
+    await this.assertUserAccess(currentUser, userId);
+    return this.educationRepo.find({
+      where: { userId, companyId: currentUser.companyId },
+      order: { startDate: 'DESC' },
+    });
+  }
+
+  async createEducation(currentUser: AuthenticatedUser, userId: string, dto: any) {
+    const isAdmin = [UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role);
+    if (!isAdmin && currentUser.id !== userId) throw new ForbiddenException('권한이 없습니다.');
+    await this.assertUserAccess(currentUser, userId);
+    const edu = this.educationRepo.create({
+      companyId: currentUser.companyId,
+      userId,
+      schoolName: dto.schoolName,
+      major: dto.major ?? null,
+      degree: dto.degree ?? 'bachelor',
+      startDate: dto.startDate,
+      endDate: dto.endDate ?? null,
+      isCurrent: dto.isCurrent ?? false,
+      status: dto.status ?? 'graduated',
+    });
+    return this.educationRepo.save(edu);
+  }
+
+  async updateEducation(currentUser: AuthenticatedUser, userId: string, eduId: string, dto: any) {
+    const isAdmin = [UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role);
+    if (!isAdmin && currentUser.id !== userId) throw new ForbiddenException('권한이 없습니다.');
+    const edu = await this.educationRepo.findOne({ where: { id: eduId, userId, companyId: currentUser.companyId } });
+    if (!edu) throw new NotFoundException('학력을 찾을 수 없습니다.');
+    Object.assign(edu, dto);
+    return this.educationRepo.save(edu);
+  }
+
+  async deleteEducation(currentUser: AuthenticatedUser, userId: string, eduId: string) {
+    const isAdmin = [UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role);
+    if (!isAdmin && currentUser.id !== userId) throw new ForbiddenException('권한이 없습니다.');
+    const edu = await this.educationRepo.findOne({ where: { id: eduId, userId, companyId: currentUser.companyId } });
+    if (!edu) throw new NotFoundException('학력을 찾을 수 없습니다.');
+    await this.educationRepo.remove(edu);
+  }
+
+  // ─────────────────────────────────────────
+  // 첨부문서 CRUD
+  // ─────────────────────────────────────────
+  async getDocuments(currentUser: AuthenticatedUser, userId: string) {
+    await this.assertUserAccess(currentUser, userId);
+    return this.documentRepo.find({
+      where: { userId, companyId: currentUser.companyId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async createDocument(currentUser: AuthenticatedUser, userId: string, dto: any) {
+    const isAdmin = [UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role);
+    if (!isAdmin && currentUser.id !== userId) throw new ForbiddenException('권한이 없습니다.');
+    await this.assertUserAccess(currentUser, userId);
+    const doc = this.documentRepo.create({
+      companyId: currentUser.companyId,
+      userId,
+      uploadedBy: currentUser.id,
+      type: dto.type ?? 'other',
+      displayName: dto.displayName,
+      fileUrl: dto.fileUrl,
+      originalName: dto.originalName ?? null,
+      fileSize: dto.fileSize ?? null,
+    });
+    return this.documentRepo.save(doc);
+  }
+
+  async deleteDocument(currentUser: AuthenticatedUser, userId: string, docId: string) {
+    const isAdmin = [UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role);
+    if (!isAdmin && currentUser.id !== userId) throw new ForbiddenException('권한이 없습니다.');
+    const doc = await this.documentRepo.findOne({ where: { id: docId, userId, companyId: currentUser.companyId } });
+    if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다.');
+    await this.documentRepo.remove(doc);
+  }
+
+  // ─────────────────────────────────────────
+  // 조직 통계
+  // ─────────────────────────────────────────
+  async getOrgStats(currentUser: AuthenticatedUser) {
+    const isAdmin = [UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role);
+    if (!isAdmin) throw new ForbiddenException('관리자만 조회 가능합니다.');
+
+    const users = await this.userRepo.find({
+      where: { companyId: currentUser.companyId },
+      select: ['id', 'name', 'department', 'position', 'role', 'status', 'joinedAt'],
+    });
+
+    const activeUsers = users.filter(u => u.status === UserStatus.ACTIVE);
+
+    // 부서별 인원
+    const deptMap: Record<string, number> = {};
+    for (const u of activeUsers) {
+      const dept = u.department || '미배정';
+      deptMap[dept] = (deptMap[dept] || 0) + 1;
+    }
+    const byDepartment = Object.entries(deptMap).map(([name, count]) => ({ name, count }));
+
+    // 역할별 인원
+    const roleMap: Record<string, number> = {};
+    for (const u of activeUsers) {
+      roleMap[u.role] = (roleMap[u.role] || 0) + 1;
+    }
+    const byRole = Object.entries(roleMap).map(([role, count]) => ({ role, count }));
+
+    // 월별 입사자 수 (최근 12개월)
+    const now = new Date();
+    const monthlyJoin: { month: string; count: number }[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const count = users.filter(u => {
+        if (!u.joinedAt) return false;
+        const j = new Date(u.joinedAt);
+        return j.getFullYear() === d.getFullYear() && j.getMonth() === d.getMonth();
+      }).length;
+      monthlyJoin.push({ month: label, count });
+    }
+
+    // 직급별 인원
+    const posMap: Record<string, number> = {};
+    for (const u of activeUsers) {
+      const pos = u.position || '미지정';
+      posMap[pos] = (posMap[pos] || 0) + 1;
+    }
+    const byPosition = Object.entries(posMap)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    return {
+      total: users.length,
+      active: activeUsers.length,
+      inactive: users.filter(u => u.status !== UserStatus.ACTIVE).length,
+      byDepartment,
+      byRole,
+      byPosition,
+      monthlyJoin,
     };
   }
 }

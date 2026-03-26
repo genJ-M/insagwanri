@@ -6,7 +6,8 @@ import {
   ArrowLeft, Pencil, Check, X, Phone, Mail, Building2,
   Briefcase, CalendarDays, Clock, Hash, ChevronRight,
   UserCog, AlertTriangle, RefreshCw, FileText, Plus,
-  Lock, Trash2, ChevronDown,
+  Lock, Trash2, ChevronDown, GraduationCap, Paperclip,
+  UploadCloud, Download, ExternalLink,
 } from 'lucide-react';
 import { format, differenceInMonths, differenceInYears, formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
@@ -90,8 +91,8 @@ const TABS = [
   { key: 'hr',       label: '인사정보',   icon: Briefcase },
   { key: 'work',     label: '근무 설정',  icon: Clock },
   { key: 'notes',    label: '인사 노트',  icon: FileText },
-  { key: 'career',   label: '경력/학력',  icon: ChevronRight },
-  { key: 'docs',     label: '첨부문서',   icon: ChevronRight },
+  { key: 'career',   label: '경력/학력',  icon: GraduationCap },
+  { key: 'docs',     label: '첨부문서',   icon: Paperclip },
 ] as const;
 type TabKey = typeof TABS[number]['key'];
 
@@ -333,15 +334,424 @@ function ActionModal({
   );
 }
 
-// ─── 준비 중 플레이스홀더 ─────────────────────────────────────
-function ComingSoon({ label }: { label: string }) {
+// ─── 경력 탭 ──────────────────────────────────────────────────
+const DEGREE_LABEL: Record<string, string> = {
+  high_school: '고등학교',
+  associate: '전문학사',
+  bachelor: '학사',
+  master: '석사',
+  doctorate: '박사',
+  other: '기타',
+};
+const EDU_STATUS_LABEL: Record<string, string> = {
+  graduated: '졸업',
+  enrolled: '재학',
+  dropout: '중퇴',
+};
+
+function CareerTab({ userId, canEdit }: { userId: string; canEdit: boolean }) {
+  const qc = useQueryClient();
+  const [careerForm, setCareerForm] = useState(false);
+  const [editCareer, setEditCareer] = useState<any>(null);
+  const [eduForm, setEduForm] = useState(false);
+  const [editEdu, setEditEdu] = useState<any>(null);
+
+  const { data: careers = [], isLoading: cLoading } = useQuery<any[]>({
+    queryKey: ['careers', userId],
+    queryFn: async () => { const { data } = await api.get(`/users/${userId}/careers`); return data.data ?? []; },
+  });
+  const { data: educations = [], isLoading: eLoading } = useQuery<any[]>({
+    queryKey: ['educations', userId],
+    queryFn: async () => { const { data } = await api.get(`/users/${userId}/educations`); return data.data ?? []; },
+  });
+
+  const emptyCareer = { companyName: '', position: '', department: '', startDate: '', endDate: '', isCurrent: false, description: '' };
+  const emptyEdu = { schoolName: '', major: '', degree: 'bachelor', startDate: '', endDate: '', isCurrent: false, status: 'graduated' };
+
+  const [cf, setCf] = useState(emptyCareer);
+  const [ef, setEf] = useState(emptyEdu);
+
+  const saveCareers = useMutation({
+    mutationFn: (payload: any) =>
+      editCareer ? api.patch(`/users/${userId}/careers/${editCareer.id}`, payload) : api.post(`/users/${userId}/careers`, payload),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['careers', userId] }); setCareerForm(false); setEditCareer(null); setCf(emptyCareer); toast.success('저장됨'); },
+    onError: () => toast.error('저장 실패'),
+  });
+  const deleteCareer = useMutation({
+    mutationFn: (id: string) => api.delete(`/users/${userId}/careers/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['careers', userId] }); toast.success('삭제됨'); },
+  });
+  const saveEdu = useMutation({
+    mutationFn: (payload: any) =>
+      editEdu ? api.patch(`/users/${userId}/educations/${editEdu.id}`, payload) : api.post(`/users/${userId}/educations`, payload),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['educations', userId] }); setEduForm(false); setEditEdu(null); setEf(emptyEdu); toast.success('저장됨'); },
+    onError: () => toast.error('저장 실패'),
+  });
+  const deleteEdu = useMutation({
+    mutationFn: (id: string) => api.delete(`/users/${userId}/educations/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['educations', userId] }); toast.success('삭제됨'); },
+  });
+
+  const openEditCareer = (c: any) => { setCf({ companyName: c.companyName, position: c.position ?? '', department: c.department ?? '', startDate: c.startDate?.slice(0,10) ?? '', endDate: c.endDate?.slice(0,10) ?? '', isCurrent: c.isCurrent, description: c.description ?? '' }); setEditCareer(c); setCareerForm(true); };
+  const openEditEdu = (e: any) => { setEf({ schoolName: e.schoolName, major: e.major ?? '', degree: e.degree, startDate: e.startDate?.slice(0,10) ?? '', endDate: e.endDate?.slice(0,10) ?? '', isCurrent: e.isCurrent, status: e.status }); setEditEdu(e); setEduForm(true); };
+
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mb-3">
-        <ChevronRight className="h-6 w-6 text-gray-300" />
+    <div className="space-y-8">
+      {/* 경력 섹션 */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary">경력</h3>
+            <p className="text-xs text-text-muted mt-0.5">이전 직장 및 업무 이력</p>
+          </div>
+          {canEdit && (
+            <button onClick={() => { setCf(emptyCareer); setEditCareer(null); setCareerForm(true); }} className="flex items-center gap-1.5 text-xs font-semibold bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg">
+              <Plus className="h-3.5 w-3.5" /> 경력 추가
+            </button>
+          )}
+        </div>
+
+        {careerForm && (
+          <div className="border border-primary-200 bg-primary-50/30 rounded-xl p-4 mb-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">회사명 *</label>
+                <input value={cf.companyName} onChange={e => setCf(f => ({...f, companyName: e.target.value}))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" placeholder="회사명" />
+              </div>
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">직위/직책</label>
+                <input value={cf.position} onChange={e => setCf(f => ({...f, position: e.target.value}))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" placeholder="직위" />
+              </div>
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">부서</label>
+                <input value={cf.department} onChange={e => setCf(f => ({...f, department: e.target.value}))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" placeholder="부서" />
+              </div>
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
+                  <input type="checkbox" checked={cf.isCurrent} onChange={e => setCf(f => ({...f, isCurrent: e.target.checked, endDate: ''}))} className="rounded" />
+                  현재 재직 중
+                </label>
+              </div>
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">입사일 *</label>
+                <input type="date" value={cf.startDate} onChange={e => setCf(f => ({...f, startDate: e.target.value}))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" />
+              </div>
+              {!cf.isCurrent && (
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">퇴사일</label>
+                  <input type="date" value={cf.endDate} onChange={e => setCf(f => ({...f, endDate: e.target.value}))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" />
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="text-xs text-text-muted mb-1 block">업무 내용</label>
+              <textarea value={cf.description} onChange={e => setCf(f => ({...f, description: e.target.value}))} rows={3} className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary-300" placeholder="주요 업무 및 성과" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setCareerForm(false); setEditCareer(null); }} className="px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-gray-50">취소</button>
+              <button onClick={() => { if (!cf.companyName || !cf.startDate) { toast.error('회사명과 입사일은 필수입니다.'); return; } saveCareers.mutate(cf); }} disabled={saveCareers.isPending} className="px-3 py-1.5 text-xs font-semibold bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-60">
+                {saveCareers.isPending ? '저장 중…' : '저장'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {cLoading ? (
+          <div className="space-y-3">{[1,2].map(i => <div key={i} className="animate-pulse bg-gray-50 rounded-xl h-20" />)}</div>
+        ) : careers.length === 0 ? (
+          <div className="py-10 text-center text-text-muted text-sm border border-dashed border-gray-200 rounded-xl">등록된 경력이 없습니다.</div>
+        ) : (
+          <div className="space-y-3">
+            {careers.map((c: any) => (
+              <div key={c.id} className="border border-border rounded-xl p-4 hover:bg-gray-50/50 group">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary">{c.companyName}</p>
+                    <p className="text-xs text-text-secondary mt-0.5">
+                      {[c.department, c.position].filter(Boolean).join(' · ')}
+                    </p>
+                    <p className="text-xs text-text-muted mt-1">
+                      {c.startDate?.slice(0,7)} ~ {c.isCurrent ? '현재' : (c.endDate?.slice(0,7) ?? '-')}
+                    </p>
+                    {c.description && <p className="text-xs text-text-secondary mt-2 whitespace-pre-line">{c.description}</p>}
+                  </div>
+                  {canEdit && (
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => openEditCareer(c)} className="p-1 rounded hover:bg-gray-100 text-text-muted"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => { if(confirm('삭제할까요?')) deleteCareer.mutate(c.id); }} className="p-1 rounded hover:bg-red-50 text-text-muted hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-      <p className="text-sm font-medium text-text-secondary">{label}</p>
-      <p className="text-xs text-text-muted mt-1">준비 중입니다</p>
+
+      {/* 학력 섹션 */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary">학력</h3>
+            <p className="text-xs text-text-muted mt-0.5">학교 이력 및 전공</p>
+          </div>
+          {canEdit && (
+            <button onClick={() => { setEf(emptyEdu); setEditEdu(null); setEduForm(true); }} className="flex items-center gap-1.5 text-xs font-semibold bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg">
+              <Plus className="h-3.5 w-3.5" /> 학력 추가
+            </button>
+          )}
+        </div>
+
+        {eduForm && (
+          <div className="border border-primary-200 bg-primary-50/30 rounded-xl p-4 mb-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">학교명 *</label>
+                <input value={ef.schoolName} onChange={e => setEf(f => ({...f, schoolName: e.target.value}))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" placeholder="학교명" />
+              </div>
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">전공</label>
+                <input value={ef.major} onChange={e => setEf(f => ({...f, major: e.target.value}))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" placeholder="전공" />
+              </div>
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">학위</label>
+                <select value={ef.degree} onChange={e => setEf(f => ({...f, degree: e.target.value}))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300">
+                  {Object.entries(DEGREE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">졸업 상태</label>
+                <select value={ef.status} onChange={e => setEf(f => ({...f, status: e.target.value}))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300">
+                  {Object.entries(EDU_STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">입학일 *</label>
+                <input type="date" value={ef.startDate} onChange={e => setEf(f => ({...f, startDate: e.target.value}))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" />
+              </div>
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">졸업일</label>
+                <input type="date" value={ef.endDate} onChange={e => setEf(f => ({...f, endDate: e.target.value}))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setEduForm(false); setEditEdu(null); }} className="px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-gray-50">취소</button>
+              <button onClick={() => { if (!ef.schoolName || !ef.startDate) { toast.error('학교명과 입학일은 필수입니다.'); return; } saveEdu.mutate(ef); }} disabled={saveEdu.isPending} className="px-3 py-1.5 text-xs font-semibold bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-60">
+                {saveEdu.isPending ? '저장 중…' : '저장'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {eLoading ? (
+          <div className="space-y-3">{[1,2].map(i => <div key={i} className="animate-pulse bg-gray-50 rounded-xl h-16" />)}</div>
+        ) : educations.length === 0 ? (
+          <div className="py-10 text-center text-text-muted text-sm border border-dashed border-gray-200 rounded-xl">등록된 학력이 없습니다.</div>
+        ) : (
+          <div className="space-y-3">
+            {educations.map((e: any) => (
+              <div key={e.id} className="border border-border rounded-xl p-4 hover:bg-gray-50/50 group">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-text-primary">{e.schoolName}</p>
+                      <span className="text-[11px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded-md font-medium">{DEGREE_LABEL[e.degree] ?? e.degree}</span>
+                      <span className="text-[11px] px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-md">{EDU_STATUS_LABEL[e.status] ?? e.status}</span>
+                    </div>
+                    {e.major && <p className="text-xs text-text-secondary mt-0.5">{e.major}</p>}
+                    <p className="text-xs text-text-muted mt-1">
+                      {e.startDate?.slice(0,7)} ~ {e.isCurrent ? '재학 중' : (e.endDate?.slice(0,7) ?? '-')}
+                    </p>
+                  </div>
+                  {canEdit && (
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => openEditEdu(e)} className="p-1 rounded hover:bg-gray-100 text-text-muted"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => { if(confirm('삭제할까요?')) deleteEdu.mutate(e.id); }} className="p-1 rounded hover:bg-red-50 text-text-muted hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── 첨부문서 탭 ──────────────────────────────────────────────
+const DOC_TYPE_LABEL: Record<string, string> = {
+  resident_card:   '주민등록등본',
+  family_relation: '가족관계증명서',
+  graduation:      '졸업증명서',
+  career_cert:     '경력증명서',
+  health_check:    '건강검진결과',
+  disability_cert: '장애인증명서',
+  contract:        '근로계약서',
+  other:           '기타',
+};
+const DOC_TYPE_COLOR: Record<string, string> = {
+  resident_card: 'bg-blue-50 text-blue-700',
+  family_relation: 'bg-purple-50 text-purple-700',
+  graduation: 'bg-green-50 text-green-700',
+  career_cert: 'bg-yellow-50 text-yellow-700',
+  health_check: 'bg-red-50 text-red-700',
+  disability_cert: 'bg-orange-50 text-orange-700',
+  contract: 'bg-indigo-50 text-indigo-700',
+  other: 'bg-gray-100 text-gray-600',
+};
+
+function DocsTab({ userId, canEdit }: { userId: string; canEdit: boolean }) {
+  const qc = useQueryClient();
+  const [uploading, setUploading] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [docForm, setDocForm] = useState({ type: 'other', displayName: '', file: null as File | null });
+
+  const { data: docs = [], isLoading } = useQuery<any[]>({
+    queryKey: ['docs', userId],
+    queryFn: async () => { const { data } = await api.get(`/users/${userId}/documents`); return data.data ?? []; },
+  });
+
+  const deleteDoc = useMutation({
+    mutationFn: (id: string) => api.delete(`/users/${userId}/documents/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['docs', userId] }); toast.success('삭제됨'); },
+  });
+
+  const handleUpload = async () => {
+    if (!docForm.file || !docForm.displayName) { toast.error('파일과 표시 이름을 입력하세요.'); return; }
+    setUploading(true);
+    try {
+      // 1. Presigned URL 발급
+      const { data: urlResp } = await api.post('/files/upload-url', {
+        filename: docForm.file.name,
+        contentType: docForm.file.type || 'application/octet-stream',
+        category: 'document',
+      });
+      const { uploadUrl, fileId, publicUrl } = urlResp.data ?? urlResp;
+
+      // 2. S3 PUT
+      await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': docForm.file.type || 'application/octet-stream' },
+        body: docForm.file,
+      });
+
+      // 3. 확정
+      await api.post('/files/confirm', { fileId });
+
+      // 4. 문서 레코드 생성
+      await api.post(`/users/${userId}/documents`, {
+        type: docForm.type,
+        displayName: docForm.displayName,
+        fileUrl: publicUrl ?? uploadUrl.split('?')[0],
+        originalName: docForm.file.name,
+        fileSize: docForm.file.size,
+      });
+
+      qc.invalidateQueries({ queryKey: ['docs', userId] });
+      toast.success('업로드 완료');
+      setShowForm(false);
+      setDocForm({ type: 'other', displayName: '', file: null });
+    } catch {
+      toast.error('업로드 실패');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  function formatBytes(bytes: number) {
+    if (!bytes) return '-';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-text-primary">첨부 서류</h3>
+          <p className="text-xs text-text-muted mt-0.5">주민등록등본, 졸업증명서 등 인사 서류</p>
+        </div>
+        {canEdit && (
+          <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 text-xs font-semibold bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg">
+            <UploadCloud className="h-3.5 w-3.5" /> 서류 추가
+          </button>
+        )}
+      </div>
+
+      {showForm && (
+        <div className="border border-primary-200 bg-primary-50/30 rounded-xl p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-text-muted mb-1 block">서류 유형</label>
+              <select value={docForm.type} onChange={e => setDocForm(f => ({...f, type: e.target.value}))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300">
+                {Object.entries(DOC_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-text-muted mb-1 block">표시 이름 *</label>
+              <input value={docForm.displayName} onChange={e => setDocForm(f => ({...f, displayName: e.target.value}))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" placeholder="예: 2024년 주민등록등본" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-text-muted mb-1 block">파일 *</label>
+            <input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+              onChange={e => setDocForm(f => ({...f, file: e.target.files?.[0] ?? null}))}
+              className="w-full text-sm text-text-secondary file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+            />
+            <p className="text-[11px] text-text-muted mt-1">PDF, JPG, PNG, DOC, DOCX (최대 10MB)</p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => { setShowForm(false); setDocForm({ type: 'other', displayName: '', file: null }); }} className="px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-gray-50">취소</button>
+            <button onClick={handleUpload} disabled={uploading || !docForm.file} className="px-3 py-1.5 text-xs font-semibold bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-60">
+              {uploading ? '업로드 중…' : '업로드'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="animate-pulse bg-gray-50 rounded-xl h-14" />)}</div>
+      ) : docs.length === 0 ? (
+        <div className="py-12 text-center text-text-muted text-sm border border-dashed border-gray-200 rounded-xl">
+          <Paperclip className="h-8 w-8 text-gray-200 mx-auto mb-2" />
+          등록된 서류가 없습니다.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {docs.map((d: any) => (
+            <div key={d.id} className="flex items-center gap-3 border border-border rounded-xl px-4 py-3 hover:bg-gray-50/50 group">
+              <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center flex-shrink-0">
+                <FileText className="h-4 w-4 text-text-muted" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-text-primary truncate">{d.displayName}</p>
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded-md font-medium flex-shrink-0 ${DOC_TYPE_COLOR[d.type] ?? DOC_TYPE_COLOR.other}`}>
+                    {DOC_TYPE_LABEL[d.type] ?? d.type}
+                  </span>
+                </div>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  {d.originalName} · {formatBytes(d.fileSize)} · {format(new Date(d.createdAt), 'yyyy.MM.dd', { locale: ko })}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <a href={d.fileUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg hover:bg-gray-100 text-text-muted hover:text-primary-600" aria-label="열기">
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+                {canEdit && (
+                  <button onClick={() => { if(confirm('삭제할까요?')) deleteDoc.mutate(d.id); }} className="p-1.5 rounded-lg hover:bg-red-50 text-text-muted hover:text-red-500" aria-label="삭제">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -577,8 +987,8 @@ export default function EmployeeDetailPage() {
             )}
 
             {tab === 'notes'  && <NotesTab userId={id} canWrite={canEdit} />}
-            {tab === 'career' && <ComingSoon label="경력 / 학력" />}
-            {tab === 'docs'   && <ComingSoon label="첨부 문서" />}
+            {tab === 'career' && <CareerTab userId={id} canEdit={canEdit} />}
+            {tab === 'docs'   && <DocsTab userId={id} canEdit={canEdit} />}
           </div>
         </main>
       </div>

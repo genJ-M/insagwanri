@@ -13,6 +13,7 @@ import {
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import Header from '@/components/layout/Header';
+import DashboardCover from '@/components/layout/DashboardCover';
 import Card, { CardHeader } from '@/components/ui/Card';
 import Badge, {
   TASK_STATUS_BADGE, TASK_PRIORITY_BADGE, ATTENDANCE_STATUS_BADGE,
@@ -369,6 +370,11 @@ export default function DashboardPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
+      {/* 커버 이미지 + 인사말 */}
+      <DashboardCover height={160}>
+        <p className="text-base font-semibold opacity-90">{greeting()}, {user?.name ?? ''}님</p>
+        <p className="text-xs opacity-70 mt-0.5">{format(new Date(), 'yyyy년 M월 d일 (EEE)', { locale: ko })}</p>
+      </DashboardCover>
       <Header title="대시보드" />
 
       <main className="page-container space-y-6">

@@ -2,6 +2,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, ReactNode } from 'react';
 import { Toaster } from 'react-hot-toast';
+import RouteProgressBar from '@/components/layout/RouteProgressBar';
 
 export default function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -19,6 +20,7 @@ export default function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <RouteProgressBar />
       {children}
       <Toaster
         position="top-right"

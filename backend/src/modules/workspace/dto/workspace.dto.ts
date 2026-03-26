@@ -47,6 +47,37 @@ export class UpdateWorkSettingsDto {
   workDays?: number[]; // [1,2,3,4,5]
 }
 
+export class CoverMobileCropDto {
+  @IsNumber()
+  x: number;
+
+  @IsNumber()
+  y: number;
+
+  @IsNumber()
+  width: number;
+
+  @IsNumber()
+  height: number;
+}
+
+export class UpdateBrandingDto {
+  @IsOptional()
+  @IsString()
+  coverImageUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  coverImageMobileUrl?: string | null;
+
+  @IsOptional()
+  coverMobileCrop?: CoverMobileCropDto | null;
+
+  @IsOptional()
+  @IsString()
+  brandingTextColor?: string;
+}
+
 export class UpdateGpsSettingsDto {
   @IsBoolean()
   gpsEnabled: boolean;

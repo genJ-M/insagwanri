@@ -49,6 +49,13 @@ services:
       - key: FRONTEND_URL
         value: https://insagwanri-nine.vercel.app
 
+      # 개인정보 암호화 키 (Render 대시보드에서 입력 — 64자리 hex)
+      # 생성: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: HMAC_SECRET
+        sync: false
+
       # 아래 항목은 Render 대시보드 Environment에서 직접 입력
       - key: JWT_ACCESS_SECRET
         sync: false
@@ -58,6 +65,20 @@ services:
         value: 15m
       - key: JWT_REFRESH_EXPIRES_IN
         value: 7d
+      # Google OAuth (Render 대시보드에서 입력)
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        value: https://insagwanri-backend.onrender.com/api/v1/auth/google/callback
+      # Kakao OAuth (Render 대시보드에서 입력)
+      - key: KAKAO_CLIENT_ID
+        sync: false
+      - key: KAKAO_CLIENT_SECRET
+        sync: false
+      - key: KAKAO_CALLBACK_URL
+        value: https://insagwanri-backend.onrender.com/api/v1/auth/kakao/callback
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
@@ -84,6 +105,69 @@ services:
         sync: false
       - key: AWS_SECRET_ACCESS_KEY
         sync: false
+      - key: TOSS_PAYMENTS_SECRET_KEY
+        value: test_sk_zXLkKEypNArWmo50nX3lmeaxYG5R
+      - key: TOSS_PAYMENTS_CLIENT_KEY
+        value: test_ck_D5GePWvyJnrK0W0k6q8gLzN97Eoq
+
+  # ─── Admin Backend (NestJS :4001) ─────────────────────
+  - type: web
+    name: insagwanri-admin-backend
+    runtime: node
+    rootDir: admin-backend
+    buildCommand: npm install --legacy-peer-deps --include=dev && npm run build
+    startCommand: node node_modules/typeorm/cli.js migration:run -d dist/data-source.prod.js && node dist/main.js
+    plan: free
+    region: singapore
+    healthCheckPath: /admin/v1/health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ADMIN_PORT
+        value: 4001
+
+      # DB — Customer와 동일 Render PostgreSQL 공유
+      - key: DB_HOST
+        fromDatabase:
+          name: insagwanri-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: insagwanri-db
+          property: port
+      - key: DB_USERNAME
+        fromDatabase:
+          name: insagwanri-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: insagwanri-db
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: insagwanri-db
+          property: database
+
+      # Redis
+      - key: REDIS_URL
+        fromService:
+          name: insagwanri-redis
+          type: redis
+          property: connectionString
+
+      - key: ADMIN_JWT_SECRET
+        value: ec3c2816f7b95e79803890274665dc7c6bb944f0576e511ff30f2b462ee2523959eab3d79155b576647b2e825e9d63fd
+      - key: ADMIN_JWT_TEMP_SECRET
+        value: 8cd2df900f2fb9ea7d80f4d2f27dc99308aa37e695ed4252d25e0193f27af0cffee664c1d51076fd9a86414f54db3981
+      - key: BILLING_KEY_ENCRYPTION_KEY
+        value: 1ccfd9ece49654ef4d073ede50d5b3cb986eaf816af78e173935048e3eead850
+      - key: TOSS_PAYMENTS_SECRET_KEY
+        value: test_sk_zXLkKEypNArWmo50nX3lmeaxYG5R
+      - key: ADMIN_FRONTEND_URL
+        sync: false   # Vercel admin-web 배포 후 URL 입력
+      - key: ADMIN_ALLOWED_IPS
+        value: ""     # 초기: 전체 허용, 이후 VPN IP로 제한
 
   # ─── Redis ─────────────────────────────────────────────
   - type: redis

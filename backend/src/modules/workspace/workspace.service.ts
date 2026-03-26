@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { Company } from '../../database/entities/company.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import {
-  UpdateWorkspaceDto, UpdateWorkSettingsDto, UpdateGpsSettingsDto,
+  UpdateWorkspaceDto, UpdateWorkSettingsDto, UpdateGpsSettingsDto, UpdateBrandingDto,
 } from './dto/workspace.dto';
 
 @Injectable()
@@ -53,6 +53,17 @@ export class WorkspaceService {
       ...(dto.gpsLng       !== undefined && { gpsLng: dto.gpsLng }),
       ...(dto.gpsRadiusM   !== undefined && { gpsRadiusM: dto.gpsRadiusM }),
       ...(dto.gpsStrictMode !== undefined && { gpsStrictMode: dto.gpsStrictMode }),
+    });
+    return this.getSettings(currentUser);
+  }
+
+  async updateBranding(currentUser: AuthenticatedUser, dto: UpdateBrandingDto) {
+    this.requireOwner(currentUser);
+    await this.companyRepo.update(currentUser.companyId, {
+      ...(dto.coverImageUrl !== undefined       && { coverImageUrl: dto.coverImageUrl }),
+      ...(dto.coverImageMobileUrl !== undefined && { coverImageMobileUrl: dto.coverImageMobileUrl }),
+      ...(dto.coverMobileCrop !== undefined     && { coverMobileCrop: dto.coverMobileCrop }),
+      ...(dto.brandingTextColor                 && { brandingTextColor: dto.brandingTextColor }),
     });
     return this.getSettings(currentUser);
   }

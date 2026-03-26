@@ -2,13 +2,17 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { CompanyQueryDto, SuspendCompanyDto, ChangePlanDto } from './dto/company-query.dto';
 import { Subscription, SubscriptionStatus } from '../../database/entities/subscription.entity';
 import { Plan } from '../../database/entities/plan.entity';
 import { AdminJwtPayload } from '../../common/types/admin-jwt-payload.type';
+import { AdminRole } from '../../database/entities/admin-user.entity';
 
 // 공유 DB의 companies 테이블 — Customer 서비스가 소유하는 테이블
 // Admin은 읽기/상태변경만 허용
@@ -23,6 +27,9 @@ export class CompaniesService {
 
     @InjectRepository(Plan)
     private planRepository: Repository<Plan>,
+
+    private jwtService: JwtService,
+    private configService: ConfigService,
   ) {}
 
   // ──────────────────────────────────────────────
@@ -200,6 +207,34 @@ export class CompaniesService {
   }
 
   // ──────────────────────────────────────────────
+  // 대시보드 요약 통계
+  // ──────────────────────────────────────────────
+  async getStats() {
+    const [row] = await this.dataSource.query(`
+      SELECT
+        COUNT(DISTINCT c.id)::int AS total,
+        COUNT(DISTINCT CASE WHEN s.status = 'active' THEN c.id END)::int AS active_subscriptions,
+        COALESCE(SUM(CASE WHEN s.status = 'active' AND s.billing_cycle = 'monthly'
+          THEN p.price_monthly_krw ELSE 0 END), 0)::bigint AS mrr_krw,
+        COUNT(DISTINCT CASE WHEN s.status = 'past_due' THEN c.id END)::int AS past_due,
+        COUNT(DISTINCT CASE WHEN DATE_TRUNC('month', c.created_at) = DATE_TRUNC('month', NOW())
+          THEN c.id END)::int AS new_this_month
+      FROM companies c
+      LEFT JOIN subscriptions s ON s.company_id = c.id
+      LEFT JOIN plans p ON p.id = s.plan_id
+      WHERE c.deleted_at IS NULL
+    `);
+
+    return {
+      total: row.total,
+      active_subscriptions: row.active_subscriptions,
+      mrr_krw: parseInt(row.mrr_krw ?? '0'),
+      past_due: row.past_due,
+      new_this_month: row.new_this_month,
+    };
+  }
+
+  // ──────────────────────────────────────────────
   // 회사 직원 목록 조회
   // ──────────────────────────────────────────────
   async getEmployees(companyId: string) {
@@ -211,5 +246,89 @@ export class CompaniesService {
       WHERE company_id = $1
       ORDER BY joined_at ASC
     `, [companyId]);
+  }
+
+  // ──────────────────────────────────────────────
+  // Impersonation — 회사 owner 권한 임시 토큰 발급 (TTL 30분)
+  // ──────────────────────────────────────────────
+  async impersonateCompany(companyId: string, actor: AdminJwtPayload) {
+    await this.findOne(companyId);
+
+    // 회사 owner 사용자 조회
+    const owners = await this.dataSource.query(`
+      SELECT id, email, name, role
+      FROM users
+      WHERE company_id = $1 AND role = 'owner' AND deleted_at IS NULL
+      LIMIT 1
+    `, [companyId]);
+
+    if (!owners.length) {
+      throw new NotFoundException('해당 회사의 owner 계정을 찾을 수 없습니다.');
+    }
+
+    const owner = owners[0];
+
+    // Customer 백엔드 JWT 시크릿으로 임시 토큰 발급
+    const customerJwtSecret = this.configService.get<string>('CUSTOMER_JWT_ACCESS_SECRET');
+    if (!customerJwtSecret) {
+      throw new BadRequestException('CUSTOMER_JWT_ACCESS_SECRET 환경변수가 설정되지 않았습니다.');
+    }
+
+    const impersonationToken = this.jwtService.sign(
+      {
+        sub: owner.id,
+        companyId,
+        role: owner.role,
+        email: owner.email,
+        isImpersonation: true,
+        impersonatedBy: actor.email,
+      },
+      {
+        secret: customerJwtSecret,
+        expiresIn: '30m',
+      },
+    );
+
+    return {
+      accessToken: impersonationToken,
+      expiresIn: 1800,
+      targetUser: {
+        id: owner.id,
+        email: owner.email,
+        name: owner.name,
+      },
+      message: '임시 접속 토큰이 발급되었습니다. 30분 후 만료됩니다.',
+    };
+  }
+
+  // ──────────────────────────────────────────────
+  // 고객사 데이터 초기화 (SUPER_ADMIN 전용 — 테스트 계정 정리용)
+  // ──────────────────────────────────────────────
+  async deleteCompanyData(companyId: string, actor: AdminJwtPayload) {
+    if (actor.role !== AdminRole.SUPER_ADMIN) {
+      throw new ForbiddenException('SUPER_ADMIN만 데이터 삭제를 수행할 수 있습니다.');
+    }
+
+    await this.findOne(companyId); // 존재 확인
+
+    // 관련 데이터 소프트 삭제 (순서 중요: FK 제약)
+    const now = new Date().toISOString();
+
+    await this.dataSource.query(
+      `UPDATE users SET deleted_at = $1 WHERE company_id = $2 AND deleted_at IS NULL`,
+      [now, companyId],
+    );
+
+    await this.subscriptionRepository.update(
+      { companyId },
+      { status: SubscriptionStatus.CANCELED, canceledAt: new Date() },
+    );
+
+    await this.dataSource.query(
+      `UPDATE companies SET status = 'deleted', deleted_at = $1, updated_at = $1 WHERE id = $2`,
+      [now, companyId],
+    );
+
+    return { message: '고객사 데이터가 삭제(soft delete) 처리되었습니다.' };
   }
 }

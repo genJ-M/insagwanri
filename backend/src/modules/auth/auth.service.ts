@@ -6,6 +6,7 @@ import {
   BadRequestException,
   HttpException,
   HttpStatus,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull } from 'typeorm';
@@ -23,6 +24,10 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { EmailService } from '../notifications/email.service';
 import { LoginLockService } from './services/login-lock.service';
 import { PasswordResetToken } from '../../database/entities/password-reset-token.entity';
+import { SocialUser } from './strategies/google.strategy';
+import { CryptoService } from '../../common/crypto/crypto.service';
+import { ActivityLogService } from '../activity-logs/activity-log.service';
+import { ActivityAction } from '../../database/entities/user-activity-log.entity';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -46,15 +51,18 @@ export class AuthService {
     private dataSource: DataSource,
     private emailService: EmailService,
     private loginLockService: LoginLockService,
+    private cryptoService: CryptoService,
+    private activityLogService: ActivityLogService,
   ) {}
 
   // ──────────────────────────────────────────────
   // 회원가입 (회사 + owner 동시 생성)
   // ──────────────────────────────────────────────
   async register(dto: RegisterDto) {
-    // 1. 이메일 중복 검사 (전체 범위 — 다른 회사에서 동일 이메일 owner 생성 방지)
+    // 1. 이메일 중복 검사 (전체 범위 — HMAC 해시로 조회)
+    const emailHash = this.cryptoService.hmac(dto.email.toLowerCase().trim());
     const existingUser = await this.userRepository.findOne({
-      where: { email: dto.email },
+      where: { emailHash },
       withDeleted: false,
     });
 
@@ -209,9 +217,10 @@ export class AuthService {
       );
     }
 
-    // 1. 이메일로 사용자 조회 (password_hash 포함)
+    // 1. HMAC 해시로 사용자 조회 (password_hash 포함)
+    const loginEmailHash = this.cryptoService.hmac(dto.email.toLowerCase().trim());
     const user = await this.userRepository.findOne({
-      where: { email: dto.email },
+      where: { emailHash: loginEmailHash },
       select: [
         'id',
         'companyId',
@@ -270,6 +279,13 @@ export class AuthService {
       this.loginLockService.clearFailures(dto.email),
     ]);
 
+    // 통신비밀보호법 — 로그인 활동 기록 (fire-and-forget)
+    this.activityLogService.log({
+      userId: user.id,
+      companyId: user.companyId,
+      action: ActivityAction.LOGIN,
+    });
+
     return {
       ...tokens,
       user: this.formatUserResponse(user),
@@ -314,9 +330,16 @@ export class AuthService {
   // ──────────────────────────────────────────────
   // 로그아웃
   // ──────────────────────────────────────────────
-  async logout(userId: string) {
+  async logout(userId: string, companyId?: string) {
     // DB의 refresh_token_hash를 null로 설정하여 무효화
     await this.userRepository.update(userId, { refreshTokenHash: null as any });
+
+    // 통신비밀보호법 — 로그아웃 활동 기록 (fire-and-forget)
+    this.activityLogService.log({
+      userId,
+      companyId: companyId ?? null,
+      action: ActivityAction.LOGOUT,
+    });
   }
 
   // ──────────────────────────────────────────────
@@ -370,8 +393,9 @@ export class AuthService {
   // ──────────────────────────────────────────────
   async forgotPassword(email: string): Promise<void> {
     // 보안: 이메일 존재 여부를 외부에 노출하지 않음 (항상 성공 응답)
+    const forgotEmailHash = this.cryptoService.hmac(email.toLowerCase().trim());
     const user = await this.userRepository.findOne({
-      where: { email },
+      where: { emailHash: forgotEmailHash },
       select: ['id', 'email', 'name'],
     });
     if (!user) return;
@@ -429,5 +453,219 @@ export class AuthService {
     return this.userRepository.findOne({
       where: { id: userId, companyId },
     });
+  }
+
+  // ──────────────────────────────────────────────
+  // 소셜 로그인 처리 (Google / Kakao 공통)
+  // ──────────────────────────────────────────────
+  async handleSocialLogin(socialUser: SocialUser) {
+    // 1. provider + providerAccountId 로 기존 연동 계정 조회
+    let user = await this.userRepository.findOne({
+      where: { provider: socialUser.provider, providerAccountId: socialUser.providerAccountId },
+      select: ['id', 'companyId', 'email', 'name', 'role', 'status'],
+    });
+
+    // 2. 이메일 HMAC으로 기존 계정 조회 (계정 연결)
+    if (!user) {
+      const socialEmailHash = this.cryptoService.hmac(socialUser.email.toLowerCase().trim());
+      user = await this.userRepository.findOne({
+        where: { emailHash: socialEmailHash },
+        select: ['id', 'companyId', 'email', 'name', 'role', 'status'],
+      });
+
+      if (user) {
+        // 이메일 계정에 소셜 provider 연결
+        await this.userRepository.update(user.id, {
+          provider: socialUser.provider,
+          providerAccountId: socialUser.providerAccountId,
+          profileImageUrl: socialUser.profileImageUrl ?? undefined,
+        });
+      }
+    }
+
+    if (user) {
+      if (user.status === UserStatus.INACTIVE) {
+        throw new UnauthorizedException('비활성화된 계정입니다.');
+      }
+      // 기존 유저 — 바로 토큰 발급
+      await this.userRepository.update(user.id, { lastLoginAt: new Date() });
+      const tokens = await this.generateTokens(user, user.companyId);
+      return { type: 'login' as const, tokens };
+    }
+
+    // 3. 신규 유저 — pending 토큰 발급 (회사명 입력 후 완료)
+    const pendingPayload = {
+      type: 'social_pending',
+      provider: socialUser.provider,
+      providerAccountId: socialUser.providerAccountId,
+      email: socialUser.email,
+      name: socialUser.name,
+      profileImageUrl: socialUser.profileImageUrl,
+    };
+
+    const pendingToken = await this.jwtService.signAsync(pendingPayload, {
+      secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
+      expiresIn: '10m',
+    });
+
+    return { type: 'register' as const, pendingToken, socialUser };
+  }
+
+  // ──────────────────────────────────────────────
+  // 소셜 회원가입 완료 (회사명 + pending 토큰)
+  // ──────────────────────────────────────────────
+  async completeSocialRegister(pendingToken: string, companyName: string) {
+    let payload: any;
+    try {
+      payload = await this.jwtService.verifyAsync(pendingToken, {
+        secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
+      });
+    } catch {
+      throw new UnauthorizedException('소셜 인증 토큰이 만료되었습니다. 다시 시도해 주세요.');
+    }
+
+    if (payload.type !== 'social_pending') {
+      throw new UnauthorizedException('유효하지 않은 소셜 인증 토큰입니다.');
+    }
+
+    // 이메일 중복 재확인 (10분 사이 다른 가입 방지 — HMAC으로 조회)
+    const pendingEmailHash = this.cryptoService.hmac(payload.email.toLowerCase().trim());
+    const existing = await this.userRepository.findOne({ where: { emailHash: pendingEmailHash } });
+    if (existing) {
+      throw new ConflictException('이미 가입된 이메일입니다. 로그인 페이지에서 소셜 로그인을 시도해 주세요.');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      // 회사 생성
+      const company = manager.create(Company, {
+        name: companyName,
+        status: CompanyStatus.ACTIVE,
+      });
+      await manager.save(Company, company);
+
+      // owner 유저 생성 (passwordHash null)
+      const user = manager.create(User, {
+        companyId: company.id,
+        email: payload.email,
+        name: payload.name,
+        provider: payload.provider,
+        providerAccountId: payload.providerAccountId,
+        profileImageUrl: payload.profileImageUrl ?? null,
+        passwordHash: null,
+        status: UserStatus.ACTIVE,
+        role: UserRole.OWNER,
+        joinedAt: new Date(),
+        lastLoginAt: new Date(),
+      });
+      await manager.save(User, user);
+
+      const tokens = await this.generateTokens(user, company.id);
+      return {
+        ...tokens,
+        user: this.formatUserResponse(user),
+      };
+    });
+  }
+
+  // ──────────────────────────────────────────────
+  // Google 액세스 토큰으로 유저 정보 조회 (모바일용)
+  // ──────────────────────────────────────────────
+  async googleExchangeCode(code: string, redirectUri: string): Promise<SocialUser> {
+    const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    const clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
+
+    // 1. 코드 → 액세스 토큰 교환
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId!,
+        client_secret: clientSecret!,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    if (!tokenRes.ok) {
+      throw new InternalServerErrorException('Google 토큰 교환에 실패했습니다.');
+    }
+
+    const tokenData: any = await tokenRes.json();
+
+    // 2. 유저 정보 조회
+    const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+
+    if (!userRes.ok) {
+      throw new InternalServerErrorException('Google 사용자 정보를 가져오지 못했습니다.');
+    }
+
+    const googleUser: any = await userRes.json();
+    if (!googleUser.email) {
+      throw new BadRequestException('Google 계정에서 이메일을 가져올 수 없습니다.');
+    }
+
+    return {
+      provider: 'google',
+      providerAccountId: googleUser.id,
+      email: googleUser.email,
+      name: googleUser.name ?? googleUser.email.split('@')[0],
+      profileImageUrl: googleUser.picture ?? null,
+    };
+  }
+
+  // ──────────────────────────────────────────────
+  // Kakao OAuth code 교환
+  // ──────────────────────────────────────────────
+  async kakaoExchangeCode(code: string, redirectUri?: string): Promise<SocialUser> {
+    const clientId = this.configService.get<string>('KAKAO_CLIENT_ID');
+    const clientSecret = this.configService.get<string>('KAKAO_CLIENT_SECRET', '');
+    const callbackUrl = this.configService.get<string>('KAKAO_CALLBACK_URL');
+
+    // 1. 액세스 토큰 교환
+    const tokenRes = await fetch('https://kauth.kakao.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: clientId!,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri ?? callbackUrl!,
+        code,
+      }),
+    });
+
+    if (!tokenRes.ok) {
+      throw new InternalServerErrorException('Kakao 토큰 교환에 실패했습니다.');
+    }
+
+    const tokenData: any = await tokenRes.json();
+    const kakaoAccessToken: string = tokenData.access_token;
+
+    // 2. 사용자 정보 조회
+    const userRes = await fetch('https://kapi.kakao.com/v2/user/me', {
+      headers: { Authorization: `Bearer ${kakaoAccessToken}` },
+    });
+
+    if (!userRes.ok) {
+      throw new InternalServerErrorException('Kakao 사용자 정보를 가져오지 못했습니다.');
+    }
+
+    const kakaoUser: any = await userRes.json();
+    const email: string | undefined = kakaoUser.kakao_account?.email;
+
+    if (!email) {
+      throw new BadRequestException('Kakao 계정에서 이메일을 가져올 수 없습니다. 이메일 제공 동의가 필요합니다.');
+    }
+
+    return {
+      provider: 'kakao',
+      providerAccountId: String(kakaoUser.id),
+      email,
+      name: kakaoUser.kakao_account?.profile?.nickname ?? email.split('@')[0],
+      profileImageUrl: kakaoUser.kakao_account?.profile?.profile_image_url ?? null,
+    };
   }
 }

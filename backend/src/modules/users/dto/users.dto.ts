@@ -54,6 +54,17 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   profileImageUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  coverImageUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  coverImageMobileUrl?: string | null;
+
+  @IsOptional()
+  coverMobileCrop?: { x: number; y: number; width: number; height: number } | null;
 }
 
 export class UpdateRoleDto {

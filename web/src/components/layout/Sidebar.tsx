@@ -4,7 +4,8 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Clock, ClipboardList, FileText,
   Calendar, MessageSquare, Sparkles, LogOut,
-  Users, Settings, Banknote,
+  Users, Settings, Banknote, Umbrella, FilePen, FileSignature, Award,
+  ClipboardCheck, BarChart2, GraduationCap,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAuthStore } from '@/store/auth.store';
@@ -14,18 +15,26 @@ import api from '@/lib/api';
 const mainNav = [
   { href: '/',              icon: LayoutDashboard, label: '대시보드',  roles: null },
   { href: '/attendance',    icon: Clock,            label: '출퇴근',   roles: null },
+  { href: '/vacations',     icon: Umbrella,         label: '휴가 관리', roles: null },
+  { href: '/calendar',      icon: Calendar,         label: '캘린더',   roles: null },
   { href: '/tasks',         icon: ClipboardList,    label: '업무 관리', roles: null },
   { href: '/tasks/reports', icon: FileText,         label: '업무 보고', roles: null },
-  { href: '/schedule',      icon: Calendar,         label: '스케줄',   roles: null },
+  { href: '/schedule',      icon: FileText,         label: '스케줄',   roles: null },
   { href: '/messages',      icon: MessageSquare,    label: '메시지',   roles: null },
   { href: '/ai',            icon: Sparkles,         label: 'AI 도구',  roles: null },
 ];
 
 const bottomNav = [
-  { href: '/team',       icon: Users,        label: '직원 관리', roles: ['owner', 'manager'] },
-  { href: '/team/notes', icon: FileText,     label: '인사 노트', roles: ['owner', 'manager'] },
-  { href: '/salary',     icon: Banknote,     label: '급여 관리', roles: ['owner', 'manager'] },
-  { href: '/settings',   icon: Settings,     label: '설정',     roles: null },
+  { href: '/team',           icon: Users,          label: '직원 관리',  roles: ['owner', 'manager'] },
+  { href: '/team/notes',     icon: FileText,       label: '인사 노트',  roles: ['owner', 'manager'] },
+  { href: '/team/stats',     icon: BarChart2,      label: '조직 통계',  roles: ['owner', 'manager'] },
+  { href: '/salary',         icon: Banknote,       label: '급여 관리',  roles: ['owner', 'manager'] },
+  { href: '/approvals',      icon: FilePen,        label: '전자결재',   roles: null },
+  { href: '/contracts',      icon: FileSignature,  label: '계약 관리',  roles: ['owner', 'manager'] },
+  { href: '/certificates',   icon: Award,          label: '증명서 발급', roles: null },
+  { href: '/evaluations',    icon: ClipboardCheck, label: '인사평가',   roles: null },
+  { href: '/training',       icon: GraduationCap,  label: '교육 관리',  roles: null },
+  { href: '/settings',       icon: Settings,       label: '설정',      roles: null },
 ];
 
 export default function Sidebar() {

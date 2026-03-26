@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = process.env.NEXT_PUBLIC_ADMIN_API_URL ?? 'http://localhost:4001/admin/v1';
+const BASE_URL = process.env.NEXT_PUBLIC_ADMIN_API_URL ?? '/admin/v1';
 
 const api = axios.create({ baseURL: BASE_URL, timeout: 15000 });
 

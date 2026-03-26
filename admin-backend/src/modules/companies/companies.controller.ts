@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -28,6 +29,13 @@ export class CompaniesController {
   @Roles(AdminRole.READONLY)
   findAll(@Query() query: CompanyQueryDto) {
     return this.companiesService.findAll(query);
+  }
+
+  // GET /admin/v1/companies/stats
+  @Get('stats')
+  @Roles(AdminRole.READONLY)
+  getStats() {
+    return this.companiesService.getStats();
   }
 
   // GET /admin/v1/companies/:id
@@ -74,5 +82,25 @@ export class CompaniesController {
     @AdminUser() user: AdminJwtPayload,
   ) {
     return this.companiesService.changePlan(id, dto, user);
+  }
+
+  // POST /admin/v1/companies/:id/impersonate — 회사 owner 권한 임시 접속 (TTL 30분)
+  @Post(':id/impersonate')
+  @Roles(AdminRole.SUPPORT)
+  impersonate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @AdminUser() user: AdminJwtPayload,
+  ) {
+    return this.companiesService.impersonateCompany(id, user);
+  }
+
+  // DELETE /admin/v1/companies/:id/data — 고객사 데이터 삭제 (SUPER_ADMIN 전용)
+  @Delete(':id/data')
+  @Roles(AdminRole.SUPER_ADMIN)
+  deleteData(
+    @Param('id', ParseUUIDPipe) id: string,
+    @AdminUser() user: AdminJwtPayload,
+  ) {
+    return this.companiesService.deleteCompanyData(id, user);
   }
 }

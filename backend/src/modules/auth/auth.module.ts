@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
+import { GoogleStrategy } from './strategies/google.strategy';
 import { Company } from '../../database/entities/company.entity';
 import { User } from '../../database/entities/user.entity';
 import { EmailVerification } from '../../database/entities/email-verification.entity';
@@ -31,7 +32,7 @@ import { LoginLockService } from './services/login-lock.service';
     NotificationsModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtRefreshStrategy, LoginLockService],
+  providers: [AuthService, JwtStrategy, JwtRefreshStrategy, GoogleStrategy, LoginLockService],
   exports: [AuthService, JwtStrategy, PassportModule],
 })
 export class AuthModule {}

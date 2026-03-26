@@ -16,9 +16,9 @@ export default function TabsLayout() {
         tabBarStyle: {
           borderTopColor: '#F3F4F6',
           paddingBottom: 4,
-          height: 60,
+          height: 62,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '500' },
       }}
     >
       <Tabs.Screen
@@ -33,6 +33,13 @@ export default function TabsLayout() {
         options={{
           title: '근태',
           tabBarIcon: ({ focused }) => <Icon emoji="⏱️" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="vacations"
+        options={{
+          title: '휴가',
+          tabBarIcon: ({ focused }) => <Icon emoji="🌴" focused={focused} />,
         }}
       />
       <Tabs.Screen

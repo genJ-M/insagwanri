@@ -1,7 +1,7 @@
 import { Controller, Get, Patch, Body } from '@nestjs/common';
 import { WorkspaceService } from './workspace.service';
 import {
-  UpdateWorkspaceDto, UpdateWorkSettingsDto, UpdateGpsSettingsDto,
+  UpdateWorkspaceDto, UpdateWorkSettingsDto, UpdateGpsSettingsDto, UpdateBrandingDto,
 } from './dto/workspace.dto';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { AuthenticatedUser } from '../../common/types/jwt-payload.type';
@@ -32,5 +32,11 @@ export class WorkspaceController {
   @Patch('gps-settings')
   async updateGpsSettings(@GetUser() user: AuthenticatedUser, @Body() dto: UpdateGpsSettingsDto) {
     return this.workspaceService.updateGpsSettings(user, dto);
+  }
+
+  /** PATCH /workspace/branding — 커버 이미지 & 브랜딩 */
+  @Patch('branding')
+  async updateBranding(@GetUser() user: AuthenticatedUser, @Body() dto: UpdateBrandingDto) {
+    return this.workspaceService.updateBranding(user, dto);
   }
 }

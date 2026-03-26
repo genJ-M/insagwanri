@@ -56,7 +56,31 @@
       "Bash(docker restart:*)",
       "Bash(curl:*)",
       "Bash(docker exec:*)",
-      "Bash(grep -n \"onSuccess.*{$\\\\|invalidateQueries\\\\|      $\" C:/Users/coghd/gwanri_wang/web/src/app/\\\\\\(dashboard\\\\\\)/settings/page.tsx)"
+      "Bash(grep -n \"onSuccess.*{$\\\\|invalidateQueries\\\\|      $\" C:/Users/coghd/gwanri_wang/web/src/app/\\\\\\(dashboard\\\\\\)/settings/page.tsx)",
+      "Bash(find /c/Users/coghd/gwanri_wang/web/src -type f -name *.tsx -o -name *.ts -o -name *.css)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git remote:*)",
+      "Bash(node:*)",
+      "WebFetch(domain:insagwanri-backend.onrender.com)",
+      "WebFetch(domain:insagwanri-nine.vercel.app)",
+      "Bash(ls /c/Users/coghd/gwanri_wang/web/src/app/\\\\\\(dashboard\\\\\\)/)",
+      "WebFetch(domain:mediflow.kr)",
+      "Read(//c/Users/coghd/**)",
+      "WebFetch(domain:insagwanri-pfmkonb6t-jchong969-8474s-projects.vercel.app)",
+      "Bash(xargs cat:*)",
+      "Bash(grep -n \"TABS\\\\|''''basic''''\\\\|''''hr''''\\\\|''''work''''\\\\|준비중\\\\|tab ===\" /c/Users/coghd/gwanri_wang/web/src/app/\\\\\\(dashboard\\\\\\)/team/[id]/page.tsx)",
+      "Bash(grep \"^import\" /c/Users/coghd/gwanri_wang/web/src/app/\\\\\\(dashboard\\\\\\)/team/[id]/page.tsx)",
+      "Bash(cat \"C:/Users/coghd/gwanri_wang/admin-web/src/app/\\(admin\\)/subscriptions/page.tsx\")",
+      "Bash(cat \"C:/Users/coghd/gwanri_wang/admin-web/src/app/\\(admin\\)/coupons/page.tsx\")",
+      "Bash(cat \"C:/Users/coghd/gwanri_wang/admin-web/src/app/\\(admin\\)/tax/page.tsx\")",
+      "Bash(cat \"C:/Users/coghd/gwanri_wang/admin-web/src/app/\\(admin\\)/audit/page.tsx\")",
+      "Bash(cat \"C:/Users/coghd/gwanri_wang/admin-web/src/app/\\(admin\\)/companies/page.tsx\")",
+      "Bash(ls:*)",
+      "Bash(/c/Users/coghd/gwanri_wang/mobile/.env.example:*)",
+      "Bash(/c/Users/coghd/gwanri_wang/mobile/assets/README.md:*)",
+      "Bash(/c/Users/coghd/gwanri_wang/mobile/EAS_DEPLOY_GUIDE.md:*)"
     ]
   }
 }

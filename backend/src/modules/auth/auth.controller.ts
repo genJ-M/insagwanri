@@ -7,8 +7,13 @@ import {
   HttpStatus,
   Get,
   Query,
+  Req,
+  Res,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
+import { ConfigService } from '@nestjs/config';
+import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -20,10 +25,35 @@ import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { GetUser } from './decorators/get-user.decorator';
 import { Public } from './decorators/roles.decorator';
 import { AuthenticatedUser } from '../../common/types/jwt-payload.type';
+import { IsString, MinLength, IsIn } from 'class-validator';
+
+class SocialCompleteDto {
+  @IsString()
+  pending_token: string;
+
+  @IsString()
+  @MinLength(2)
+  company_name: string;
+}
+
+class MobileSocialDto {
+  @IsString()
+  @IsIn(['google', 'kakao'])
+  provider: 'google' | 'kakao';
+
+  @IsString()
+  code: string;
+
+  @IsString()
+  redirect_uri: string;
+}
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   /**
    * POST /auth/register
@@ -86,7 +116,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(@GetUser() user: AuthenticatedUser) {
-    await this.authService.logout(user.id);
+    await this.authService.logout(user.id, user.companyId);
     return {
       success: true,
       data: null,
@@ -155,5 +185,123 @@ export class AuthController {
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.authService.resetPassword(dto);
     return { success: true, data: { message: '비밀번호가 변경되었습니다. 다시 로그인해주세요.' } };
+  }
+
+  // ──────────────────────────────────────────────
+  // Google OAuth
+  // ──────────────────────────────────────────────
+
+  /** GET /auth/google — Google 로그인 시작 */
+  @Public()
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  googleLogin() {
+    // Passport가 Google 로그인 페이지로 리다이렉트
+  }
+
+  /** GET /auth/google/callback — Google OAuth 콜백 */
+  @Public()
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  async googleCallback(@Req() req: Request, @Res() res: Response) {
+    return this.handleSocialCallback(req.user as any, res);
+  }
+
+  // ──────────────────────────────────────────────
+  // Kakao OAuth
+  // ──────────────────────────────────────────────
+
+  /** GET /auth/kakao — Kakao 로그인 시작 */
+  @Public()
+  @Get('kakao')
+  kakaoLogin(@Res() res: Response) {
+    const clientId = this.configService.get<string>('KAKAO_CLIENT_ID');
+    const callbackUrl = encodeURIComponent(
+      this.configService.get<string>('KAKAO_CALLBACK_URL', ''),
+    );
+    const kakaoAuthUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${clientId}&redirect_uri=${callbackUrl}&response_type=code`;
+    res.redirect(kakaoAuthUrl);
+  }
+
+  /** GET /auth/kakao/callback — Kakao OAuth 콜백 */
+  @Public()
+  @Get('kakao/callback')
+  async kakaoCallback(@Query('code') code: string, @Res() res: Response) {
+    if (!code) {
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3000');
+      return res.redirect(`${frontendUrl}/login?error=kakao_denied`);
+    }
+    const socialUser = await this.authService.kakaoExchangeCode(code);
+    return this.handleSocialCallback(socialUser, res);
+  }
+
+  // ──────────────────────────────────────────────
+  // 소셜 회원가입 완료 (회사명 입력)
+  // ──────────────────────────────────────────────
+
+  /** POST /auth/social-complete — 소셜 신규 유저 회사명 입력 후 가입 완료 */
+  @Public()
+  @Post('social-complete')
+  @HttpCode(HttpStatus.CREATED)
+  async socialComplete(@Body() dto: SocialCompleteDto) {
+    const result = await this.authService.completeSocialRegister(dto.pending_token, dto.company_name);
+    return { success: true, data: result };
+  }
+
+  // ──────────────────────────────────────────────
+  // 모바일 소셜 로그인 (코드 교환 → JWT 반환)
+  // ──────────────────────────────────────────────
+
+  /**
+   * POST /auth/social/mobile
+   * 모바일 앱에서 OAuth 코드를 받아 JWT 발급.
+   * 신규 유저는 { type: 'register', pending_token } 반환.
+   */
+  @Public()
+  @Post('social/mobile')
+  @HttpCode(HttpStatus.OK)
+  async socialMobile(@Body() dto: MobileSocialDto) {
+    let socialUser;
+    if (dto.provider === 'google') {
+      socialUser = await this.authService.googleExchangeCode(dto.code, dto.redirect_uri);
+    } else {
+      socialUser = await this.authService.kakaoExchangeCode(dto.code, dto.redirect_uri);
+    }
+
+    const result = await this.authService.handleSocialLogin(socialUser);
+
+    if (result.type === 'login') {
+      return { success: true, data: { type: 'login', ...result.tokens } };
+    } else {
+      return {
+        success: true,
+        data: {
+          type: 'register',
+          pending_token: result.pendingToken,
+          name: result.socialUser.name,
+          email: result.socialUser.email,
+        },
+      };
+    }
+  }
+
+  // ──────────────────────────────────────────────
+  // 공통 소셜 콜백 처리
+  // ──────────────────────────────────────────────
+  private async handleSocialCallback(socialUser: any, res: Response) {
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3000');
+    const result = await this.authService.handleSocialLogin(socialUser);
+
+    if (result.type === 'login') {
+      const { access_token, refresh_token } = result.tokens;
+      return res.redirect(
+        `${frontendUrl}/auth/callback?access_token=${encodeURIComponent(access_token)}&refresh_token=${encodeURIComponent(refresh_token)}`,
+      );
+    } else {
+      // 신규 유저 — 회사명 입력 페이지로
+      return res.redirect(
+        `${frontendUrl}/auth/social-complete?pending_token=${encodeURIComponent(result.pendingToken)}&name=${encodeURIComponent(result.socialUser.name)}&email=${encodeURIComponent(result.socialUser.email)}`,
+      );
+    }
   }
 }

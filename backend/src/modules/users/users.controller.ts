@@ -48,6 +48,12 @@ export class UsersController {
     return this.usersService.inviteUser(user, dto);
   }
 
+  /** GET /users/org-stats — 조직 통계 */
+  @Get('org-stats')
+  async getOrgStats(@GetUser() user: AuthenticatedUser) {
+    return this.usersService.getOrgStats(user);
+  }
+
   /** GET /users/invites — 대기 중인 초대 목록 */
   @Get('invites')
   async findInvites(@GetUser() user: AuthenticatedUser) {
@@ -82,6 +88,16 @@ export class UsersController {
     return this.usersService.acceptInvite(dto);
   }
 
+  /** GET /users/:id/certificate?type=employment|career — 증명서 데이터 */
+  @Get(':id/certificate')
+  async getCertificate(
+    @GetUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Query('type') type: string,
+  ) {
+    return this.usersService.getCertificateData(user, id, type);
+  }
+
   /** GET /users/:id — 특정 직원 조회 */
   @Get(':id')
   async findOne(@GetUser() user: AuthenticatedUser, @Param('id') id: string) {
@@ -114,5 +130,69 @@ export class UsersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async deactivate(@GetUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.usersService.deactivateUser(user, id);
+  }
+
+  // ── 경력 ──────────────────────────────────
+  @Get(':id/careers')
+  getCareers(@GetUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.usersService.getCareers(user, id);
+  }
+
+  @Post(':id/careers')
+  @HttpCode(HttpStatus.CREATED)
+  createCareer(@GetUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: any) {
+    return this.usersService.createCareer(user, id, dto);
+  }
+
+  @Patch(':id/careers/:cid')
+  updateCareer(@GetUser() user: AuthenticatedUser, @Param('id') id: string, @Param('cid') cid: string, @Body() dto: any) {
+    return this.usersService.updateCareer(user, id, cid, dto);
+  }
+
+  @Delete(':id/careers/:cid')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteCareer(@GetUser() user: AuthenticatedUser, @Param('id') id: string, @Param('cid') cid: string) {
+    return this.usersService.deleteCareer(user, id, cid);
+  }
+
+  // ── 학력 ──────────────────────────────────
+  @Get(':id/educations')
+  getEducations(@GetUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.usersService.getEducations(user, id);
+  }
+
+  @Post(':id/educations')
+  @HttpCode(HttpStatus.CREATED)
+  createEducation(@GetUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: any) {
+    return this.usersService.createEducation(user, id, dto);
+  }
+
+  @Patch(':id/educations/:eid')
+  updateEducation(@GetUser() user: AuthenticatedUser, @Param('id') id: string, @Param('eid') eid: string, @Body() dto: any) {
+    return this.usersService.updateEducation(user, id, eid, dto);
+  }
+
+  @Delete(':id/educations/:eid')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteEducation(@GetUser() user: AuthenticatedUser, @Param('id') id: string, @Param('eid') eid: string) {
+    return this.usersService.deleteEducation(user, id, eid);
+  }
+
+  // ── 첨부문서 ──────────────────────────────
+  @Get(':id/documents')
+  getDocuments(@GetUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.usersService.getDocuments(user, id);
+  }
+
+  @Post(':id/documents')
+  @HttpCode(HttpStatus.CREATED)
+  createDocument(@GetUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: any) {
+    return this.usersService.createDocument(user, id, dto);
+  }
+
+  @Delete(':id/documents/:did')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteDocument(@GetUser() user: AuthenticatedUser, @Param('id') id: string, @Param('did') did: string) {
+    return this.usersService.deleteDocument(user, id, did);
   }
 }

@@ -3,8 +3,8 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  User, Building2, Clock, MapPin, Bell,
-  Eye, EyeOff, Check, AlertTriangle,
+  User, Building2, Clock, MapPin, Bell, Image,
+  Eye, EyeOff, Check, AlertTriangle, Smartphone,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import Header from '@/components/layout/Header';
@@ -15,8 +15,9 @@ import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ImageUploader from '@/components/ui/ImageUploader';
+import CoverCropModal from '@/components/ui/CoverCropModal';
 
-type Section = 'profile' | 'company' | 'work' | 'gps' | 'notification';
+type Section = 'profile' | 'company' | 'work' | 'gps' | 'notification' | 'branding';
 
 const DAYS = [
   { value: 0, label: '일' },
@@ -578,6 +579,176 @@ function GpsSection() {
   );
 }
 
+// ── 브랜딩 섹션 (owner only) ─────────────────────
+function BrandingSection() {
+  const queryClient = useQueryClient();
+
+  const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
+  const [coverImageMobileUrl, setCoverImageMobileUrl] = useState<string | null>(null);
+  const [coverMobileCrop, setCoverMobileCrop] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [brandingTextColor, setBrandingTextColor] = useState('#FFFFFF');
+  const [isDirty, setIsDirty] = useState(false);
+  const [showCropModal, setShowCropModal] = useState(false);
+
+  useUnsavedChanges(isDirty);
+
+  const { data: settings } = useQuery({
+    queryKey: ['workspace'],
+    queryFn: async () => { const { data } = await api.get('/workspace/settings'); return data.data ?? data; },
+  });
+
+  useEffect(() => {
+    if (settings) {
+      setCoverImageUrl(settings.coverImageUrl ?? null);
+      setCoverImageMobileUrl(settings.coverImageMobileUrl ?? null);
+      setCoverMobileCrop(settings.coverMobileCrop ?? null);
+      setBrandingTextColor(settings.brandingTextColor ?? '#FFFFFF');
+      setIsDirty(false);
+    }
+  }, [settings]);
+
+  const mutation = useMutation({
+    mutationFn: (payload: any) => api.patch('/workspace/branding', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace'] });
+      setIsDirty(false);
+      toast.success('저장되었습니다.', { id: 'settings-save' });
+    },
+  });
+
+  const handleSave = () => {
+    mutation.mutate({
+      coverImageUrl: coverImageUrl ?? null,
+      coverImageMobileUrl: coverImageMobileUrl ?? null,
+      coverMobileCrop: coverMobileCrop ?? null,
+      brandingTextColor,
+    });
+  };
+
+  return (
+    <>
+      <Card>
+        <CardHeader title="브랜딩 & 커버 이미지" description="대시보드 상단에 표시되는 커버 이미지를 설정합니다" />
+        <div className="mt-5 space-y-6">
+
+          {/* 웹 커버 이미지 */}
+          <div>
+            <label className="label mb-1.5">웹 커버 이미지 <span className="text-text-muted font-normal">(권장: 1920 × 400px)</span></label>
+            <ImageUploader
+              currentUrl={coverImageUrl}
+              onUpload={(url) => { setCoverImageUrl(url); setIsDirty(true); }}
+              feature="covers"
+              shape="cover"
+              fallback="커버 이미지 업로드"
+            />
+          </div>
+
+          {/* 모바일 커버 영역 선택 */}
+          {coverImageUrl && (
+            <div>
+              <label className="label mb-1.5 flex items-center gap-1.5">
+                <Smartphone className="h-4 w-4" />
+                모바일 커버 영역
+              </label>
+              <div className="flex items-center gap-3">
+                <div
+                  className="relative rounded-xl overflow-hidden bg-slate-100 border border-border"
+                  style={{ width: 195, height: 130 }}
+                >
+                  <img
+                    src={coverImageUrl}
+                    alt="커버 미리보기"
+                    className="w-full h-full object-cover"
+                    style={coverMobileCrop ? {
+                      objectFit: 'none',
+                      objectPosition: `-${coverMobileCrop.x * 100}% -${coverMobileCrop.y * 100}%`,
+                    } : {}}
+                  />
+                  {!coverMobileCrop && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                      <p className="text-white text-xs">영역 미지정</p>
+                    </div>
+                  )}
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowCropModal(true)}
+                >
+                  <Smartphone className="h-4 w-4 mr-1.5" />
+                  모바일 영역 설정
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* 텍스트 색상 */}
+          <div>
+            <label className="label mb-1.5">커버 텍스트 색상</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={brandingTextColor}
+                onChange={(e) => { setBrandingTextColor(e.target.value); setIsDirty(true); }}
+                className="h-9 w-16 rounded-lg border border-border cursor-pointer"
+              />
+              <span className="text-sm text-text-secondary font-mono">{brandingTextColor}</span>
+              <div className="flex gap-2">
+                {['#FFFFFF', '#1E293B', '#F1F5F9'].map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => { setBrandingTextColor(c); setIsDirty(true); }}
+                    className="h-7 w-7 rounded-full border-2 border-border hover:scale-110 transition-transform"
+                    style={{ backgroundColor: c }}
+                    title={c}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 미리보기 */}
+          {coverImageUrl && (
+            <div>
+              <label className="label mb-1.5">미리보기</label>
+              <div
+                className="relative w-full h-28 rounded-xl overflow-hidden"
+                style={{ backgroundImage: `url(${coverImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+              >
+                <div className="absolute inset-0 bg-gradient-to-b from-black/20 to-black/50" />
+                <div className="absolute bottom-3 left-4" style={{ color: brandingTextColor }}>
+                  <p className="text-sm font-bold">{settings?.name ?? '회사명'}</p>
+                  <p className="text-xs opacity-80">대시보드</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-3">
+            {isDirty && <span className="text-xs text-amber-600">저장되지 않은 변경사항이 있습니다</span>}
+            <Button size="sm" loading={mutation.isPending} onClick={handleSave}>저장</Button>
+          </div>
+        </div>
+      </Card>
+
+      {/* 크롭 모달 */}
+      {showCropModal && coverImageUrl && (
+        <CoverCropModal
+          webImageUrl={coverImageUrl}
+          initialCrop={coverMobileCrop}
+          onConfirm={(crop, mobileUrl) => {
+            setCoverMobileCrop(crop);
+            setCoverImageMobileUrl(mobileUrl);
+            setIsDirty(true);
+            setShowCropModal(false);
+          }}
+          onClose={() => setShowCropModal(false)}
+        />
+      )}
+    </>
+  );
+}
+
 // ── 메인 설정 페이지 ─────────────────────────────
 export default function SettingsPage() {
   usePageTitle('설정');
@@ -589,6 +760,7 @@ export default function SettingsPage() {
   const allMenus: { key: Section; label: string; icon: any; ownerOnly?: boolean; disabled?: boolean }[] = [
     { key: 'profile',      label: '내 프로필',   icon: User },
     { key: 'company',      label: '회사 정보',   icon: Building2, ownerOnly: true },
+    { key: 'branding',     label: '브랜딩',      icon: Image,     ownerOnly: true },
     { key: 'work',         label: '근무 설정',   icon: Clock,     ownerOnly: true },
     { key: 'gps',          label: 'GPS 설정',    icon: MapPin,    ownerOnly: true },
     { key: 'notification', label: '알림 설정',   icon: Bell,      disabled: true },
@@ -630,6 +802,7 @@ export default function SettingsPage() {
           <div className="flex-1 min-w-0">
             {section === 'profile'      && <ProfileSection />}
             {section === 'company'      && <CompanySection />}
+            {section === 'branding'     && <BrandingSection />}
             {section === 'work'         && <WorkSection />}
             {section === 'gps'          && <GpsSection />}
             {section === 'notification' && (

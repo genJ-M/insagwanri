@@ -3,6 +3,9 @@
     "name": "관리왕",
     "slug": "gwanri-wang",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,9 +18,11 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "kr.gwanriwang.app",
+      "buildNumber": "1",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "출퇴근 기록을 위해 위치 정보가 필요합니다.",
-        "NSLocationAlwaysUsageDescription": "출퇴근 자동 감지를 위해 위치 정보가 필요합니다."
+        "NSLocationAlwaysUsageDescription": "출퇴근 자동 감지를 위해 위치 정보가 필요합니다.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "출퇴근 기록을 위해 위치 정보가 필요합니다."
       }
     },
     "android": {
@@ -26,6 +31,7 @@
         "backgroundColor": "#2563EB"
       },
       "package": "kr.gwanriwang.app",
+      "versionCode": 1,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
@@ -35,6 +41,11 @@
     },
     "web": {
       "bundler": "metro"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/YOUR_EAS_PROJECT_ID",
+      "enabled": true,
+      "fallbackToCacheTimeout": 0
     },
     "plugins": [
       "expo-router",
@@ -56,6 +67,7 @@
       "eas": {
         "projectId": "YOUR_EAS_PROJECT_ID"
       }
-    }
+    },
+    "owner": "YOUR_EXPO_ACCOUNT_SLUG"
   }
 }
