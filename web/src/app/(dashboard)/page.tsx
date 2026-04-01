@@ -9,10 +9,10 @@ import {
   LogIn, LogOut, TrendingUp, TrendingDown,
   CheckCircle2, Timer, Minus, ChevronRight,
   CalendarDays, BarChart3, Zap,
+  TriangleAlert, FileText, ShieldCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
-import Header from '@/components/layout/Header';
 import DashboardCover from '@/components/layout/DashboardCover';
 import Card, { CardHeader } from '@/components/ui/Card';
 import Badge, {
@@ -353,6 +353,17 @@ export default function DashboardPage() {
     },
   });
 
+  // 이번 달 할 일 (owner/manager)
+  const { data: todoItems } = useQuery({
+    queryKey: ['tax-todo'],
+    queryFn: async () => {
+      const { data } = await api.get('/tax-documents/todo');
+      return (data?.data ?? data ?? []) as any[];
+    },
+    enabled: isManager,
+    staleTime: 1000 * 60 * 30,
+  });
+
   // 구독 상태 (owner)
   const { data: subscriptionData } = useQuery({
     queryKey: ['subscription-status'],
@@ -375,7 +386,6 @@ export default function DashboardPage() {
         <p className="text-base font-semibold opacity-90">{greeting()}, {user?.name ?? ''}님</p>
         <p className="text-xs opacity-70 mt-0.5">{format(new Date(), 'yyyy년 M월 d일 (EEE)', { locale: ko })}</p>
       </DashboardCover>
-      <Header title="대시보드" />
 
       <main className="page-container space-y-6">
         {/* 구독 배너 */}
@@ -513,6 +523,56 @@ export default function DashboardPage() {
               </div>
             </div>
             <TeamPresence records={records} />
+          </div>
+        )}
+
+        {/* 이번 달 할 일 (owner/manager) */}
+        {isManager && todoItems && todoItems.length > 0 && (
+          <div className="bg-white rounded-xl border border-border shadow-card">
+            <div className="flex items-center justify-between p-6 pb-4">
+              <div>
+                <h3 className="text-[15px] font-semibold text-text-primary flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-amber-500" />
+                  세무·노무 할 일
+                </h3>
+                <p className="text-xs text-text-muted mt-0.5">35일 이내 마감 기준</p>
+              </div>
+              <Link
+                href="/tax-documents"
+                className="flex items-center gap-1 text-xs font-medium text-primary-500 hover:text-primary-600 transition-colors"
+              >
+                서류 관리 <ChevronRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+            <div className="px-6 pb-5 space-y-2">
+              {todoItems.slice(0, 5).map((item: any) => {
+                const urgencyColor = item.urgency === 'urgent'
+                  ? 'border-l-red-400 bg-red-50'
+                  : item.urgency === 'warning'
+                    ? 'border-l-amber-400 bg-amber-50'
+                    : 'border-l-gray-200 bg-gray-50';
+                const badgeColor = item.urgency === 'urgent'
+                  ? 'bg-red-100 text-red-700'
+                  : item.urgency === 'warning'
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-gray-100 text-gray-600';
+                const Icon = item.category === 'tax' ? FileText : item.category === 'insurance' ? ShieldCheck : TriangleAlert;
+                return (
+                  <Link key={item.id} href={item.actionUrl ?? '/tax-documents'}>
+                    <div className={clsx('flex items-center gap-3 p-3 rounded-lg border-l-4 cursor-pointer hover:opacity-80 transition-opacity', urgencyColor)}>
+                      <Icon className="h-4 w-4 text-text-muted flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium text-text-primary truncate">{item.title}</p>
+                        <p className="text-[11px] text-text-muted truncate">{item.description}</p>
+                      </div>
+                      <span className={clsx('text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0', badgeColor)}>
+                        {item.daysLeft <= 0 ? '오늘' : `D-${item.daysLeft}`}
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
         )}
 

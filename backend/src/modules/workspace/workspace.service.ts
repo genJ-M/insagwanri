@@ -25,11 +25,17 @@ export class WorkspaceService {
   async updateWorkspace(currentUser: AuthenticatedUser, dto: UpdateWorkspaceDto) {
     this.requireOwner(currentUser);
     await this.companyRepo.update(currentUser.companyId, {
-      ...(dto.name    && { name: dto.name }),
-      ...(dto.industry && { industry: dto.industry }),
-      ...(dto.phone   && { phone: dto.phone }),
-      ...(dto.address && { address: dto.address }),
-      ...(dto.logoUrl !== undefined && { logoUrl: dto.logoUrl }),
+      ...(dto.name               && { name: dto.name }),
+      ...(dto.companyType        !== undefined && { companyType: dto.companyType }),
+      ...(dto.businessNumber     !== undefined && { businessNumber: dto.businessNumber }),
+      ...(dto.corporateNumber    !== undefined && { corporateNumber: dto.corporateNumber }),
+      ...(dto.representativeName !== undefined && { representativeName: dto.representativeName }),
+      ...(dto.businessType       !== undefined && { businessType: dto.businessType }),
+      ...(dto.businessItem       !== undefined && { businessItem: dto.businessItem }),
+      ...(dto.industry           !== undefined && { industry: dto.industry }),
+      ...(dto.phone              !== undefined && { phone: dto.phone }),
+      ...(dto.address            !== undefined && { address: dto.address }),
+      ...(dto.logoUrl            !== undefined && { logoUrl: dto.logoUrl }),
     });
     return this.getSettings(currentUser);
   }

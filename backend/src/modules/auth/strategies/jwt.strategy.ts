@@ -32,7 +32,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         id: payload.sub,
         companyId: payload.companyId,
       },
-      select: ['id', 'companyId', 'role', 'email', 'name', 'status', 'deletedAt'],
+      select: ['id', 'companyId', 'role', 'email', 'name', 'department', 'status', 'deletedAt'],
     });
 
     if (!user) {
@@ -53,6 +53,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       role: user.role,
       email: user.email,
       name: user.name,
+      department: user.department,
     };
   }
 }

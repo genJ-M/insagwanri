@@ -15,6 +15,12 @@ export enum CompanyPlan {
   ENTERPRISE = 'enterprise',
 }
 
+export enum CompanyType {
+  INDIVIDUAL = 'individual', // 개인사업자
+  CORPORATION = 'corporation', // 법인
+  NONE = 'none', // 미등록 / 개인
+}
+
 export enum CompanyStatus {
   ACTIVE = 'active',
   SUSPENDED = 'suspended',
@@ -31,6 +37,26 @@ export class Company {
 
   @Column({ name: 'business_number', type: 'varchar', length: 20, unique: true, nullable: true })
   businessNumber: string | null;
+
+  /** 회사 유형: individual(개인사업자) | corporation(법인) | none(미등록) */
+  @Column({ name: 'company_type', type: 'varchar', length: 20, default: CompanyType.NONE })
+  companyType: CompanyType;
+
+  /** 법인등록번호 (법인만) */
+  @Column({ name: 'corporate_number', type: 'varchar', length: 20, nullable: true })
+  corporateNumber: string | null;
+
+  /** 대표자명 */
+  @Column({ name: 'representative_name', type: 'varchar', length: 50, nullable: true })
+  representativeName: string | null;
+
+  /** 업태 (예: 제조업, 서비스업) */
+  @Column({ name: 'business_type', type: 'varchar', length: 100, nullable: true })
+  businessType: string | null;
+
+  /** 업종/종목 (예: 소프트웨어 개발) */
+  @Column({ name: 'business_item', type: 'varchar', length: 100, nullable: true })
+  businessItem: string | null;
 
   @Column({ type: 'varchar', length: 50, nullable: true })
   industry: string | null;

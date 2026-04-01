@@ -11,7 +11,7 @@ function InviteContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token') ?? '';
 
-  const [form, setForm] = useState({ name: '', phone: '', password: '', passwordConfirm: '' });
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', passwordConfirm: '' });
   const [showPw, setShowPw] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [done, setDone] = useState(false);
@@ -24,8 +24,10 @@ function InviteContent() {
       return data.data as {
         companyName: string;
         inviterName: string;
-        email: string;
+        email: string | null;
+        recipientName: string | null;
         role: string;
+        inviteType: 'email' | 'phone' | 'link';
         expiresAt: string;
       };
     },
@@ -33,20 +35,29 @@ function InviteContent() {
     retry: false,
   });
 
+  // 수신자 이름 미리 채우기
+  useEffect(() => {
+    if (inviteInfo?.recipientName) setForm(f => ({ ...f, name: inviteInfo.recipientName! }));
+  }, [inviteInfo]);
+
   // 초대 수락
   const acceptMutation = useMutation({
-    mutationFn: async (payload: { token: string; name: string; phone?: string; password: string }) => {
+    mutationFn: async (payload: { token: string; name: string; email?: string; phone?: string; password: string }) => {
       const { data } = await api.post('/users/accept-invite', payload);
       return data.data;
     },
-    onSuccess: () => {
-      setDone(true);
-    },
+    onSuccess: () => setDone(true),
   });
+
+  const needsEmail = inviteInfo?.inviteType !== 'email'; // phone/link 초대는 이메일 직접 입력
 
   const validate = () => {
     const errs: Record<string, string> = {};
     if (!form.name.trim()) errs.name = '이름을 입력해주세요.';
+    if (needsEmail) {
+      if (!form.email.trim()) errs.email = '이메일을 입력해주세요.';
+      else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = '올바른 이메일 형식이 아닙니다.';
+    }
     if (!form.password) errs.password = '비밀번호를 입력해주세요.';
     else if (form.password.length < 8) errs.password = '비밀번호는 8자 이상이어야 합니다.';
     if (form.password !== form.passwordConfirm) errs.passwordConfirm = '비밀번호가 일치하지 않습니다.';
@@ -60,6 +71,7 @@ function InviteContent() {
     acceptMutation.mutate({
       token,
       name: form.name.trim(),
+      email: needsEmail ? form.email.trim() : undefined,
       phone: form.phone.trim() || undefined,
       password: form.password,
     });
@@ -145,7 +157,7 @@ function InviteContent() {
             <span className="font-semibold">{inviteInfo.companyName}</span>에 초대했습니다.
           </p>
           <p className="text-blue-600 mt-0.5">
-            {inviteInfo.email} · {roleLabel[inviteInfo.role] ?? inviteInfo.role}
+            {inviteInfo.email ? `${inviteInfo.email} · ` : ''}{roleLabel[inviteInfo.role] ?? inviteInfo.role}
           </p>
         </div>
 
@@ -173,6 +185,22 @@ function InviteContent() {
               />
               {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
             </div>
+
+            {/* 이메일 (전화번호·링크 초대 시 필수 입력) */}
+            {needsEmail && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">이메일 *</label>
+                <input
+                  type="email"
+                  placeholder="example@company.com"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm
+                             focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email}</p>}
+              </div>
+            )}
 
             {/* 전화번호 (선택) */}
             <div>

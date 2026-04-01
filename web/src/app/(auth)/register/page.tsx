@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, EyeOff, Mail, ArrowLeft, RefreshCw, Check, X } from 'lucide-react';
+import { Eye, EyeOff, Mail, ArrowLeft, RefreshCw, Check, X, Building, User, Briefcase } from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api/v1';
 import { useMutation } from '@tanstack/react-query';
@@ -12,6 +12,7 @@ import Button from '@/components/ui/Button';
 import { clsx } from 'clsx';
 
 type Step = 'form' | 'verify';
+type CompanyType = 'none' | 'individual' | 'corporation';
 
 const PW_RULES = [
   { label: '8자 이상',            test: (pw: string) => pw.length >= 8 },
@@ -19,6 +20,12 @@ const PW_RULES = [
   { label: '소문자 포함 (a-z)',   test: (pw: string) => /[a-z]/.test(pw) },
   { label: '숫자 포함 (0-9)',     test: (pw: string) => /\d/.test(pw) },
   { label: '특수문자 (@$!%*?&)',  test: (pw: string) => /[@$!%*?&]/.test(pw) },
+];
+
+const COMPANY_TYPES: { value: CompanyType; icon: typeof Building; label: string; desc: string }[] = [
+  { value: 'none', icon: User, label: '미등록 / 개인', desc: '사업자 등록 없이 시작' },
+  { value: 'individual', icon: Briefcase, label: '개인사업자', desc: '사업자등록번호 보유' },
+  { value: 'corporation', icon: Building, label: '법인', desc: '법인등록번호 보유' },
 ];
 
 export default function RegisterPage() {
@@ -31,10 +38,14 @@ export default function RegisterPage() {
   const [cooldown, setCooldown] = useState(0);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [isNavigating, setIsNavigating] = useState(false);
+  const [companyType, setCompanyType] = useState<CompanyType>('none');
+  const [showBizFields, setShowBizFields] = useState(false);
 
   const [form, setForm] = useState({
     email: '', password: '', passwordConfirm: '',
     name: '', companyName: '',
+    businessNumber: '', corporateNumber: '', representativeName: '',
+    businessType: '', businessItem: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -48,6 +59,14 @@ export default function RegisterPage() {
       case 'companyName':
         if (!value.trim()) return '회사명을 입력해주세요.';
         if (value.trim().length < 2) return '회사명은 2자 이상 입력해주세요.';
+        return '';
+      case 'businessNumber':
+        if (companyType === 'individual' && !value.trim()) return '사업자등록번호를 입력해주세요.';
+        if (value && !/^\d{3}-\d{2}-\d{5}$/.test(value)) return '형식: 123-45-67890';
+        return '';
+      case 'corporateNumber':
+        if (companyType === 'corporation' && !value.trim()) return '법인등록번호를 입력해주세요.';
+        if (value && !/^\d{6}-\d{7}$/.test(value)) return '형식: 110111-1234567';
         return '';
       case 'password':
         if (value.length < 8) return '비밀번호는 8자 이상이어야 합니다.';
@@ -75,10 +94,18 @@ export default function RegisterPage() {
 
   const validate = (): boolean => {
     const keys = ['name', 'email', 'companyName', 'password', 'passwordConfirm'] as const;
+    const bizKeys: (keyof typeof form)[] = companyType === 'individual'
+      ? ['businessNumber']
+      : companyType === 'corporation'
+      ? ['corporateNumber']
+      : [];
+    const allKeys = [...keys, ...bizKeys];
     const errs: Record<string, string> = {};
-    keys.forEach((k) => { const msg = validateField(k, form[k]); if (msg) errs[k] = msg; });
+    allKeys.forEach((k) => { const msg = validateField(k, form[k]); if (msg) errs[k] = msg; });
     setErrors(errs);
-    setTouched({ name: true, email: true, companyName: true, password: true, passwordConfirm: true });
+    const touchAll: Record<string, boolean> = {};
+    allKeys.forEach((k) => { touchAll[k] = true; });
+    setTouched(touchAll);
     return Object.keys(errs).length === 0;
   };
 
@@ -100,7 +127,8 @@ export default function RegisterPage() {
     onError: (err: any) => {
       const message: string = err.response?.data?.error?.message ?? err.response?.data?.message ?? '가입에 실패했습니다.';
       if (message.includes('이메일')) setErrors({ email: message });
-      else if (message.includes('비밀번호')) setErrors({ password: message });
+      else if (message.includes('사업자')) setErrors({ businessNumber: message });
+      else if (message.includes('법인')) setErrors({ corporateNumber: message });
       else setErrors({ submit: message });
     },
   });
@@ -119,7 +147,19 @@ export default function RegisterPage() {
     e.preventDefault();
     if (!validate()) return;
     setErrors({});
-    registerMutation.mutate({ email: form.email, password: form.password, name: form.name, company_name: form.companyName });
+    const payload: Record<string, any> = {
+      email: form.email,
+      password: form.password,
+      name: form.name,
+      company_name: form.companyName,
+      company_type: companyType,
+    };
+    if (companyType === 'individual' && form.businessNumber) payload.business_number = form.businessNumber;
+    if (companyType === 'corporation' && form.corporateNumber) payload.corporate_number = form.corporateNumber;
+    if (form.representativeName.trim()) payload.representative_name = form.representativeName.trim();
+    if (form.businessType.trim()) payload.business_type = form.businessType.trim();
+    if (form.businessItem.trim()) payload.business_item = form.businessItem.trim();
+    registerMutation.mutate(payload);
   };
 
   const pwAllPassed = PW_RULES.every((r) => r.test(form.password));
@@ -137,7 +177,7 @@ export default function RegisterPage() {
       </div>
 
       {step === 'form' && (
-        <div className="w-full max-w-[440px] bg-white rounded-2xl border border-border shadow-card p-8">
+        <div className="w-full max-w-[480px] bg-white rounded-2xl border border-border shadow-card p-8">
           <h1 className="text-[22px] font-bold text-text-primary mb-1">무료회원가입</h1>
           <p className="text-sm text-text-muted mb-7">14일 무료 체험 · 신용카드 불필요</p>
 
@@ -167,6 +207,104 @@ export default function RegisterPage() {
                 {errors.companyName && <p className="text-xs text-red-500 mt-1">{errors.companyName}</p>}
               </div>
             </div>
+
+            {/* 사업자 유형 선택 */}
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">사업자 구분</label>
+              <div className="grid grid-cols-3 gap-2">
+                {COMPANY_TYPES.map(({ value, icon: Icon, label, desc }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setCompanyType(value)}
+                    className={clsx(
+                      'flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl border text-center transition-all',
+                      companyType === value
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 hover:border-gray-300 text-gray-600',
+                    )}
+                  >
+                    <Icon className={clsx('h-5 w-5', companyType === value ? 'text-blue-600' : 'text-gray-400')} />
+                    <span className="text-xs font-semibold leading-tight">{label}</span>
+                    <span className="text-[10px] text-gray-400 leading-tight">{desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 개인사업자 — 사업자등록번호 */}
+            {companyType === 'individual' && (
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1.5">사업자등록번호 *</label>
+                <input
+                  type="text" placeholder="123-45-67890"
+                  value={form.businessNumber}
+                  onChange={(e) => handleChange('businessNumber', e.target.value)}
+                  onBlur={() => handleBlur('businessNumber')}
+                  className={inputCls('businessNumber')}
+                />
+                {errors.businessNumber && <p className="text-xs text-red-500 mt-1">{errors.businessNumber}</p>}
+              </div>
+            )}
+
+            {/* 법인 — 법인등록번호 */}
+            {companyType === 'corporation' && (
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1.5">법인등록번호 *</label>
+                <input
+                  type="text" placeholder="110111-1234567"
+                  value={form.corporateNumber}
+                  onChange={(e) => handleChange('corporateNumber', e.target.value)}
+                  onBlur={() => handleBlur('corporateNumber')}
+                  className={inputCls('corporateNumber')}
+                />
+                {errors.corporateNumber && <p className="text-xs text-red-500 mt-1">{errors.corporateNumber}</p>}
+              </div>
+            )}
+
+            {/* 추가 사업자 정보 (선택) — 토글 */}
+            {companyType !== 'none' && (
+              <button
+                type="button"
+                onClick={() => setShowBizFields(!showBizFields)}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                {showBizFields ? '▲ 추가 정보 접기' : '▼ 대표자명 · 업태 · 업종 입력 (선택)'}
+              </button>
+            )}
+            {showBizFields && companyType !== 'none' && (
+              <div className="space-y-3 bg-gray-50 rounded-xl p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-text-secondary mb-1">대표자명</label>
+                    <input
+                      type="text" placeholder="홍길동"
+                      value={form.representativeName}
+                      onChange={(e) => handleChange('representativeName', e.target.value)}
+                      className="input text-sm py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-text-secondary mb-1">업태</label>
+                    <input
+                      type="text" placeholder="서비스업"
+                      value={form.businessType}
+                      onChange={(e) => handleChange('businessType', e.target.value)}
+                      className="input text-sm py-2"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1">업종/종목</label>
+                  <input
+                    type="text" placeholder="소프트웨어 개발"
+                    value={form.businessItem}
+                    onChange={(e) => handleChange('businessItem', e.target.value)}
+                    className="input text-sm py-2"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* 이메일 */}
             <div>
@@ -221,7 +359,7 @@ export default function RegisterPage() {
 
             {/* 비밀번호 확인 */}
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">비밀번호 *</label>
+              <label className="block text-sm font-medium text-text-secondary mb-1.5">비밀번호 확인 *</label>
               <input
                 type="password" placeholder="비밀번호를 한 번 더 입력해주세요"
                 value={form.passwordConfirm}
@@ -265,15 +403,6 @@ export default function RegisterPage() {
                 <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
               </svg>
               Google로 시작하기
-            </a>
-            <a
-              href={`${API_URL}/auth/kakao`}
-              className="flex items-center justify-center gap-3 w-full bg-[#FEE500] rounded-xl py-3 text-sm font-medium text-[#191919] hover:bg-[#FDD800] transition-colors"
-            >
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path fillRule="evenodd" clipRule="evenodd" d="M9 0C4.029 0 0 3.148 0 7.031c0 2.486 1.617 4.672 4.067 5.934L3.09 16.57a.29.29 0 00.434.322L8.3 13.909c.231.02.465.031.7.031 4.971 0 9-3.148 9-7.031S13.971 0 9 0z" fill="#191919"/>
-              </svg>
-              Kakao로 시작하기
             </a>
           </div>
         </div>

@@ -9,12 +9,12 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, IsNull } from 'typeorm';
+import { Repository, DataSource, IsNull, LessThan } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
-import { Company, CompanyStatus } from '../../database/entities/company.entity';
+import { Company, CompanyStatus, CompanyType } from '../../database/entities/company.entity';
 import { User, UserStatus } from '../../database/entities/user.entity';
 import { EmailVerification } from '../../database/entities/email-verification.entity';
 import { UserRole, JwtPayload } from '../../common/types/jwt-payload.type';
@@ -24,6 +24,8 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { EmailService } from '../notifications/email.service';
 import { LoginLockService } from './services/login-lock.service';
 import { PasswordResetToken } from '../../database/entities/password-reset-token.entity';
+import { PhoneOtp, OtpPurpose } from '../../database/entities/phone-otp.entity';
+import { SmsService } from '../../common/sms/sms.service';
 import { SocialUser } from './strategies/google.strategy';
 import { CryptoService } from '../../common/crypto/crypto.service';
 import { ActivityLogService } from '../activity-logs/activity-log.service';
@@ -46,10 +48,14 @@ export class AuthService {
     @InjectRepository(PasswordResetToken)
     private passwordResetTokenRepository: Repository<PasswordResetToken>,
 
+    @InjectRepository(PhoneOtp)
+    private phoneOtpRepository: Repository<PhoneOtp>,
+
     private jwtService: JwtService,
     private configService: ConfigService,
     private dataSource: DataSource,
     private emailService: EmailService,
+    private smsService: SmsService,
     private loginLockService: LoginLockService,
     private cryptoService: CryptoService,
     private activityLogService: ActivityLogService,
@@ -90,6 +96,11 @@ export class AuthService {
       const company = queryRunner.manager.create(Company, {
         name: dto.company_name,
         businessNumber: dto.business_number ?? null,
+        companyType: dto.company_type ?? CompanyType.NONE,
+        corporateNumber: dto.corporate_number ?? null,
+        representativeName: dto.representative_name ?? null,
+        businessType: dto.business_type ?? null,
+        businessItem: dto.business_item ?? null,
         status: CompanyStatus.ACTIVE,
       });
       const savedCompany = await queryRunner.manager.save(company);
@@ -250,6 +261,9 @@ export class AuthService {
     }
 
     // 3. 비밀번호 검증
+    if (!user.passwordHash) {
+      throw new UnauthorizedException('이 계정은 소셜 로그인 전용입니다. 소셜 계정으로 로그인해 주세요.');
+    }
     const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!isPasswordValid) {
       const failCount = await this.loginLockService.recordFailure(dto.email);
@@ -614,6 +628,86 @@ export class AuthService {
       name: googleUser.name ?? googleUser.email.split('@')[0],
       profileImageUrl: googleUser.picture ?? null,
     };
+  }
+
+  // ──────────────────────────────────────────────
+  // 전화번호 OTP 발송 (비밀번호 재설정용)
+  // ──────────────────────────────────────────────
+  async sendPhoneOtp(phone: string): Promise<void> {
+    // 보안: 전화번호 등록 여부를 외부에 노출하지 않음 (항상 성공 응답)
+    const normalizedPhone = phone.replace(/\D/g, '').replace(/^82/, '0');
+    const user = await this.userRepository.findOne({
+      where: { phone: normalizedPhone },
+      select: ['id', 'phone', 'name', 'deletedAt'],
+    });
+    if (!user || user.deletedAt) return;
+
+    // 기존 미사용 OTP 만료 처리
+    await this.phoneOtpRepository.update(
+      { phone: normalizedPhone, purpose: OtpPurpose.PASSWORD_RESET, usedAt: IsNull() as any },
+      { usedAt: new Date() },
+    );
+
+    // 6자리 랜덤 코드 생성
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5분
+
+    await this.phoneOtpRepository.save(
+      this.phoneOtpRepository.create({
+        phone: normalizedPhone,
+        code,
+        purpose: OtpPurpose.PASSWORD_RESET,
+        expiresAt,
+      }),
+    );
+
+    // SMS 발송 (fire-and-forget)
+    this.smsService.sendOtp(normalizedPhone, code).catch(() => {});
+  }
+
+  // ──────────────────────────────────────────────
+  // OTP 검증 → 비밀번호 재설정 토큰 발급
+  // ──────────────────────────────────────────────
+  async verifyPhoneOtp(phone: string, code: string): Promise<{ resetToken: string }> {
+    const normalizedPhone = phone.replace(/\D/g, '').replace(/^82/, '0');
+
+    const otp = await this.phoneOtpRepository.findOne({
+      where: {
+        phone: normalizedPhone,
+        code,
+        purpose: OtpPurpose.PASSWORD_RESET,
+        usedAt: IsNull() as any,
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!otp) throw new BadRequestException('인증번호가 올바르지 않습니다.');
+    if (otp.expiresAt < new Date()) throw new BadRequestException('인증번호가 만료되었습니다. 다시 요청해주세요.');
+
+    // 사용자 조회
+    const user = await this.userRepository.findOne({
+      where: { phone: normalizedPhone },
+      select: ['id'],
+    });
+    if (!user) throw new BadRequestException('등록된 전화번호가 아닙니다.');
+
+    // 기존 미사용 이메일 토큰 무효화 후, 비밀번호 재설정 토큰 생성
+    await this.passwordResetTokenRepository.update(
+      { userId: user.id, usedAt: IsNull() as any },
+      { usedAt: new Date() },
+    );
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15분
+
+    await Promise.all([
+      this.passwordResetTokenRepository.save(
+        this.passwordResetTokenRepository.create({ userId: user.id, token: resetToken, expiresAt }),
+      ),
+      this.phoneOtpRepository.update(otp.id, { usedAt: new Date(), verifiedAt: new Date(), resetToken }),
+    ]);
+
+    return { resetToken };
   }
 
   // ──────────────────────────────────────────────

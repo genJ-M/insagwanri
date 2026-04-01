@@ -5,7 +5,6 @@ import { useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
 import { toast } from 'react-hot-toast';
-import Header from '@/components/layout/Header';
 import Card, { CardHeader } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
@@ -125,7 +124,6 @@ export default function SubscriptionPage() {
   if (isLoading) {
     return (
       <div className="flex-1 overflow-y-auto">
-        <Header title="구독 관리" />
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500" />
         </div>
@@ -138,8 +136,6 @@ export default function SubscriptionPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <Header title="구독 관리" />
-
       <main className="p-8 space-y-6 max-w-4xl">
         {/* 현재 구독 현황 */}
         <Card>

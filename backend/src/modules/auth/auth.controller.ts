@@ -286,6 +286,33 @@ export class AuthController {
   }
 
   // ──────────────────────────────────────────────
+  // 전화번호 OTP 발송 (비밀번호 찾기)
+  // ──────────────────────────────────────────────
+  @Public()
+  @Post('send-phone-otp')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 60000 } }) // 60초당 3회 제한
+  async sendPhoneOtp(@Body() body: { phone: string }) {
+    await this.authService.sendPhoneOtp(body.phone);
+    return {
+      success: true,
+      data: { message: '등록된 번호라면 인증번호를 발송했습니다.' },
+    };
+  }
+
+  // ──────────────────────────────────────────────
+  // OTP 검증 → 비밀번호 재설정 토큰 반환
+  // ──────────────────────────────────────────────
+  @Public()
+  @Post('verify-phone-otp')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async verifyPhoneOtp(@Body() body: { phone: string; code: string }) {
+    const result = await this.authService.verifyPhoneOtp(body.phone, body.code);
+    return { success: true, data: result };
+  }
+
+  // ──────────────────────────────────────────────
   // 공통 소셜 콜백 처리
   // ──────────────────────────────────────────────
   private async handleSocialCallback(socialUser: any, res: Response) {

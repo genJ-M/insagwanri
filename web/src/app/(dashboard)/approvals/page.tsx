@@ -12,6 +12,7 @@ import { ko } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
+import RichTextEditor, { RichTextViewer } from '@/components/ui/RichTextEditor';
 
 // ─── 타입 ────────────────────────────────────────────
 type DocType = 'general' | 'vacation' | 'expense' | 'overtime' | 'business_trip' | 'hr';
@@ -141,7 +142,8 @@ function DocForm({
 
   const handleSubmit = async () => {
     if (!title.trim()) { toast.error('제목을 입력하세요.'); return; }
-    if (!content.trim()) { toast.error('내용을 입력하세요.'); return; }
+    const textContent = content.replace(/<[^>]*>/g, '').trim();
+    if (!textContent) { toast.error('내용을 입력하세요.'); return; }
     if (approvers.some(a => !a.approver_id)) { toast.error('결재자를 모두 선택하세요.'); return; }
 
     setLoading(true);
@@ -193,11 +195,11 @@ function DocForm({
 
           <div>
             <label className="block text-[12px] font-semibold text-gray-500 mb-1.5">내용</label>
-            <textarea
-              value={content} onChange={e => setContent(e.target.value)}
+            <RichTextEditor
+              value={content}
+              onChange={setContent}
               placeholder="결재 요청 내용을 입력하세요."
-              rows={6}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[13px] focus:outline-none focus:border-primary-400 resize-none"
+              minHeight={160}
             />
           </div>
 
@@ -284,8 +286,8 @@ function DocDetail({
             </div>
           </div>
 
-          <div className="bg-gray-50 rounded-xl p-4 text-[13px] text-gray-700 whitespace-pre-wrap min-h-[100px]">
-            {doc.content}
+          <div className="bg-gray-50 rounded-xl p-4 min-h-[100px]">
+            <RichTextViewer html={doc.content} className="text-[13px] text-gray-700" />
           </div>
 
           {/* 결재선 */}

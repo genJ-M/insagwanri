@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Send, Hash, Megaphone, MessageSquare, Plus, Pencil, Trash2, Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Header from '@/components/layout/Header';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import api from '@/lib/api';

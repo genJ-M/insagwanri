@@ -22,4 +22,5 @@ export interface AuthenticatedUser {
   role: UserRole;
   email: string;
   name: string;
+  department?: string | null;
 }

@@ -1,4 +1,5 @@
 'use client';
+import RichTextEditor from '@/components/ui/RichTextEditor';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -167,8 +168,12 @@ function ContractForm({
 
           <div>
             <label className="block text-[12px] font-semibold text-gray-500 mb-1.5">메모</label>
-            <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[13px] focus:outline-none focus:border-primary-400 resize-none" />
+            <RichTextEditor
+              value={note}
+              onChange={setNote}
+              placeholder="메모를 입력하세요"
+              minHeight={80}
+            />
           </div>
         </div>
 

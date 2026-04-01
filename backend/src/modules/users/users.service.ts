@@ -7,16 +7,18 @@ import { Repository, ILike, Not } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { User, UserStatus } from '../../database/entities/user.entity';
-import { InviteToken, InviteStatus } from '../../database/entities/invite-token.entity';
+import { InviteToken, InviteStatus, InviteType } from '../../database/entities/invite-token.entity';
 import { Company } from '../../database/entities/company.entity';
 import { UserCareer } from '../../database/entities/user-career.entity';
 import { UserEducation } from '../../database/entities/user-education.entity';
 import { UserDocument } from '../../database/entities/user-document.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import { EmailService } from '../notifications/email.service';
+import { SmsService } from '../../common/sms/sms.service';
 import { ConfigService } from '@nestjs/config';
 import {
-  InviteUserDto, AcceptInviteDto, UpdateUserDto,
+  InviteUserDto, InviteByPhoneDto, CreateShareableLinkDto,
+  AcceptInviteDto, UpdateUserDto,
   UpdateRoleDto, ChangePasswordDto, UserQueryDto,
 } from './dto/users.dto';
 
@@ -44,6 +46,7 @@ export class UsersService {
     private documentRepo: Repository<UserDocument>,
 
     private readonly emailService: EmailService,
+    private readonly smsService: SmsService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -128,6 +131,7 @@ export class UsersService {
     });
 
     if (!user) throw new BadRequestException('사용자를 찾을 수 없습니다.');
+    if (!user.passwordHash) throw new BadRequestException('소셜 계정은 비밀번호를 변경할 수 없습니다.');
     const isValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
     if (!isValid) throw new BadRequestException('현재 비밀번호가 올바르지 않습니다.');
 
@@ -194,6 +198,31 @@ export class UsersService {
   }
 
   // ─────────────────────────────────────────
+  // 권한 설정 (owner만, manager 대상)
+  // ─────────────────────────────────────────
+  async updatePermissions(
+    currentUser: AuthenticatedUser,
+    targetId: string,
+    dto: { managedDepartments?: string[] | null; permissions?: Record<string, boolean> | null },
+  ) {
+    if (currentUser.role !== UserRole.OWNER) {
+      throw new ForbiddenException('권한 설정은 owner만 가능합니다.');
+    }
+    const target = await this.findOne(currentUser, targetId);
+    if (target.role !== UserRole.MANAGER) {
+      throw new BadRequestException('manager에게만 세부 권한을 설정할 수 있습니다.');
+    }
+    await this.userRepo.update(
+      { id: targetId, companyId: currentUser.companyId },
+      {
+        ...(dto.managedDepartments !== undefined && { managedDepartments: dto.managedDepartments }),
+        ...(dto.permissions !== undefined && { permissions: dto.permissions }),
+      },
+    );
+    return this.findOne(currentUser, targetId);
+  }
+
+  // ─────────────────────────────────────────
   // 직원 비활성화 (Soft Delete, owner만)
   // ─────────────────────────────────────────
   async deactivateUser(currentUser: AuthenticatedUser, targetId: string) {
@@ -216,7 +245,7 @@ export class UsersService {
   }
 
   // ─────────────────────────────────────────
-  // 직원 초대
+  // 이메일로 직원 초대
   // ─────────────────────────────────────────
   async inviteUser(currentUser: AuthenticatedUser, dto: InviteUserDto) {
     if (currentUser.role === UserRole.EMPLOYEE) {
@@ -227,11 +256,9 @@ export class UsersService {
     const existingUser = await this.userRepo.findOne({
       where: { email: dto.email, companyId: currentUser.companyId },
     });
-    if (existingUser) {
-      throw new ConflictException('이미 소속된 직원입니다.');
-    }
+    if (existingUser) throw new ConflictException('이미 소속된 직원입니다.');
 
-    // 대기 중인 초대가 있으면 취소 후 재발송
+    // 대기 중인 동일 이메일 초대 취소
     await this.inviteRepo.update(
       { email: dto.email, companyId: currentUser.companyId, status: InviteStatus.PENDING },
       { status: InviteStatus.CANCELED },
@@ -244,16 +271,18 @@ export class UsersService {
       companyId: currentUser.companyId,
       invitedBy: currentUser.id,
       email: dto.email,
+      inviteType: InviteType.EMAIL,
       role: dto.role,
       token,
       expiresAt,
     });
     await this.inviteRepo.save(invite);
 
-    // 초대 이메일 발송 (실패해도 초대 자체는 완료)
     const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3000');
-    const company = await this.companyRepo.findOne({ where: { id: currentUser.companyId } });
-    const inviter = await this.userRepo.findOne({ where: { id: currentUser.id } });
+    const [company, inviter] = await Promise.all([
+      this.companyRepo.findOne({ where: { id: currentUser.companyId } }),
+      this.userRepo.findOne({ where: { id: currentUser.id } }),
+    ]);
     const expiresAtStr = expiresAt.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
     this.emailService.sendInviteEmail({
       to: dto.email,
@@ -264,6 +293,79 @@ export class UsersService {
     }).catch(() => {});
 
     return { inviteId: invite.id, token, expiresAt };
+  }
+
+  // ─────────────────────────────────────────
+  // 전화번호로 직원 초대 (SMS)
+  // ─────────────────────────────────────────
+  async inviteByPhone(currentUser: AuthenticatedUser, dto: InviteByPhoneDto) {
+    if (currentUser.role === UserRole.EMPLOYEE) {
+      throw new ForbiddenException('초대 권한이 없습니다.');
+    }
+
+    const normalizedPhone = dto.phone.replace(/\D/g, '').replace(/^82/, '0');
+
+    // 동일 전화번호 대기 중 초대 취소
+    await this.inviteRepo.update(
+      { recipientPhone: normalizedPhone, companyId: currentUser.companyId, status: InviteStatus.PENDING },
+      { status: InviteStatus.CANCELED },
+    );
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+    const invite = this.inviteRepo.create({
+      companyId: currentUser.companyId,
+      invitedBy: currentUser.id,
+      email: null,
+      recipientPhone: normalizedPhone,
+      recipientName: dto.name,
+      inviteType: InviteType.PHONE,
+      role: dto.role,
+      token,
+      expiresAt,
+    });
+    await this.inviteRepo.save(invite);
+
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3000');
+    const company = await this.companyRepo.findOne({ where: { id: currentUser.companyId } });
+    this.smsService.sendInvite(normalizedPhone, company?.name ?? '회사', `${frontendUrl}/invite?token=${token}`).catch(() => {});
+
+    return { inviteId: invite.id, token, expiresAt };
+  }
+
+  // ─────────────────────────────────────────
+  // 공유 초대 링크 생성
+  // ─────────────────────────────────────────
+  async createShareableLink(currentUser: AuthenticatedUser, dto: CreateShareableLinkDto) {
+    if (currentUser.role === UserRole.EMPLOYEE) {
+      throw new ForbiddenException('초대 권한이 없습니다.');
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const days = dto.validDays ?? 7;
+    const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+    const invite = this.inviteRepo.create({
+      companyId: currentUser.companyId,
+      invitedBy: currentUser.id,
+      email: null,
+      inviteType: InviteType.LINK,
+      role: dto.role ?? UserRole.EMPLOYEE,
+      token,
+      expiresAt,
+      maxUses: dto.maxUses ?? null,
+      usedCount: 0,
+    });
+    await this.inviteRepo.save(invite);
+
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3000');
+    return {
+      inviteId: invite.id,
+      token,
+      inviteUrl: `${frontendUrl}/invite?token=${token}`,
+      expiresAt,
+    };
   }
 
   // ─────────────────────────────────────────
@@ -356,8 +458,10 @@ export class UsersService {
     return {
       companyName: invite.company.name,
       inviterName: invite.inviter.name,
-      email: invite.email,
+      email: invite.email,           // null for phone/link invites
+      recipientName: invite.recipientName,
       role: invite.role,
+      inviteType: invite.inviteType,
       expiresAt: invite.expiresAt,
     };
   }
@@ -377,20 +481,35 @@ export class UsersService {
       throw new BadRequestException('만료된 초대 링크입니다.');
     }
 
+    // 링크 초대: 최대 사용 횟수 체크
+    if (invite.inviteType === InviteType.LINK && invite.maxUses !== null) {
+      if (invite.usedCount >= invite.maxUses) {
+        throw new BadRequestException('초대 링크의 최대 사용 횟수에 도달했습니다.');
+      }
+    }
+
+    // 이메일 초대: dto.email 사용 불가, invite.email 사용
+    // 전화번호/링크 초대: dto.email 필수
+    const resolvedEmail = invite.inviteType === InviteType.EMAIL
+      ? (invite.email ?? '')
+      : (dto.email ?? '');
+
+    if (!resolvedEmail) {
+      throw new BadRequestException('이메일을 입력해주세요.');
+    }
+
     // 이미 소속 직원인지 재확인
     const existingUser = await this.userRepo.findOne({
-      where: { email: invite.email, companyId: invite.companyId },
+      where: { email: resolvedEmail, companyId: invite.companyId },
     });
-    if (existingUser) {
-      throw new ConflictException('이미 가입된 계정입니다. 로그인해 주세요.');
-    }
+    if (existingUser) throw new ConflictException('이미 가입된 계정입니다. 로그인해 주세요.');
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     const user = this.userRepo.create({
       companyId: invite.companyId,
-      email: invite.email,
-      name: dto.name,
-      phone: dto.phone ?? null,
+      email: resolvedEmail,
+      name: dto.name ?? invite.recipientName ?? '',
+      phone: dto.phone ?? invite.recipientPhone ?? null,
       passwordHash,
       role: invite.role,
       status: UserStatus.ACTIVE,
@@ -398,11 +517,16 @@ export class UsersService {
     });
     const savedUser = await this.userRepo.save(user) as User;
 
-    await this.inviteRepo.update(invite.id, {
-      status: InviteStatus.ACCEPTED,
-      acceptedAt: new Date(),
-      createdUserId: savedUser.id,
-    });
+    // 링크 초대: 사용 횟수 증가 (상태 ACCEPTED 처리 안 함 — 재사용 가능)
+    if (invite.inviteType === InviteType.LINK) {
+      await this.inviteRepo.update(invite.id, { usedCount: invite.usedCount + 1 });
+    } else {
+      await this.inviteRepo.update(invite.id, {
+        status: InviteStatus.ACCEPTED,
+        acceptedAt: new Date(),
+        createdUserId: savedUser.id,
+      });
+    }
 
     return {
       userId: savedUser.id,

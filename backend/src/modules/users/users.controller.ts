@@ -4,8 +4,9 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import {
-  InviteUserDto, AcceptInviteDto, UpdateUserDto,
-  UpdateRoleDto, ChangePasswordDto, UserQueryDto,
+  InviteUserDto, InviteByPhoneDto, CreateShareableLinkDto,
+  AcceptInviteDto, UpdateUserDto,
+  UpdateRoleDto, UpdatePermissionsDto, ChangePasswordDto, UserQueryDto,
 } from './dto/users.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../auth/decorators/get-user.decorator';
@@ -41,11 +42,25 @@ export class UsersController {
     return this.usersService.changePassword(user, dto);
   }
 
-  /** POST /users/invite — 직원 초대 */
+  /** POST /users/invite — 이메일로 직원 초대 */
   @Post('invite')
   @HttpCode(HttpStatus.CREATED)
   async invite(@GetUser() user: AuthenticatedUser, @Body() dto: InviteUserDto) {
     return this.usersService.inviteUser(user, dto);
+  }
+
+  /** POST /users/invite/phone — 전화번호로 직원 초대 (SMS) */
+  @Post('invite/phone')
+  @HttpCode(HttpStatus.CREATED)
+  async inviteByPhone(@GetUser() user: AuthenticatedUser, @Body() dto: InviteByPhoneDto) {
+    return this.usersService.inviteByPhone(user, dto);
+  }
+
+  /** POST /users/invite/link — 공유 초대 링크 생성 */
+  @Post('invite/link')
+  @HttpCode(HttpStatus.CREATED)
+  async createInviteLink(@GetUser() user: AuthenticatedUser, @Body() dto: CreateShareableLinkDto) {
+    return this.usersService.createShareableLink(user, dto);
   }
 
   /** GET /users/org-stats — 조직 통계 */
@@ -123,6 +138,16 @@ export class UsersController {
     @Body() dto: UpdateRoleDto,
   ) {
     return this.usersService.updateRole(user, id, dto);
+  }
+
+  /** PATCH /users/:id/permissions — 세부 권한 설정 (owner → manager) */
+  @Patch(':id/permissions')
+  async updatePermissions(
+    @GetUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdatePermissionsDto,
+  ) {
+    return this.usersService.updatePermissions(user, id, dto);
   }
 
   /** DELETE /users/:id — 직원 비활성화 (owner) */

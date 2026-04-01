@@ -366,15 +366,38 @@ export class AiService {
   // 일일 Rate Limit 검사
   // ─────────────────────────────────────────
   private async checkRateLimit(currentUser: AuthenticatedUser) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    // ── 1차: 글로벌 일일 토큰 상한선 (전체 테넌트 합산) ────────────────
+    const globalDailyTokenLimit = this.configService.get<number>('OPENAI_DAILY_TOKEN_LIMIT', 0);
+    if (globalDailyTokenLimit > 0) {
+      const globalTokensResult = await this.aiRequestRepo
+        .createQueryBuilder('r')
+        .select('SUM(r.totalTokens)', 'total')
+        .where('r.createdAt >= :todayStart', { todayStart })
+        .andWhere('r.status = :status', { status: AiRequestStatus.SUCCESS })
+        .getRawOne<{ total: string }>();
+
+      const globalTokensUsed = parseInt(globalTokensResult?.total ?? '0', 10);
+      if (globalTokensUsed >= globalDailyTokenLimit) {
+        this.logger.warn(
+          `[AI] 글로벌 일일 토큰 상한선 도달: ${globalTokensUsed}/${globalDailyTokenLimit}`,
+        );
+        throw new HttpException(
+          'AI 서비스의 일일 사용량 한도에 도달했습니다. 내일 다시 시도해 주세요.',
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
+    }
+
+    // ── 2차: 테넌트(회사)별 플랜 기반 일일 요청 한도 ─────────────────
     const company = await this.companyRepo.findOne({
       where: { id: currentUser.companyId },
       select: ['plan'],
     });
 
     const { dailyLimit } = this.getRateLimitByPlan(company?.plan ?? 'free');
-
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
 
     const usedToday = await this.aiRequestRepo.count({
       where: {

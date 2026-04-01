@@ -1,5 +1,6 @@
 'use client';
 
+import RichTextEditor, { RichTextViewer } from '@/components/ui/RichTextEditor';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -201,7 +202,7 @@ function TrainingCard({
         <p className="font-semibold text-gray-900 leading-snug">{t.title}</p>
         <span className={clsx('text-xs px-2.5 py-1 rounded-full font-medium whitespace-nowrap', s.cls)}>{s.label}</span>
       </div>
-      {t.description && <p className="text-sm text-gray-500 line-clamp-2">{t.description}</p>}
+      {t.description && <RichTextViewer html={t.description} className="text-sm text-gray-500 line-clamp-2" />}
       <div className="flex flex-wrap gap-3 text-xs text-gray-500">
         {t.category && (
           <span className="flex items-center gap-1"><Tag className="w-3.5 h-3.5" />{t.category}</span>
@@ -294,9 +295,12 @@ function TrainingForm({ onClose }: { onClose: () => void }) {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">내용</label>
-            <textarea value={form.description} onChange={(e) => set('description', e.target.value)}
-              rows={3} placeholder="교육 내용을 입력하세요"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <RichTextEditor
+              value={form.description}
+              onChange={(html) => set('description', html)}
+              placeholder="교육 내용을 입력하세요"
+              minHeight={120}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

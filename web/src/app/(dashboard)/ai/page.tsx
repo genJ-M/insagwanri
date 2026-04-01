@@ -5,7 +5,6 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Sparkles, Copy, Check, Loader2, AlertCircle, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import Header from '@/components/layout/Header';
 import Card, { CardHeader } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import api from '@/lib/api';
@@ -275,8 +274,6 @@ export default function AiPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <Header title="AI 도구" />
-
       <main className="p-8 max-w-3xl space-y-5">
         {/* 헤더 */}
         <div className="flex items-center justify-between">

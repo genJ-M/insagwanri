@@ -25,6 +25,57 @@ Phase 10 — 안정성 점검
 
 ---
 
+## 개인 프로젝트에서 사업용 SaaS로 가는 현실적인 단계
+
+> 처음부터 "엔터프라이즈급" 구조를 구축할 필요는 없습니다.
+> 아래 단계별 로드맵은 "혼자 시작해서 끊김 없이 업그레이드"하는 전략을 제시합니다.
+> 각 단계의 기술 구현 세부사항은 이후 Phase들에서 다룹니다.
+
+### 1단계 — 개인·사이드 프로젝트
+
+**목표**: 최소 비용으로 작동하는 서비스를 만들어 아이디어를 검증한다.
+
+- 단일 PostgreSQL + 공유 테넌트 구조, `service` 레이어에서 `companyId` 필터만 사용
+- Render 무료 티어 (백엔드 슬립 허용) + Vercel 무료 (프론트) 조합
+- 보안은 최소 수준: HTTPS, bcrypt 비밀번호 해시, 기본 활동 로그
+- PIPA 준수는 개인정보보호위원회 가이드를 읽고 최소 요건(암호화, 개인정보 처리방침 게시) 파악
+
+**우선순위**: 기능 완성 → 고객 반응 검증 → 그 다음에 인프라 업그레이드
+
+### 2단계 — 초기 유료 고객 확보 (월 수십만 원 수준)
+
+**목표**: 실제 고객 데이터를 안전하게 다루는 구조로 전환한다.
+
+- 멀티테넌트 구조 정비: 모든 쿼리에 `companyId` 명시적 포함 (RLS 도입 대비)
+- **DB는 유료 플랜으로 전환**: 무료 DB는 데이터 보장이 없음 (아래 인프라 주의사항 참고)
+- 감사 로그·접속기록 강화, 이메일 인증 필수화
+- Render Starter 플랜 이상: 슬립 없는 상시 기동, 자동 백업
+- RLS(Row-Level Security) 도입 검토 시작
+
+### 3단계 — 월 수백만~수천만 원 수준 매출
+
+**목표**: 보안과 신뢰를 제품 경쟁력으로 삼는다.
+
+- Admin 시스템 분리 배포, per-tenant rate limit 적용
+- RLS + 서비스 레이어 **2중 방어** 구조 완성 (Phase 2 참고)
+- Tamper-evident 감사 로그 (별도 로그 서버 또는 WORM 스토리지)
+- **정식 PIPA 컨설팅** 및 개인정보 처리방침·수탁 계약서 정비
+- 침해사고 대응 프로세스, 백업 복구 훈련 수행
+
+### 4단계 — 엔터프라이즈 검토
+
+**목표**: 대형 고객의 보안·컴플라이언스 요구사항에 대응한다.
+
+- 테넌트 분리 전략 옵션 검토: schema-per-tenant 또는 DB-per-tenant
+- 전용 인스턴스 제공, SLA 계약, 보안 감사 대응
+- SOC2, ISO 27001 등 인증 취득 검토
+
+> **핵심 메시지**: 1단계에서 "companyId를 모든 쿼리에 명시"하는 습관만 들여도
+> 3단계의 RLS 전환이 훨씬 쉬워집니다. 처음부터 구조적으로 올바르게 설계하되,
+> 불필요하게 복잡한 인프라는 매출이 정당화될 때 추가하세요.
+
+---
+
 ## Phase 0 — 설계 & 컨텍스트 주입
 
 > **가장 중요한 단계.** Claude에게 도메인 전체를 한 번에 이해시키는 것이 이후 모든 작업의 품질을 결정합니다.
@@ -63,7 +114,7 @@ Phase 10 — 안정성 점검
 | 웹 | Next.js 14 (App Router) | SSR/SSG, 파일 기반 라우팅 |
 | 모바일 | React Native + Expo | 코드 공유, OTA 업데이트 |
 | 상태관리 | Zustand + TanStack Query | 단순하고 Claude가 잘 생성함 |
-| 배포 | Render (백엔드) + Vercel (프론트) | 무료 티어, 자동 배포 |
+| 배포 | Render (백엔드) + Vercel (프론트) | 저비용, 자동 배포 — 단, 아래 인프라 주의사항 필독 |
 
 ---
 
@@ -144,6 +195,24 @@ User 엔티티에는 반드시:
 ## Phase 2 — 멀티테넌트 기반
 
 > B2B SaaS의 핵심. 이 패턴을 처음부터 올바르게 설정해야 나중에 데이터 격리 버그가 없습니다.
+
+### 멀티테넌트 격리 — 2중 방어 개념
+
+이 서비스는 **2중 방어(Defense in Depth)** 원칙으로 테넌트 격리를 설계합니다.
+
+```
+1차 방어선: 서비스 레이어의 currentUser 기반 필터링
+  → 모든 서비스 메서드에 currentUser.companyId를 명시적으로 포함
+
+2차 방어선: DB Row Level Security(RLS) 또는 공통 Repository/쿼리 레이어에서의 강제 필터링
+  → 초기에는 선택적이지만, 유료 고객 확보 시점부터 도입을 강력히 권장
+```
+
+**초기 전략**: service 레이어 필터만으로 시작하되, 모든 쿼리에 `companyId`를 명시해서 나중에 RLS를 도입하기 쉽도록 설계하라.
+
+**장기 전략**: PostgreSQL RLS와 NestJS CLS(Continuation Local Storage) 또는 Request-scoped provider를 활용해 DB 레벨에서 한 번 더 테넌트 격리를 강제하는 방식을 권장한다. 이를 통해 서비스 레이어에서 companyId 필터를 빠뜨리는 실수가 있어도 DB 레벨에서 차단된다.
+
+**역할과 테넌트 경계**: 모든 역할(OWNER/MANAGER/EMPLOYEE)은 특정 company(tenant)에 종속된 **tenant-scoped RBAC** 구조를 따른다. Admin, 실시간 이벤트, AI 기능에서도 역할 검사는 항상 해당 테넌트 컨텍스트 안에서 이루어져야 한다.
 
 ```
 [프롬프트 2-1: 멀티테넌트 격리 패턴]
@@ -359,6 +428,16 @@ Socket 이벤트:
 
 ### 5-2. AI 기능
 
+> **비용 및 법규 주의사항** — AI 기능 도입 전 반드시 확인
+
+**비용 관리**:
+- 테넌트 전체 합산 기준 일일/월별 글로벌 상한선을 설정하고, 임계치 도달 시 AI 기능을 일시 제한하거나 Slack/이메일 알림을 발송하는 구조를 구현하라.
+- Admin 대시보드에서 테넌트별 AI 사용량과 예상 비용을 모니터링할 수 있도록 `AiRequest` 엔티티에 토큰 수와 예상 비용 컬럼을 포함하라.
+
+**법규 주의 (한국 PIPA)**:
+- 한국 사용자의 개인정보·민감정보를 OpenAI 등 해외 API 공급자에게 전송하는 것은 PIPA 상 **개인정보 국외 이전 및 처리 위탁**에 해당할 수 있다. 이 경우 개인정보 처리방침에 국외 이전 사실(수탁 업체명, 국가, 이전 항목, 목적 등)을 명시하고, 필요한 경우 별도 동의 절차를 구현해야 한다.
+- **민감정보(건강정보, 평가 내용, 인사 기록 등)를 AI 프롬프트에 직접 포함하지 않도록** UI/백엔드에서 제한하거나 경고를 표시하는 패턴을 갖추는 것을 권장한다. 예: 평가 요약 AI 기능에서는 직원 이름 등 식별자를 프롬프트에서 제거하고 익명 처리 후 전송.
+
 ```
 [프롬프트 5-2: AI 연동]
 
@@ -368,11 +447,14 @@ OpenAI API를 활용한 [AI 기능]을 구현해줘.
 
 요구사항:
 - AiModule: AiRequest 엔티티로 사용 이력 추적
+  - 컬럼: userId, companyId, feature, promptTokens, completionTokens, estimatedCostUsd, createdAt
 - 플랜별 일일 사용량 제한 (FREE: 10회, BASIC: 50회, PRO: 200회)
+- 테넌트 전체 일일 글로벌 상한선 (환경변수로 설정, 초과 시 503 + 알림)
 - 프롬프트 템플릿 분리 (코드에 하드코딩 금지)
 - 스트리밍 응답 (Server-Sent Events)
 - 에러 시 재시도 1회
 - 모든 AI 결과에 면책 문구: "이 결과는 참고용이며 전문가의 검토가 필요합니다"
+- 민감정보를 프롬프트에 포함하지 않도록 입력 전처리 단계 포함
 
 OpenAI 설정:
 - model: gpt-4o (환경변수로)
@@ -419,25 +501,23 @@ mobile/src/
 ```
 [프롬프트 6-2: 소셜 로그인 (모바일)]
 
-모바일 소셜 로그인을 구현해줘.
+모바일 Google 소셜 로그인을 구현해줘.
 
 Google:
 - expo-auth-session AuthRequest (PKCE)
-- 코드 → POST /auth/social/mobile { provider, code, redirect_uri }
-
-Kakao:
-- expo-web-browser openAuthSessionAsync
-- 코드 파싱 → POST /auth/social/mobile
+- 코드 → POST /auth/social/mobile { provider: 'google', code, redirect_uri }
 
 신규 유저 처리:
 - 서버에서 { type: 'register', pending_token } 반환 시
 - /(auth)/social-complete 화면으로 이동
 - 회사명/추가 정보 입력 후 가입 완료
 
+소셜 로그인 구조는 SocialProvider 인터페이스/전략 패턴으로 설계하여
+Kakao, Naver 등 다른 IdP를 나중에 쉽게 추가할 수 있도록 확장 가능하게 구성해줘.
+
 환경변수:
 EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS=
 EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID=
-EXPO_PUBLIC_KAKAO_CLIENT_ID=
 ```
 
 ---
@@ -460,6 +540,8 @@ Admin Backend (포트 4001):
 - 별도 JWT 시크릿 (ADMIN_JWT_SECRET)
 - 관리자 역할: SUPER_ADMIN | OPERATIONS | BILLING | SUPPORT | READONLY
 - IP 화이트리스트 Guard
+- 모든 Admin 행동은 감사 로그에 기록 (누가 어떤 고객 데이터에 접근/수정했는지)
+- Impersonation 기능은 SUPER_ADMIN/OPERATIONS 역할로 제한하고, 사용 시 반드시 감사 로그 기록
 
 Admin 기능:
 1. 회사 관리: 목록/조회/계획변경/데이터삭제
@@ -469,6 +551,7 @@ Admin 기능:
 5. Analytics:
    - 실시간 대시보드 (DAU, 출근중, API 부하)
    - 퍼널 분석 (회원가입→첫로그인→첫기능사용→구독전환)
+   - 테넌트별 AI 사용량 및 예상 비용 모니터링
 6. 감사 로그 (admin 행동 기록)
 
 Admin Web (별도 Vercel 배포):
@@ -481,6 +564,32 @@ Admin Web (별도 Vercel 배포):
 ## Phase 8 — 보안 & 법규 준수
 
 > 한국에서 서비스하면 반드시 필요한 항목들. 처음부터 포함하면 나중에 리팩토링 비용이 없습니다.
+
+> ⚠️ **중요 안내**: 아래 내용은 개발 관점의 최소 기술 패턴 예시에 가깝습니다.
+> 실제 PIPA(개인정보보호법)/통신비밀보호법 준수를 위해서는
+> **개인정보보호위원회·행안부 등에서 제공하는 공식 가이드라인과
+> 별도의 법률 자문을 반드시 병행**해야 합니다.
+> 기술 구현만으로 법적 요건이 충족되지 않을 수 있으며,
+> 서비스 규모와 처리하는 개인정보의 성격에 따라 추가 의무가 발생합니다.
+
+### PIPA 준수 체크리스트 (기술 구현 외 필수 확인 항목)
+
+개인정보보호위원회 고시 및 PIPA 요건 중 기술 구현과 병행해야 할 비기술적 항목:
+
+- [ ] **개인정보 처리방침** 작성 및 서비스 내 게시 (수집 항목, 이용 목적, 보유 기간, 제3자 제공/국외 이전 명시)
+- [ ] **동의서** 설계: 필수/선택 항목 구분, 철회 절차 마련
+- [ ] **제3자 제공·국외 이전**: OpenAI 등 해외 서비스 활용 시 처리방침에 기재 및 필요 시 동의 절차 구현
+- [ ] **파기 절차**: 보유 기간 만료 데이터의 안전한 파기(물리적 삭제 또는 복원 불가 조치)
+- [ ] **침해사고 신고·통지 의무**: 72시간 이내 개인정보보호위원회 신고 절차 수립, 정보주체 통지 프로세스 마련
+- [ ] **기술적·관리적 보호조치**: 접속기록 위·변조 방지, 접근권한 관리 및 최소 권한 원칙 적용
+- [ ] **개인정보 처리방침 버전 관리**: 변경 시 변경 이력 보관 및 공지
+
+### 8-1. 개인정보 암호화
+
+> 암호화 키(ENCRYPTION_KEY, HMAC_SECRET)는 환경변수에 직접 저장하는 것 외에,
+> 프로덕션 환경에서는 AWS KMS, GCP Cloud KMS, HashiCorp Vault 등
+> **별도 키 관리 체계(KMS)를 통해 주기적 키 교체와 접근 통제를 설계**해야 한다.
+> 키가 소스코드나 로그에 노출되면 암호화 전체가 무의미해진다.
 
 ```
 [프롬프트 8-1: 개인정보 암호화]
@@ -507,6 +616,14 @@ Migration:
 - 기존 UNIQUE(email, company_id) → UNIQUE(email_hash, company_id) 변경
 ```
 
+### 8-2. 통신비밀보호법 활동 로그
+
+> 활동 로그는 **관리자 최소 권한 원칙**으로 열람을 제한해야 한다.
+> 즉, 운영 담당자라도 업무상 필요한 범위의 로그만 열람 가능하도록 역할 기반 접근 제어를 적용하라.
+> 또한 로그의 위·변조를 방지하기 위해 별도 로그 서버로 전송하거나,
+> WORM(Write Once Read Many) 스토리지, 또는 타임스탬프 서명 등
+> **무결성 보호 방안을 장기적으로 도입**하는 것을 강력히 권장한다.
+
 ```
 [프롬프트 8-2: 통신비밀보호법 활동 로그]
 
@@ -531,16 +648,22 @@ Migration:
 반드시:
 - ScheduleModule.forRoot()를 app.module.ts에 추가
 - 삭제는 DELETE 아닌 physical delete (보관 의무 충족 후 삭제이므로 OK)
+- 로그 열람 API는 SUPER_ADMIN/OPERATIONS 역할로만 접근 제한
 ```
+
+### 8-3. OAuth 소셜 로그인
+
+소셜 로그인 기본 구현은 **Google만** 포함한다. Kakao, Naver 등 추가 IdP가 필요한 경우 `SocialStrategy` 인터페이스를 확장해 별도로 구현할 수 있다.
 
 ```
 [프롬프트 8-3: OAuth 소셜 로그인]
 
-Google + Kakao 소셜 로그인을 구현해줘.
+Google 소셜 로그인을 구현해줘.
+나중에 Kakao·Naver 등 다른 IdP를 쉽게 추가할 수 있도록
+SocialProvider 인터페이스/전략 패턴으로 확장 가능하게 설계해줘.
 
 백엔드:
 - Google: passport-google-oauth20 + GoogleStrategy
-- Kakao: 직접 HTTP fetch (passport 불필요)
 - handleSocialLogin(): provider+accountId → 기존 계정 조회 → 이메일 자동 연결
 - completeSocialRegister(): pending JWT → 회사명 입력 → 가입 완료
 - POST /auth/social/mobile: 모바일 코드 교환 엔드포인트
@@ -557,12 +680,38 @@ User 엔티티 추가 컬럼:
 
 환경변수:
 GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALLBACK_URL
-KAKAO_CLIENT_ID, KAKAO_CLIENT_SECRET, KAKAO_CALLBACK_URL
 ```
 
 ---
 
 ## Phase 9 — 배포 & 인프라
+
+> **비용 절감 vs 데이터 안전** — 이 섹션을 반드시 읽고 시작하세요.
+
+### 인프라 비용 원칙
+
+개발·실험 단계에서는 무료/저렴한 조합으로 시작하되, **데이터와 보안에 해당하는 부분만은 초기부터 최소한의 비용을 투자**해야 합니다.
+
+무료 플랜으로 절감할 수 있는 항목과 투자해야 할 항목을 명확히 구분하세요:
+
+| 항목 | 무료 가능 여부 | 이유 |
+|------|--------------|------|
+| 백엔드 Web Service (슬립 허용) | 개발/실험 단계만 | 프로덕션에서는 슬립/웜업 지연으로 사용자 경험 저하 |
+| 프론트엔드 (Vercel) | 가능 | 정적 자산, 슬립 없음 |
+| PostgreSQL | **사용 불가** | 무료 DB는 만료·백업 미지원 → 데이터 손실 위험 |
+| Redis | 무료 가능 | 세션/캐시는 휘발성 허용 가능 |
+| 로그/백업 | **투자 필요** | 데이터 복구 불가 시 서비스 종료 수준 피해 |
+
+> **핵심**: DB와 로그/백업만은 돈을 아껴서는 안 되는 영역입니다.
+> Render 무료 PostgreSQL은 90일 만료, 자동 백업 미지원으로
+> 실제 고객 데이터가 들어가는 순간부터 **Render Starter 플랜 이상 또는
+> Supabase, PlanetScale 등 관리형 DB 서비스 사용을 강력히 권장**합니다.
+
+### Render 무료 플랜 주의사항
+
+- **무료 Web Service**: 15분 비활성 시 슬립 → 첫 요청 웜업에 30초~1분 소요. 실제 고객용 프로덕션에는 적합하지 않음.
+- **무료 PostgreSQL**: 90일 후 만료, 자동 백업 없음, 데이터 손실 시 복구 불가. **절대 프로덕션 데이터에 사용 금지.**
+- 초기 유료 고객 유입 전까지는 무료 플랜으로 실험하되, 첫 결제 고객 확보 즉시 DB를 유료 플랜으로 업그레이드하라.
 
 ```
 [프롬프트 9-1: Render 배포 설정]
@@ -576,7 +725,7 @@ Render.com 배포를 위한 render.yaml을 작성해줘.
    - startCommand: node node_modules/typeorm/cli.js migration:run -d dist/data-source.prod.js && node dist/main.js
    - healthCheckPath: /api/v1/health
 
-2. insagwanri-db (PostgreSQL)
+2. insagwanri-db (PostgreSQL) — 반드시 유료 플랜 사용 (데이터 보장)
 3. insagwanri-redis (Redis)
 
 환경변수 (sync: false = 대시보드에서 직접 입력):
@@ -638,6 +787,8 @@ Vercel 환경변수:
 1. Public 라우트에 민감 정보 노출 없는지
 2. 관리자 전용 기능에 역할 체크
 3. 파일 업로드 타입/크기 검증
+4. AI 기능 — 민감정보가 프롬프트에 포함될 수 있는 경로 점검
+5. 활동 로그 열람 API — SUPER_ADMIN/OPERATIONS 역할 제한 확인
 
 수정 후 테스트:
 - 로그인 → 각 기능 → 로그아웃 플로우
@@ -743,7 +894,7 @@ Vercel 환경변수:
 ```env
 NODE_ENV=production
 PORT=3001
-DATABASE_URL=             # Render 내부 PostgreSQL
+DATABASE_URL=             # Render 유료 플랜 PostgreSQL (무료 플랜 사용 금지)
 REDIS_URL=               # Render 내부 Redis
 JWT_ACCESS_SECRET=       # 랜덤 64자 hex
 JWT_REFRESH_SECRET=      # 랜덤 64자 hex
@@ -767,16 +918,14 @@ AWS_SECRET_ACCESS_KEY=
 # AI
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o
+OPENAI_DAILY_TOKEN_LIMIT=  # 글로벌 일일 상한선 (예: 1000000)
 
-# 소셜 로그인
+# 소셜 로그인 (Google — 기본. Kakao/Naver는 SocialStrategy 확장으로 별도 추가)
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_CALLBACK_URL=
-KAKAO_CLIENT_ID=
-KAKAO_CLIENT_SECRET=
-KAKAO_CALLBACK_URL=
 
-# 개인정보 암호화 (변경 시 기존 데이터 복호화 불가)
+# 개인정보 암호화 (변경 시 기존 데이터 복호화 불가 — KMS 관리 권장)
 ENCRYPTION_KEY=          # node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 HMAC_SECRET=             # node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
@@ -791,7 +940,6 @@ NEXT_PUBLIC_API_URL=https://your-backend.onrender.com/api/v1
 EXPO_PUBLIC_API_URL=https://your-backend.onrender.com/api/v1
 EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS=
 EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID=
-EXPO_PUBLIC_KAKAO_CLIENT_ID=
 ```
 
 ---
@@ -821,3 +969,5 @@ Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
 >
 > Claude에게 "지금 뭘 만들고 있는지"를 항상 알려주는 것이 핵심.
 > 모든 프롬프트에 **목적, 제약조건, 기존 패턴 참조**를 포함하면 일관성이 극적으로 향상됩니다.
+>
+> 그리고 기억하세요: **DB와 백업만은 돈을 아끼지 마세요.**

@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, isPast, parseISO } from 'date-fns';
 import { Plus, Search, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Header from '@/components/layout/Header';
 import Card from '@/components/ui/Card';
 import Badge, { TASK_STATUS_BADGE, TASK_PRIORITY_BADGE } from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -275,8 +274,6 @@ export default function TasksPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <Header title="업무 관리" />
-
       <main className="p-8 space-y-4 max-w-[1200px]">
         {/* 상단 */}
         <div className="flex items-center gap-3">

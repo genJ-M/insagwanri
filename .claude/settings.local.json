@@ -80,7 +80,18 @@
       "Bash(ls:*)",
       "Bash(/c/Users/coghd/gwanri_wang/mobile/.env.example:*)",
       "Bash(/c/Users/coghd/gwanri_wang/mobile/assets/README.md:*)",
-      "Bash(/c/Users/coghd/gwanri_wang/mobile/EAS_DEPLOY_GUIDE.md:*)"
+      "Bash(/c/Users/coghd/gwanri_wang/mobile/EAS_DEPLOY_GUIDE.md:*)",
+      "Bash(ls C:/Users/coghd/gwanri_wang/mobile/src/app/\\\\\\(auth\\\\\\)/)",
+      "Bash(find C:/Users/coghd/gwanri_wang/backend/src -name *.decorator.ts)",
+      "Bash(find C:/Users/coghd/gwanri_wang/backend/src -name current-user* -o -name roles*)",
+      "Bash(sed -i 's/currentUser\\\\.userId/currentUser.id/g' \"$f\")",
+      "Bash(echo \"fixed: $f\")",
+      "Bash(sed -n 253p)",
+      "Bash(sed -n 250,256p C:/Users/coghd/gwanri_wang/backend/src/modules/auth/auth.service.ts)",
+      "Bash(sed -i \"s/await this\\\\.reqRepo\\\\.findOne\\({ where: { id: saved\\\\.id }, relations: \\\\[''user'', ''approver''\\\\] }\\)/await this.reqRepo.findOne\\({ where: { id: saved.id }, relations: [''user'', ''approver''] }\\) as VacationRequest/g\" C:/Users/coghd/gwanri_wang/backend/src/modules/vacations/vacations.service.ts)",
+      "Bash(sed -i \"s/await this\\\\.reqRepo\\\\.findOne\\({ where: { id }, relations: \\\\[''user'', ''approver''\\\\] }\\)/await this.reqRepo.findOne\\({ where: { id }, relations: [''user'', ''approver''] }\\) as VacationRequest/g\" C:/Users/coghd/gwanri_wang/backend/src/modules/vacations/vacations.service.ts)",
+      "Bash(head:*)",
+      "Bash(cat /c/Users/coghd/gwanri_wang/web/src/app/\\\\\\(auth\\\\\\)/forgot-password/page.tsx)"
     ]
   }
 }

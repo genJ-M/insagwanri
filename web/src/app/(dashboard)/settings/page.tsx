@@ -7,7 +7,6 @@ import {
   Eye, EyeOff, Check, AlertTriangle, Smartphone,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import Header from '@/components/layout/Header';
 import Card, { CardHeader } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import toast from 'react-hot-toast';
@@ -201,15 +200,100 @@ function ProfileSection() {
         </div>
       </Card>
 
+      {/* 개인 배경 이미지 */}
+      <PersonalCoverCard profile={profile} onSaved={() => queryClient.invalidateQueries({ queryKey: ['me'] })} />
     </>
   );
 }
+
+// ── 개인 배경 이미지 카드 ──────────────────────
+function PersonalCoverCard({ profile, onSaved }: { profile: any; onSaved: () => void }) {
+  const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+
+  useUnsavedChanges(isDirty);
+
+  useEffect(() => {
+    if (profile) {
+      setCoverImageUrl(profile.coverImageUrl ?? null);
+      setIsDirty(false);
+    }
+  }, [profile]);
+
+  const mutation = useMutation({
+    mutationFn: (payload: any) => api.patch('/users/me', payload),
+    onSuccess: () => {
+      setIsDirty(false);
+      onSaved();
+      toast.success('저장되었습니다.', { id: 'settings-save' });
+    },
+  });
+
+  const handleReset = () => {
+    setCoverImageUrl(null);
+    mutation.mutate({ coverImageUrl: null });
+  };
+
+  return (
+    <Card className="mt-4">
+      <CardHeader
+        title="개인 배경 이미지"
+        description="내 대시보드에만 적용되는 개인 커버 이미지입니다. 설정하지 않으면 회사 기본 이미지가 사용됩니다."
+      />
+      <div className="mt-5 space-y-4">
+        <div>
+          <label className="label mb-1.5">커버 이미지 <span className="text-text-muted font-normal">(권장: 1920 × 400px)</span></label>
+          <ImageUploader
+            currentUrl={coverImageUrl}
+            onUpload={(url) => { setCoverImageUrl(url); setIsDirty(true); }}
+            feature="covers"
+            shape="cover"
+            fallback="커버 이미지 업로드"
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          {coverImageUrl ? (
+            <button
+              type="button"
+              onClick={handleReset}
+              className="text-xs text-text-muted hover:text-red-500 underline underline-offset-2 transition-colors"
+            >
+              회사 기본으로 되돌리기
+            </button>
+          ) : (
+            <span className="text-xs text-text-muted">현재 회사 기본 이미지 사용 중</span>
+          )}
+          {isDirty && (
+            <Button
+              size="sm"
+              loading={mutation.isPending}
+              onClick={() => mutation.mutate({ coverImageUrl: coverImageUrl ?? null })}
+            >
+              저장
+            </Button>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+const COMPANY_TYPE_OPTIONS = [
+  { value: 'none',        label: '미등록 / 개인' },
+  { value: 'individual',  label: '개인사업자' },
+  { value: 'corporation', label: '법인' },
+] as const;
 
 // ── 회사 정보 섹션 ─────────────────────────────
 function CompanySection() {
   const queryClient = useQueryClient();
 
-  const [form, setForm] = useState({ name: '', industry: '', phone: '', address: '' });
+  const [form, setForm] = useState({
+    name: '', industry: '', phone: '', address: '',
+    companyType: 'none' as 'none' | 'individual' | 'corporation',
+    businessNumber: '', corporateNumber: '',
+    representativeName: '', businessType: '', businessItem: '',
+  });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
 
@@ -225,6 +309,12 @@ function CompanySection() {
       setForm({
         name: settings.name ?? '', industry: settings.industry ?? '',
         phone: settings.phone ?? '', address: settings.address ?? '',
+        companyType: settings.companyType ?? 'none',
+        businessNumber: settings.businessNumber ?? '',
+        corporateNumber: settings.corporateNumber ?? '',
+        representativeName: settings.representativeName ?? '',
+        businessType: settings.businessType ?? '',
+        businessItem: settings.businessItem ?? '',
       });
       setLogoUrl(settings.logoUrl ?? null);
       setIsDirty(false);
@@ -242,6 +332,8 @@ function CompanySection() {
 
   const inputCls = 'w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all';
 
+  const set = (key: keyof typeof form, value: string) => { setForm((f) => ({ ...f, [key]: value })); setIsDirty(true); };
+
   return (
     <>
       <Card>
@@ -258,33 +350,110 @@ function CompanySection() {
               fallback={form.name.charAt(0) || '로고'}
             />
           </div>
-          {[
-            { key: 'name', label: '회사명', required: true },
-            { key: 'industry', label: '업종' },
-            { key: 'phone', label: '대표 전화' },
-          ].map(({ key, label }) => (
-            <div key={key}>
-              <label className="label">{label}</label>
-              <input value={form[key as keyof typeof form]}
-                onChange={(e) => { setForm({ ...form, [key]: e.target.value }); setIsDirty(true); }}
-                className={inputCls} />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">회사명 *</label>
+              <input value={form.name} onChange={(e) => set('name', e.target.value)} className={inputCls} />
             </div>
-          ))}
+            <div>
+              <label className="label">업종</label>
+              <input value={form.industry} onChange={(e) => set('industry', e.target.value)} className={inputCls} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">대표 전화</label>
+              <input value={form.phone} onChange={(e) => set('phone', e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="label">대표자명</label>
+              <input value={form.representativeName} onChange={(e) => set('representativeName', e.target.value)} placeholder="홍길동" className={inputCls} />
+            </div>
+          </div>
+
           <div>
             <label className="label">주소</label>
-            <textarea rows={2} value={form.address}
-              onChange={(e) => { setForm({ ...form, address: e.target.value }); setIsDirty(true); }}
-              className={inputCls} />
-          </div>
-          <div className="flex items-center justify-end gap-3">
-            {isDirty && <span className="text-xs text-amber-600">저장되지 않은 변경사항이 있습니다</span>}
-            <Button size="sm" loading={mutation.isPending} onClick={() => mutation.mutate({ ...form, logoUrl: logoUrl ?? undefined })}>
-              저장
-            </Button>
+            <textarea rows={2} value={form.address} onChange={(e) => set('address', e.target.value)} className={inputCls} />
           </div>
         </div>
       </Card>
 
+      {/* 사업자 정보 */}
+      <Card className="mt-4">
+        <CardHeader title="사업자 정보" description="사업자등록번호, 법인등록번호 등 공식 사업자 정보를 관리합니다." />
+        <div className="mt-4 space-y-4">
+          <div>
+            <label className="label">사업자 구분</label>
+            <div className="flex gap-2 flex-wrap">
+              {COMPANY_TYPE_OPTIONS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => set('companyType', value)}
+                  className={clsx(
+                    'px-4 py-2 rounded-lg border text-sm font-medium transition-all',
+                    form.companyType === value
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-border text-text-secondary hover:border-gray-300',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {form.companyType === 'individual' && (
+            <div>
+              <label className="label">사업자등록번호</label>
+              <input value={form.businessNumber} onChange={(e) => set('businessNumber', e.target.value)} placeholder="123-45-67890" className={inputCls} />
+            </div>
+          )}
+
+          {form.companyType === 'corporation' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">사업자등록번호</label>
+                <input value={form.businessNumber} onChange={(e) => set('businessNumber', e.target.value)} placeholder="123-45-67890" className={inputCls} />
+              </div>
+              <div>
+                <label className="label">법인등록번호</label>
+                <input value={form.corporateNumber} onChange={(e) => set('corporateNumber', e.target.value)} placeholder="110111-1234567" className={inputCls} />
+              </div>
+            </div>
+          )}
+
+          {form.companyType !== 'none' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">업태</label>
+                <input value={form.businessType} onChange={(e) => set('businessType', e.target.value)} placeholder="서비스업" className={inputCls} />
+              </div>
+              <div>
+                <label className="label">업종/종목</label>
+                <input value={form.businessItem} onChange={(e) => set('businessItem', e.target.value)} placeholder="소프트웨어 개발" className={inputCls} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 mt-4">
+          {isDirty && <span className="text-xs text-amber-600">저장되지 않은 변경사항이 있습니다</span>}
+          <Button size="sm" loading={mutation.isPending} onClick={() => mutation.mutate({
+            ...form,
+            logoUrl: logoUrl ?? undefined,
+            businessNumber: form.businessNumber || undefined,
+            corporateNumber: form.corporateNumber || undefined,
+            representativeName: form.representativeName || undefined,
+            businessType: form.businessType || undefined,
+            businessItem: form.businessItem || undefined,
+          })}>
+            저장
+          </Button>
+        </div>
+      </Card>
     </>
   );
 }
@@ -579,6 +748,176 @@ function GpsSection() {
   );
 }
 
+// ── 알림 설정 섹션 ─────────────────────────────────
+type NotifSettings = {
+  emailApprovals: boolean;
+  emailTasks: boolean;
+  emailPayroll: boolean;
+  emailTraining: boolean;
+  pushRealtime: boolean;
+  pushDeadline: boolean;
+  quietStart: string;   // "HH:mm"
+  quietEnd: string;
+  quietEnabled: boolean;
+};
+
+const DEFAULT_NOTIF: NotifSettings = {
+  emailApprovals: true,
+  emailTasks: true,
+  emailPayroll: false,
+  emailTraining: true,
+  pushRealtime: true,
+  pushDeadline: true,
+  quietStart: '22:00',
+  quietEnd: '08:00',
+  quietEnabled: false,
+};
+
+function ToggleRow({
+  label, sub, checked, onChange,
+}: { label: string; sub?: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between py-3 border-b border-zinc-50 last:border-0">
+      <div>
+        <p className="text-sm font-medium text-text-primary">{label}</p>
+        {sub && <p className="text-xs text-text-muted mt-0.5">{sub}</p>}
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange(!checked)}
+        aria-checked={checked}
+        role="switch"
+        className={clsx(
+          'relative inline-flex h-6 w-11 rounded-full transition-colors flex-shrink-0',
+          checked ? 'bg-primary-500' : 'bg-border',
+        )}
+      >
+        <span className={clsx(
+          'inline-block h-5 w-5 rounded-full bg-white shadow transition-transform mt-0.5',
+          checked ? 'translate-x-5 ml-0.5' : 'translate-x-0.5',
+        )} />
+      </button>
+    </div>
+  );
+}
+
+function NotificationSection() {
+  const { user } = useAuthStore();
+  const storageKey = `notif_${user?.email ?? 'default'}`;
+
+  const [settings, setSettings] = useState<NotifSettings>(() => {
+    if (typeof window === 'undefined') return DEFAULT_NOTIF;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved ? { ...DEFAULT_NOTIF, ...JSON.parse(saved) } : DEFAULT_NOTIF;
+    } catch { return DEFAULT_NOTIF; }
+  });
+  const [isDirty, setIsDirty] = useState(false);
+
+  const set = <K extends keyof NotifSettings>(key: K, value: NotifSettings[K]) => {
+    setSettings((s) => ({ ...s, [key]: value }));
+    setIsDirty(true);
+  };
+
+  const handleSave = () => {
+    localStorage.setItem(storageKey, JSON.stringify(settings));
+    setIsDirty(false);
+    toast.success('알림 설정이 저장되었습니다.', { id: 'notif-save' });
+  };
+
+  return (
+    <>
+      <Card>
+        <CardHeader title="이메일 알림" description="중요 이벤트 발생 시 이메일로 알림을 받습니다." />
+        <div className="mt-3">
+          <ToggleRow
+            label="결재 알림"
+            sub="결재 요청, 승인, 반려 시 이메일 발송"
+            checked={settings.emailApprovals}
+            onChange={(v) => set('emailApprovals', v)}
+          />
+          <ToggleRow
+            label="업무 알림"
+            sub="업무 할당, 마감 임박 시 이메일 발송"
+            checked={settings.emailTasks}
+            onChange={(v) => set('emailTasks', v)}
+          />
+          <ToggleRow
+            label="급여 명세서"
+            sub="급여 명세서 발행 시 이메일 발송"
+            checked={settings.emailPayroll}
+            onChange={(v) => set('emailPayroll', v)}
+          />
+          <ToggleRow
+            label="교육 알림"
+            sub="교육 일정, 수료 알림 이메일 발송"
+            checked={settings.emailTraining}
+            onChange={(v) => set('emailTraining', v)}
+          />
+        </div>
+      </Card>
+
+      <Card className="mt-4">
+        <CardHeader title="앱 내 알림" description="앱을 사용 중일 때 실시간으로 알림을 받습니다." />
+        <div className="mt-3">
+          <ToggleRow
+            label="실시간 알림"
+            sub="결재, 메시지, 댓글 등 즉시 알림"
+            checked={settings.pushRealtime}
+            onChange={(v) => set('pushRealtime', v)}
+          />
+          <ToggleRow
+            label="마감 알림"
+            sub="업무 마감 24시간 전 알림"
+            checked={settings.pushDeadline}
+            onChange={(v) => set('pushDeadline', v)}
+          />
+        </div>
+      </Card>
+
+      <Card className="mt-4">
+        <CardHeader title="방해금지 시간" description="해당 시간대에는 알림을 발송하지 않습니다." />
+        <div className="mt-4 space-y-4">
+          <ToggleRow
+            label="방해금지 모드 활성화"
+            checked={settings.quietEnabled}
+            onChange={(v) => set('quietEnabled', v)}
+          />
+          {settings.quietEnabled && (
+            <div className="flex items-center gap-4">
+              <div className="flex-1">
+                <label className="label">시작 시간</label>
+                <input
+                  type="time"
+                  value={settings.quietStart}
+                  onChange={(e) => set('quietStart', e.target.value)}
+                  className="input"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="label">종료 시간</label>
+                <input
+                  type="time"
+                  value={settings.quietEnd}
+                  onChange={(e) => set('quietEnd', e.target.value)}
+                  className="input"
+                />
+              </div>
+            </div>
+          )}
+          <p className="text-xs text-text-muted">
+            ※ 알림 설정은 현재 기기에 저장됩니다. 이메일 알림은 서버에서 발송되어 방해금지 시간이 적용되지 않습니다.
+          </p>
+        </div>
+        <div className="flex items-center justify-end gap-3 mt-4">
+          {isDirty && <span className="text-xs text-amber-600">저장되지 않은 변경사항이 있습니다</span>}
+          <Button size="sm" onClick={handleSave}>저장</Button>
+        </div>
+      </Card>
+    </>
+  );
+}
+
 // ── 브랜딩 섹션 (owner only) ─────────────────────
 function BrandingSection() {
   const queryClient = useQueryClient();
@@ -589,6 +928,8 @@ function BrandingSection() {
   const [brandingTextColor, setBrandingTextColor] = useState('#FFFFFF');
   const [isDirty, setIsDirty] = useState(false);
   const [showCropModal, setShowCropModal] = useState(false);
+  // 모바일 이미지 방식: 'crop' = 웹 이미지 영역 선택, 'upload' = 별도 이미지 업로드
+  const [mobileMode, setMobileMode] = useState<'crop' | 'upload'>('crop');
 
   useUnsavedChanges(isDirty);
 
@@ -603,6 +944,10 @@ function BrandingSection() {
       setCoverImageMobileUrl(settings.coverImageMobileUrl ?? null);
       setCoverMobileCrop(settings.coverMobileCrop ?? null);
       setBrandingTextColor(settings.brandingTextColor ?? '#FFFFFF');
+      // 별도 모바일 이미지가 있으면 upload 모드로
+      if (settings.coverImageMobileUrl && settings.coverImageMobileUrl !== settings.coverImageUrl) {
+        setMobileMode('upload');
+      }
       setIsDirty(false);
     }
   }, [settings]);
@@ -643,13 +988,43 @@ function BrandingSection() {
             />
           </div>
 
-          {/* 모바일 커버 영역 선택 */}
-          {coverImageUrl && (
-            <div>
-              <label className="label mb-1.5 flex items-center gap-1.5">
+          {/* 모바일 커버 이미지 */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="label flex items-center gap-1.5 mb-0">
                 <Smartphone className="h-4 w-4" />
-                모바일 커버 영역
+                모바일 커버
               </label>
+              {/* 방식 전환 토글 */}
+              <div className="flex gap-0.5 bg-background border border-border rounded-lg p-0.5">
+                {([
+                  { key: 'crop', label: '영역 선택' },
+                  { key: 'upload', label: '별도 업로드' },
+                ] as const).map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      setMobileMode(key);
+                      // 모드 전환 시 반대쪽 데이터 초기화
+                      if (key === 'crop') { setCoverImageMobileUrl(null); }
+                      else { setCoverMobileCrop(null); }
+                      setIsDirty(true);
+                    }}
+                    className={clsx(
+                      'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+                      mobileMode === key
+                        ? 'bg-white shadow-sm text-text-primary'
+                        : 'text-text-secondary hover:text-text-primary',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 방식 A: 웹 이미지에서 영역 크롭 선택 */}
+            {mobileMode === 'crop' && coverImageUrl && (
               <div className="flex items-center gap-3">
                 <div
                   className="relative rounded-xl overflow-hidden bg-slate-100 border border-border"
@@ -670,17 +1045,39 @@ function BrandingSection() {
                     </div>
                   )}
                 </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setShowCropModal(true)}
-                >
+                <Button variant="secondary" size="sm" onClick={() => setShowCropModal(true)}>
                   <Smartphone className="h-4 w-4 mr-1.5" />
-                  모바일 영역 설정
+                  영역 설정
                 </Button>
               </div>
-            </div>
-          )}
+            )}
+            {mobileMode === 'crop' && !coverImageUrl && (
+              <p className="text-xs text-text-muted">웹 커버 이미지를 먼저 업로드하세요.</p>
+            )}
+
+            {/* 방식 B: 별도 모바일 전용 이미지 업로드 */}
+            {mobileMode === 'upload' && (
+              <div className="space-y-2">
+                <p className="text-xs text-text-muted">모바일 앱에만 표시되는 별도 이미지입니다. (권장: 1080 × 400px)</p>
+                <ImageUploader
+                  currentUrl={coverImageMobileUrl}
+                  onUpload={(url) => { setCoverImageMobileUrl(url); setIsDirty(true); }}
+                  feature="covers"
+                  shape="cover"
+                  fallback="모바일 커버 이미지 업로드"
+                />
+                {coverImageMobileUrl && (
+                  <button
+                    type="button"
+                    onClick={() => { setCoverImageMobileUrl(null); setIsDirty(true); }}
+                    className="text-xs text-red-400 hover:text-red-600 underline underline-offset-2 transition-colors"
+                  >
+                    모바일 이미지 삭제
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* 텍스트 색상 */}
           <div>
@@ -763,14 +1160,12 @@ export default function SettingsPage() {
     { key: 'branding',     label: '브랜딩',      icon: Image,     ownerOnly: true },
     { key: 'work',         label: '근무 설정',   icon: Clock,     ownerOnly: true },
     { key: 'gps',          label: 'GPS 설정',    icon: MapPin,    ownerOnly: true },
-    { key: 'notification', label: '알림 설정',   icon: Bell,      disabled: true },
+    { key: 'notification', label: '알림 설정',   icon: Bell },
   ];
   const menus = allMenus.filter((m) => !m.ownerOnly || isOwner);
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <Header title="설정" />
-
       <main className="p-6">
         <div className="flex gap-6 max-w-4xl">
           {/* 좌측 메뉴 */}
@@ -805,12 +1200,7 @@ export default function SettingsPage() {
             {section === 'branding'     && <BrandingSection />}
             {section === 'work'         && <WorkSection />}
             {section === 'gps'          && <GpsSection />}
-            {section === 'notification' && (
-              <Card>
-                <CardHeader title="알림 설정" description="준비 중입니다" />
-                <p className="text-sm text-text-muted mt-4">알림 시스템 구현 후 활성화됩니다.</p>
-              </Card>
-            )}
+            {section === 'notification' && <NotificationSection />}
           </div>
         </div>
       </main>

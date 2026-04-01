@@ -11,6 +11,7 @@ import Button from '@/components/ui/Button';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api/v1';
 
+// SocialStrategy 패턴으로 설계 — Kakao/Naver 추가 시 버튼만 추가하면 됨
 function SocialButtons() {
   return (
     <div className="space-y-3">
@@ -30,15 +31,6 @@ function SocialButtons() {
           <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
         </svg>
         Google로 로그인
-      </a>
-      <a
-        href={`${API_URL}/auth/kakao`}
-        className="flex items-center justify-center gap-3 w-full bg-[#FEE500] rounded-xl py-3 text-sm font-medium text-[#191919] hover:bg-[#FDD800] transition-colors"
-      >
-        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path fillRule="evenodd" clipRule="evenodd" d="M9 0C4.029 0 0 3.148 0 7.031c0 2.486 1.617 4.672 4.067 5.934L3.09 16.57a.29.29 0 00.434.322L8.3 13.909c.231.02.465.031.7.031 4.971 0 9-3.148 9-7.031S13.971 0 9 0z" fill="#191919"/>
-        </svg>
-        Kakao로 로그인
       </a>
     </div>
   );

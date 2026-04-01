@@ -26,7 +26,9 @@ import { ContractsModule } from './modules/contracts/contracts.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { TrainingModule } from './modules/training/training.module';
+import { TaxDocumentsModule } from './modules/tax-documents/tax-documents.module';
 import { CryptoModule } from './common/crypto/crypto.module';
+import { SmsModule } from './common/sms/sms.module';
 import { ActivityLogModule } from './modules/activity-logs/activity-log.module';
 import { UserActivityLog } from './database/entities/user-activity-log.entity';
 import { UserSubscriber } from './database/subscribers/user.subscriber';
@@ -71,6 +73,7 @@ import { UserEducation } from './database/entities/user-education.entity';
 import { UserDocument } from './database/entities/user-document.entity';
 import { Training } from './database/entities/training.entity';
 import { TrainingEnrollment } from './database/entities/training-enrollment.entity';
+import { PhoneOtp } from './database/entities/phone-otp.entity';
 
 @Module({
   imports: [
@@ -88,6 +91,9 @@ import { TrainingEnrollment } from './database/entities/training-enrollment.enti
 
     // 암호화 서비스 (전역 — ConfigModule 이후 등록)
     CryptoModule,
+
+    // SMS 서비스 (전역)
+    SmsModule,
 
     // Rate Limiting (전역)
     ThrottlerModule.forRoot([
@@ -141,6 +147,7 @@ import { TrainingEnrollment } from './database/entities/training-enrollment.enti
             Training,
             TrainingEnrollment,
             UserActivityLog,
+            PhoneOtp,
           ],
           synchronize: false, // Migration으로 스키마 관리
           logging: config.get<string>('NODE_ENV') === 'development',
@@ -187,6 +194,7 @@ import { TrainingEnrollment } from './database/entities/training-enrollment.enti
     CalendarModule,
     EvaluationsModule,
     TrainingModule,
+    TaxDocumentsModule,
 
     // 활동 로그 (통신비밀보호법, 전역)
     ActivityLogModule,

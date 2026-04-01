@@ -1,8 +1,8 @@
 # 서비스 완성을 위한 잔여 작업 목록
 
 > 작성일: 2026-03-11
-> 최종 업데이트: 2026-03-26 (소셜 로그인 + AES-256-GCM 암호화 + 통신비밀보호법 활동 로그)
-> 참조 문서: `saas-design.md`, `admin-system-design.md`, `infra/ARCHITECTURE.md`
+> 최종 업데이트: 2026-03-27 (빌드 가이드 v2 기준 재정렬 — Kakao 제거, 글로벌 AI 토큰 상한 추가, PIPA 체크리스트 추가)
+> 참조 문서: `saas-design.md`, `admin-system-design.md`, `infra/ARCHITECTURE.md`, `docs/claude-build-guide.md`
 
 ## 완료 표기 규칙
 - `[DONE]` : 코드 구현 완료 + 프로덕션 정상 동작 확인
@@ -26,6 +26,9 @@
 | Render 백엔드 배포 (health 응답) | [DONE] | `insagwanri-backend.onrender.com` |
 | DB 연결 (health에서 database:up 확인) | [DONE] | Render PostgreSQL |
 | `backend/data-source.prod.ts` | [CODE] | 신규 생성 — render.yaml startCommand 참조 |
+| **Render DB 유료 플랜 전환** | [ ] | 무료 DB는 90일 만료·백업 없음 → 첫 유료 고객 전 반드시 업그레이드 |
+
+> ⚠️ Render 무료 Web Service는 15분 비활성 시 슬립됩니다. 실제 고객용 프로덕션에는 Starter 플랜 이상을 사용하세요.
 
 ### 0-2. Render 환경변수 설정
 
@@ -43,12 +46,10 @@
 | `GOOGLE_CLIENT_ID` | [ ] | Google Cloud Console → OAuth 2.0 앱 등록 후 |
 | `GOOGLE_CLIENT_SECRET` | [ ] | |
 | `GOOGLE_CALLBACK_URL` | [CODE] | render.yaml에 고정값 설정됨 |
-| `KAKAO_CLIENT_ID` | [ ] | Kakao Developers → REST API 키 |
-| `KAKAO_CLIENT_SECRET` | [ ] | |
-| `KAKAO_CALLBACK_URL` | [CODE] | render.yaml에 고정값 설정됨 |
 | `ENCRYPTION_KEY` | [ ] | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `HMAC_SECRET` | [ ] | 위와 동일 방법 — ENCRYPTION_KEY와 다른 값으로 |
 | `CUSTOMER_JWT_ACCESS_SECRET` | [ ] | Admin Backend용 — Customer JWT_ACCESS_SECRET과 동일값 |
+| `OPENAI_DAILY_TOKEN_LIMIT` | [ ] | 글로벌 일일 토큰 상한선 (예: `1000000`) — 0이면 비활성 |
 
 > ⚠️ `ENCRYPTION_KEY` + `HMAC_SECRET`은 설정 후 절대 변경 불가. 변경 시 암호화된 기존 데이터 복호화 불가.
 
@@ -71,6 +72,8 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | `1741910416000-AddOAuthColumns` | [ ] | provider, provider_account_id, password_hash nullable |
 | `1741910419000-AddEncryptedColumns` | [ ] | email_hash, email_encrypted, name_encrypted |
 | `1741910420000-CreateActivityLogsTable` | [ ] | user_activity_logs |
+| `1741910421000-ExtendInviteTokensAndPhoneOtp` | [ ] | invite_tokens 확장 + phone_otps 생성 |
+| `1741910422000-AddCompanyTypeAndUserPermissions` | [ ] | company.company_type 등 5컬럼 + users.managed_departments/permissions |
 
 ### 0-4. OAuth 앱 등록 (수동)
 
@@ -80,9 +83,8 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | Google Cloud Console — Web 로그인용 origin 등록 | [ ] | `https://insagwanri-nine.vercel.app` |
 | Google Cloud Console — iOS 클라이언트 ID 발급 | [MANUAL] | 모바일 배포 시 필요 |
 | Google Cloud Console — Android 클라이언트 ID 발급 | [MANUAL] | 모바일 배포 시 필요 |
-| Kakao Developers — 앱 등록 + REST API 키 발급 | [ ] | |
-| Kakao Redirect URI 등록 | [ ] | `https://insagwanri-backend.onrender.com/api/v1/auth/kakao/callback` |
-| Kakao Web 도메인 등록 | [ ] | `https://insagwanri-nine.vercel.app` |
+
+> Kakao 로그인은 현재 범위에서 제외되었습니다. 필요 시 `SocialStrategy` 패턴으로 별도 추가 가능합니다.
 
 ### 0-5. E2E 동작 검증 (환경변수 + 마이그레이션 후)
 
@@ -90,11 +92,12 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 |------|------|
 | 이메일 회원가입 → 인증 → 로그인 | [ ] |
 | Google 소셜 로그인 (신규 + 기존) | [ ] |
-| Kakao 소셜 로그인 (신규 + 기존) | [ ] |
 | 대시보드 진입 + 출퇴근 기록 | [ ] |
-| 직원 초대 + 수락 | [ ] |
+| 직원 초대 (이메일/전화/링크) + 수락 | [ ] |
+| 비밀번호 찾기 — 전화번호 OTP 흐름 | [ ] |
 | 토큰 갱신 (15분 후) | [ ] |
 | 암호화 백필 (기존 데이터 email_hash 채워졌는지) | [ ] |
+| AI 기능 — 글로벌 토큰 상한선 초과 시 503 반환 | [ ] |
 
 ---
 
@@ -120,17 +123,17 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 
 | 모듈 | 상태 | 비고 |
 |------|------|------|
-| auth (이메일/비밀번호) | [CODE] | 회원가입/로그인/토큰갱신/로그아웃 |
+| auth (이메일/비밀번호) | [CODE] | 회원가입(사업자유형 포함)/로그인/토큰갱신/로그아웃 |
 | auth (Google OAuth) | [CODE] | passport-google-oauth20 + GoogleStrategy |
-| auth (Kakao OAuth) | [CODE] | 직접 HTTP fetch |
 | auth (소셜 모바일) | [CODE] | POST /auth/social/mobile |
+| auth (비밀번호 찾기 — 전화OTP) | [CODE] | send-phone-otp / verify-phone-otp |
 | attendance | [CODE] | 출퇴근 기록/조회, GPS 플래그 |
 | tasks | [CODE] | 업무 CRUD |
 | schedules | [CODE] | 일정 CRUD, rrule 반복 |
 | collaboration | [CODE] | 채팅/메시지 |
-| ai | [CODE] | OpenAI 연동 |
-| users | [CODE] | 직원 초대/관리, org-stats |
-| workspace | [CODE] | 설정, 브랜딩 |
+| ai | [CODE] | OpenAI 연동, 플랜별 일일 한도 + **글로벌 토큰 상한** |
+| users | [CODE] | 직원 초대 3경로(이메일/전화/링크), org-stats, 권한위임(PATCH /users/:id/permissions) |
+| workspace | [CODE] | 설정(사업자정보 포함), 브랜딩 |
 | files | [CODE] | S3/R2 업로드 |
 | notifications | [CODE] | 이메일 알림 |
 | socket | [CODE] | 실시간 이벤트 |
@@ -145,23 +148,25 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | training | [CODE] | 교육 관리, 수강/수료 |
 | activity-logs | [CODE] | 통신비밀보호법, 90일 Cron 자동삭제 |
 | crypto (공통) | [CODE] | AES-256-GCM + HMAC-SHA256 |
+| tax-documents | [CODE] | 세무·노무 서류 자동생성 + Cron 알림 (2026-03-31 신규) |
 
 ### Frontend — Customer Web
 
 | 페이지 | 상태 |
 |--------|------|
-| /login, /register (이메일) | [CODE] |
-| /login, /register (소셜 버튼) | [CODE] |
+| /login, /register (이메일, 사업자유형 선택 포함) | [CODE] |
+| /login, /register (소셜 버튼 — Google) | [CODE] |
 | /auth/callback (소셜 토큰 수신) | [CODE] |
 | /auth/social-complete (신규 소셜 유저) | [CODE] |
-| /invite | [CODE] |
+| /forgot-password (전화OTP + 이메일 링크 탭) | [CODE] |
+| /invite (전화/링크 초대 이메일 직접입력 지원) | [CODE] |
 | / (대시보드) | [CODE] |
 | /attendance (3탭) | [CODE] |
 | /tasks, /tasks/reports | [CODE] |
 | /schedule | [CODE] |
 | /messages | [CODE] |
 | /ai | [CODE] |
-| /team | [CODE] |
+| /team (초대 3탭 모달, 관리자 권한설정 모달) | [CODE] |
 | /team/[id] (5탭) | [CODE] |
 | /team/notes | [CODE] |
 | /team/stats (recharts) | [CODE] |
@@ -173,7 +178,8 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | /certificates | [CODE] |
 | /evaluations | [CODE] |
 | /training | [CODE] |
-| /settings (브랜딩 탭 포함) | [CODE] |
+| /tax-documents (6탭: 할일·원천징수·4대보험·연말정산·퇴직금·연간캘린더) | [CODE] |
+| /settings (브랜딩 탭 + 사업자정보 카드 + 알림설정 탭) | [CODE] |
 | /subscription, /onboarding/* | [CODE] |
 
 ---
@@ -194,6 +200,7 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | Impersonation (POST /companies/:id/impersonate) | [CODE] |
 | 브로드캐스트 (POST /broadcast) | [CODE] |
 | Analytics 실시간 대시보드 + 퍼널 분석 | [CODE] |
+| **테넌트별 AI 사용량 + 예상 비용 모니터링** | [CODE] | AiRequest 엔티티 기반 — Admin 대시보드 연결 필요 |
 | 고객사 데이터 삭제 (SUPER_ADMIN 전용) | [CODE] |
 | Admin Web — 9개 페이지 (Next.js) | [CODE] |
 | e-세금계산서 API 연동 | [MANUAL] |
@@ -237,7 +244,6 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | Push Notifications | [CODE] | |
 | 이메일 로그인 | [CODE] | |
 | Google 소셜 로그인 (expo-auth-session PKCE) | [CODE] | EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS/ANDROID 필요 |
-| Kakao 소셜 로그인 (WebBrowser) | [CODE] | EXPO_PUBLIC_KAKAO_CLIENT_ID 필요 |
 | social-complete 화면 | [CODE] | |
 | 모바일 커버 이미지 (ImageBackground) | [CODE] | |
 | eas.json + app.json 배포 설정 | [CODE] | |
@@ -247,16 +253,20 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | eas build --profile production | [MANUAL] | 에셋 + 계정 준비 후 |
 | eas submit | [MANUAL] | |
 
+> Kakao 모바일 로그인 코드는 제거되었습니다. 향후 필요 시 `SocialStrategy` 인터페이스로 확장 추가 가능합니다.
+
 ---
 
 ## 6. 보안 & 법규 현황
+
+### 기술적 보호조치
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
 | JWT 시크릿 분리 (Access/Refresh) | [DONE] | |
 | Refresh Token Hash 저장 | [DONE] | |
 | 로그인 Rate Limit (5회/60초 잠금) | [DONE] | |
-| 멀티테넌트 격리 (company_id) | [DONE] | |
+| 멀티테넌트 격리 (company_id) — 1차 방어선 | [DONE] | |
 | Soft Delete (deleted_at) | [DONE] | |
 | HTTPS 강제 (HSTS 헤더) | [DONE] | vercel.json |
 | PG 빌링키 AES-256 암호화 | [CODE] | Admin Backend |
@@ -267,8 +277,24 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | **통신비밀보호법 활동 로그** | [CODE] | user_activity_logs, 90일 자동삭제 |
 | **IP 주소 AES-256-GCM 암호화** | [CODE] | activity_logs.ip_address_encrypted |
 | **ScheduleModule.forRoot()** | [CODE] | @Cron 작동 — 버그 수정 완료 |
+| **글로벌 AI 일일 토큰 상한선** | [CODE] | `OPENAI_DAILY_TOKEN_LIMIT` 환경변수 설정 필요 |
+| 멀티테넌트 2차 방어선 (DB RLS) | [ ] | 초기 유료 고객 확보 후 도입 권장 (Phase 2 가이드 참고) |
+| 암호화 키 KMS 관리 체계 | [ ] | 프로덕션 매출 발생 후 — AWS KMS 등 도입 권장 |
+
+### PIPA(개인정보보호법) 비기술 체크리스트
+
+> 아래 항목은 개인정보보호위원회 공식 가이드라인 및 법률 자문 병행 필요
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| 개인정보 처리방침 작성 및 서비스 게시 | [MANUAL] | 수집 항목, 이용 목적, 보유 기간, 제3자 제공/국외 이전 명시 |
+| 동의서 설계 (필수/선택 구분, 철회 절차) | [MANUAL] | |
+| OpenAI 국외 이전·처리 위탁 처리방침 기재 | [MANUAL] | PIPA 국외 이전에 해당할 수 있음 |
+| 파기 절차 수립 (보유 기간 만료 데이터) | [MANUAL] | |
+| 침해사고 신고·통지 프로세스 수립 | [MANUAL] | 72시간 이내 개보위 신고, 정보주체 통지 |
+| 접속기록 위·변조 방지 체계 | [ ] | 현재: DB 직접 저장. 향후 별도 로그 서버 또는 WORM 스토리지 도입 검토 |
+| GPS 데이터 개인정보보호법 처리방침 명문화 | [MANUAL] | |
 | 개인정보처리방침 / 이용약관 법무 검토 | [MANUAL] | |
-| GPS 데이터 개인정보보호법 명문화 | [MANUAL] | |
 
 ---
 
@@ -312,14 +338,17 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | 최저시급 위반 감지 | [ ] | 급여 모듈 추가 기능 |
 | 부서 트리 사이드바 | [ ] | `/team` — 현재 탭 필터 방식 |
 | Rich Text 에디터 | [ ] | 결재문서, 퇴직/휴직 사유 등 |
-| 팀별 주간 스케줄 카드 뷰 | [ ] | 요일별 색상 카드 |
-| 월별 캘린더 출퇴근 뷰 | [ ] | 직원×날짜 교차 테이블 |
+| 팀별 주간 스케줄 카드 뷰 | [CODE] | `/schedule` 주간/목록 뷰 전환 토글, 요일별 색상 카드 |
+| 월별 캘린더 출퇴근 뷰 | [CODE] | `/attendance` 월간 뷰 탭, 직원×날짜 교차 테이블, 상태 뱃지 |
 | 개인 배경 설정 (내 프로필) | [ ] | "회사 기본으로 되돌리기" 포함 |
-| 모바일 전용 이미지 별도 업로드 | [~] | 방식 B — 크롭 URL 재사용, 업로드 UI 미구현 |
+| 모바일 전용 이미지 별도 업로드 | [CODE] | 방식 B 구현 완료 — 브랜딩 탭 "영역 선택/별도 업로드" 토글 |
 | 로드 테스트 | [MANUAL] | 피크 시간대 시뮬레이션 |
 | DB 인덱스 실제 생성 확인 | [MANUAL] | migration:run 후 DB 직접 확인 |
 | S3 Lifecycle Policy (Export 7일 TTL) | [MANUAL] | AWS 콘솔 |
 | Sentry 토큰 설정 | [ ] | SENTRY_AUTH_TOKEN |
+| **DB RLS 2차 방어선 도입** | [ ] | 초기 유료 고객 확보 후 — NestJS CLS + PostgreSQL RLS |
+| **Kakao 소셜 로그인 추가** | [ ] | 선택적 — SocialStrategy 패턴으로 별도 Phase에서 추가 가능 |
+| **접속기록 무결성 보호** | [ ] | 별도 로그 서버 또는 WORM 스토리지 — 3단계(매출 발생 후) 도입 권장 |
 
 ---
 
@@ -330,27 +359,32 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | 순위 | 작업 | 방법 |
 |------|------|------|
 | 1 | **Google OAuth 앱 등록** | Google Cloud Console → Web 클라이언트 ID |
-| 2 | **Kakao 앱 등록** | Kakao Developers → REST API 키 |
-| 3 | **Render 환경변수 추가** | GOOGLE_*, KAKAO_*, ENCRYPTION_KEY, HMAC_SECRET |
-| 4 | **DB 마이그레이션 실행** | render.yaml startCommand에 포함 (배포 시 자동) |
-| 5 | **E2E 검증** | 회원가입 → 소셜 로그인 → 출퇴근 → 로그아웃 |
+| 2 | **Render 환경변수 추가** | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ENCRYPTION_KEY`, `HMAC_SECRET`, `OPENAI_DAILY_TOKEN_LIMIT` |
+| 3 | **DB 마이그레이션 실행** | render.yaml startCommand에 포함 (배포 시 자동) |
+| 4 | **Render DB 유료 플랜 전환** | 무료 DB 90일 만료·백업 없음 — 데이터 보장 필수 |
+| 5 | **E2E 검증** | 회원가입 → Google 로그인 → 출퇴근 → 로그아웃 |
 
 ### 코드 구현 (다음 세션 추천)
 
 | 순위 | 항목 | 규모 |
 |------|------|------|
-| 1 | **최저시급 위반 감지** | 급여 등록/수정 시 경고 표시 — 소규모 |
-| 2 | **개인 배경 설정** (내 프로필) | 브랜딩 방식과 동일 패턴 — 소규모 |
-| 3 | **부서 트리 사이드바** (`/team`) | 중간 규모 |
-| 4 | **Rich Text 에디터** (결재문서/사유) | 중간 규모 |
+| 1 | **최저시급 위반 감지** | [CODE] — 급여 폼 실시간 경고 배너, 연도별 시급 테이블 |
+| 2 | **개인 배경 설정** (내 프로필) | [CODE] — 설정>내 프로필 하단 PersonalCoverCard |
+| 3 | **부서 트리 사이드바** (`/team`) | [CODE] — DeptTree 컴포넌트, 부서별 인원 수 표시 |
+| 4 | **Rich Text 에디터** (결재문서) | [CODE] — Tiptap 기반 RichTextEditor 공통 컴포넌트, 전자결재 적용 |
 | 5 | **Admin 배포** | Render + Vercel 서비스 생성 — 수동 |
 | 6 | **모바일 EAS Build** | 앱 아이콘 + eas init 후 |
 
-### 선택적 개선 (MVP 이후)
+### 선택적 개선 (MVP 이후 / 2단계~3단계)
 
+- DB RLS 2차 방어선 도입 (초기 유료 고객 확보 후)
+- Tamper-evident 감사 로그 (WORM 스토리지)
+- 암호화 키 KMS 관리 체계 (AWS KMS)
 - 팀별 주간 스케줄 카드 뷰
 - 월별 캘린더 출퇴근 뷰 (직원×날짜 교차)
 - 전자서명 연동 (계약서)
 - e-세금계산서 API 연동
 - Sentry 오류 모니터링 설정
 - 로드 테스트
+- Kakao 소셜 로그인 (SocialStrategy 확장)
+- PIPA 정식 컨설팅 + 처리방침 법무 검토

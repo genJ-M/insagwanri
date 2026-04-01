@@ -1,13 +1,43 @@
 import {
   IsString, IsOptional, IsBoolean, IsNumber,
-  IsArray, Min, Max, MaxLength,
+  IsArray, Min, Max, MaxLength, IsEnum,
 } from 'class-validator';
+import { CompanyType } from '../../../database/entities/company.entity';
 
 export class UpdateWorkspaceDto {
   @IsOptional()
   @IsString()
   @MaxLength(100)
   name?: string;
+
+  @IsOptional()
+  @IsEnum(CompanyType)
+  companyType?: CompanyType;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  businessNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  corporateNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  representativeName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  businessType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  businessItem?: string;
 
   @IsOptional()
   @IsString()

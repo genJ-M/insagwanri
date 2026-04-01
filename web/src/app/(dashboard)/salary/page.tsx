@@ -6,10 +6,9 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import {
   ChevronLeft, ChevronRight, Plus, X, Printer,
-  CheckCircle2, Clock, Banknote, ChevronDown,
+  CheckCircle2, Clock, Banknote, ChevronDown, AlertTriangle,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import Header from '@/components/layout/Header';
 import Avatar from '@/components/ui/Avatar';
 import Badge from '@/components/ui/Badge';
 import api from '@/lib/api';
@@ -194,6 +193,19 @@ function SlipModal({ salary, onClose }: { salary: any; onClose: () => void }) {
   );
 }
 
+// ── 최저시급 테이블 (연도별) ─────────────────────────
+const MIN_WAGE_TABLE: Record<number, number> = {
+  2024: 9_860,
+  2025: 10_030,
+  2026: 10_030,
+};
+const MONTHLY_WORK_HOURS = 209;
+function getMinWage(year: number) {
+  if (MIN_WAGE_TABLE[year]) return MIN_WAGE_TABLE[year];
+  const keys = Object.keys(MIN_WAGE_TABLE).map(Number).filter((y) => y <= year);
+  return MIN_WAGE_TABLE[Math.max(...keys)] ?? MIN_WAGE_TABLE[2025];
+}
+
 // ── 급여 생성/수정 폼 ────────────────────────────────
 const EMPTY_FORM = {
   user_id: '',
@@ -292,6 +304,12 @@ function SalaryForm({
     + form.health_insurance + form.care_insurance + form.employment_insurance + form.other_deduction;
   const netPay = grossPay - totalDeduction;
 
+  // 최저시급 위반 여부 (기본급 기준)
+  const minWageHourly  = getMinWage(form.year);
+  const minWageMonthly = minWageHourly * MONTHLY_WORK_HOURS;
+  const minWageViolation = form.base_salary > 0 && form.base_salary < minWageMonthly;
+  const shortfall = minWageViolation ? minWageMonthly - form.base_salary : 0;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.user_id) { toast.error('직원을 선택하세요.'); return; }
@@ -377,6 +395,21 @@ function SalaryForm({
               <AmountInput label="기타수당" name="other_allowance" value={form.other_allowance} onChange={set} />
             </div>
           </div>
+
+          {/* 최저시급 위반 경고 */}
+          {minWageViolation && (
+            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
+              <div className="text-xs text-amber-700">
+                <p className="font-semibold">최저임금 위반 가능성</p>
+                <p className="mt-0.5">
+                  {form.year}년 최저임금 기준 월 {KRW(minWageMonthly)} (시간당 {KRW(minWageHourly)}, 월 {MONTHLY_WORK_HOURS}시간)보다{' '}
+                  <span className="font-semibold">{KRW(shortfall)} 부족</span>합니다.
+                </p>
+                <p className="mt-0.5 text-amber-600">※ 단시간 근로자는 실제 근로시간 기준으로 별도 계산하세요.</p>
+              </div>
+            </div>
+          )}
 
           {/* 공제 항목 */}
           <div>
@@ -510,8 +543,6 @@ export default function SalaryPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <Header title="급여 관리" />
-
       <main className="page-container space-y-6">
         {/* 월 네비게이션 */}
         <div className="flex items-center justify-between">

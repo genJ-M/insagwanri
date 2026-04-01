@@ -175,7 +175,8 @@ export default function OrgStatsPage() {
                     cx="50%"
                     cy="50%"
                     outerRadius={80}
-                    label={({ name, percent }) => `${name} ${Math.round(percent * 100)}%`}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+label={(entry: any) => `${entry.name} ${Math.round((entry.percent ?? 0) * 100)}%`}
                     labelLine={false}
                   >
                     {data.byRole.map((_, i) => (

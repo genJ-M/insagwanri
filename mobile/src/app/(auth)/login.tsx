@@ -15,13 +15,12 @@ WebBrowser.maybeCompleteAuthSession();
 
 const GOOGLE_CLIENT_ID_IOS = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS ?? '';
 const GOOGLE_CLIENT_ID_ANDROID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID ?? '';
-const KAKAO_CLIENT_ID = process.env.EXPO_PUBLIC_KAKAO_CLIENT_ID ?? '';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [socialLoading, setSocialLoading] = useState<'google' | 'kakao' | null>(null);
+  const [socialLoading, setSocialLoading] = useState<'google' | null>(null);
   const login = useAuthStore((s) => s.login);
   const setUser = useAuthStore((s) => s.setUser);
   const router = useRouter();
@@ -43,9 +42,9 @@ export default function LoginScreen() {
     }
   };
 
-  // ── 소셜 로그인 공통 처리 ───────────────────────────────────────
+  // ── 소셜 로그인 공통 처리 (SocialProvider 패턴 — Kakao 등 추가 시 provider 파라미터 확장)
   const handleSocialResult = async (
-    provider: 'google' | 'kakao',
+    provider: string,
     code: string,
     redirectUri: string,
   ) => {
@@ -98,36 +97,6 @@ export default function LoginScreen() {
       }
     } catch (err: any) {
       Alert.alert('오류', err.response?.data?.message ?? 'Google 로그인 중 오류가 발생했습니다.');
-    } finally {
-      setSocialLoading(null);
-    }
-  };
-
-  // ── Kakao 소셜 로그인 ───────────────────────────────────────────
-  const handleKakaoLogin = async () => {
-    setSocialLoading('kakao');
-    try {
-      const redirectUri = makeRedirectUri({ scheme: 'gwanriwang', path: 'auth/callback' });
-
-      const authUrl =
-        `https://kauth.kakao.com/oauth/authorize` +
-        `?client_id=${KAKAO_CLIENT_ID}` +
-        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-        `&response_type=code`;
-
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
-
-      if (result.type === 'success' && result.url) {
-        const url = new URL(result.url);
-        const code = url.searchParams.get('code');
-        if (code) {
-          await handleSocialResult('kakao', code, redirectUri);
-        } else {
-          Alert.alert('Kakao 로그인 실패', '인증 코드를 받지 못했습니다.');
-        }
-      }
-    } catch (err: any) {
-      Alert.alert('오류', err.response?.data?.message ?? 'Kakao 로그인 중 오류가 발생했습니다.');
     } finally {
       setSocialLoading(null);
     }
@@ -205,22 +174,6 @@ export default function LoginScreen() {
               </>
             )}
           </TouchableOpacity>
-
-          {/* Kakao */}
-          <TouchableOpacity
-            style={styles.kakaoButton}
-            onPress={handleKakaoLogin}
-            disabled={!!socialLoading}
-          >
-            {socialLoading === 'kakao' ? (
-              <ActivityIndicator color="#191919" size="small" />
-            ) : (
-              <>
-                <Text style={styles.kakaoIcon}>K</Text>
-                <Text style={styles.kakaoText}>Kakao로 로그인</Text>
-              </>
-            )}
-          </TouchableOpacity>
         </View>
 
         <Text style={styles.hint}>
@@ -279,16 +232,5 @@ const styles = StyleSheet.create({
   },
   googleIcon: { fontSize: 16, fontWeight: '700', color: '#4285F4' },
   googleText: { fontSize: 15, fontWeight: '500', color: '#374151' },
-  kakaoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: '#FEE500',
-    borderRadius: 12,
-    paddingVertical: 14,
-  },
-  kakaoIcon: { fontSize: 16, fontWeight: '700', color: '#191919' },
-  kakaoText: { fontSize: 15, fontWeight: '500', color: '#191919' },
   hint: { textAlign: 'center', color: '#9CA3AF', fontSize: 13, marginTop: 32, lineHeight: 20 },
 });

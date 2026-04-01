@@ -3,11 +3,10 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { UserPlus, MoreVertical, Mail, Shield, User, RefreshCw, X } from 'lucide-react';
+import { UserPlus, MoreVertical, Mail, Shield, User, RefreshCw, X, Smartphone, Link2, Copy, Check, QrCode, ChevronRight, Building2 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { clsx } from 'clsx';
-import Header from '@/components/layout/Header';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { SkeletonTableRows } from '@/components/ui/Skeleton';
@@ -27,57 +26,227 @@ const STATUS_LABEL: Record<string, string> = {
   active: '재직', inactive: '비활성', pending: '대기',
 };
 
+type InviteTab = 'phone' | 'email' | 'link';
+
 function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ email: '', role: 'employee' });
+  const [tab, setTab] = useState<InviteTab>('phone');
+  const [role, setRole] = useState('employee');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const mutation = useMutation({
-    mutationFn: (payload: any) => api.post('/users/invite', payload),
+  // 전화번호 초대
+  const [phoneName, setPhoneName] = useState('');
+  const [phoneNum, setPhoneNum] = useState('');
+
+  // 이메일 초대
+  const [email, setEmail] = useState('');
+
+  // 링크 공유
+  const [generatedLink, setGeneratedLink] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [validDays, setValidDays] = useState(7);
+
+  const reset = () => {
+    setError(''); setSuccess('');
+    setPhoneName(''); setPhoneNum(''); setEmail('');
+    setGeneratedLink(''); setCopied(false);
+  };
+
+  const phoneMutation = useMutation({
+    mutationFn: (payload: any) => api.post('/users/invite/phone', payload).then(r => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invites'] });
-      onClose();
-      setForm({ email: '', role: 'employee' });
+      setSuccess('SMS 초대를 발송했습니다.');
+      setPhoneName(''); setPhoneNum('');
     },
-    onError: (err: any) => setError(err.response?.data?.message ?? '초대에 실패했습니다.'),
+    onError: (err: any) => setError(err.response?.data?.message ?? '초대 발송에 실패했습니다.'),
   });
 
+  const emailMutation = useMutation({
+    mutationFn: (payload: any) => api.post('/users/invite', payload).then(r => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invites'] });
+      setSuccess('이메일 초대를 발송했습니다.');
+      setEmail('');
+    },
+    onError: (err: any) => setError(err.response?.data?.message ?? '초대 발송에 실패했습니다.'),
+  });
+
+  const linkMutation = useMutation({
+    mutationFn: (payload: any) => api.post('/users/invite/link', payload).then(r => r.data.data),
+    onSuccess: (data: { inviteUrl: string }) => {
+      setGeneratedLink(data.inviteUrl);
+    },
+    onError: (err: any) => setError(err.response?.data?.message ?? '링크 생성에 실패했습니다.'),
+  });
+
+  const copyLink = async () => {
+    await navigator.clipboard.writeText(generatedLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const TABS: { key: InviteTab; icon: React.ComponentType<{ className?: string }>; label: string }[] = [
+    { key: 'phone', icon: Smartphone, label: '전화번호' },
+    { key: 'email', icon: Mail,       label: '이메일' },
+    { key: 'link',  icon: Link2,      label: '링크 공유' },
+  ];
+
   return (
-    <Modal open={open} onClose={onClose} title="직원 초대">
-      <div className="space-y-4">
-        <div>
-          <label className="label">이메일</label>
-          <input
-            type="email"
-            placeholder="employee@company.com"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            className="input"
-          />
-        </div>
-        <div>
-          <label className="label">역할</label>
-          <select
-            value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value })}
-            className="input"
+    <Modal open={open} onClose={() => { reset(); onClose(); }} title="직원 초대">
+      {/* 탭 */}
+      <div className="flex gap-1 bg-zinc-50 rounded-xl p-1 mb-5">
+        {TABS.map(({ key, icon: Icon, label }) => (
+          <button
+            key={key}
+            onClick={() => { setTab(key); reset(); }}
+            className={clsx(
+              'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all',
+              tab === key ? 'bg-white text-primary-600 shadow-sm' : 'text-text-secondary hover:text-text-primary',
+            )}
           >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* 역할 (공통) */}
+      {tab !== 'link' && (
+        <div className="mb-4">
+          <label className="label">역할</label>
+          <select value={role} onChange={(e) => setRole(e.target.value)} className="input">
             <option value="employee">직원</option>
             <option value="manager">관리자</option>
           </select>
         </div>
-        {error && <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
-        <div className="flex justify-end gap-2 pt-1">
-          <Button variant="secondary" onClick={onClose}>취소</Button>
-          <Button
-            loading={mutation.isPending}
-            disabled={!form.email || mutation.isPending}
-            onClick={() => mutation.mutate(form)}
-          >
-            초대 발송
-          </Button>
+      )}
+
+      {/* ── 전화번호 탭 ── */}
+      {tab === 'phone' && (
+        <div className="space-y-3">
+          <div>
+            <label className="label">이름</label>
+            <input
+              placeholder="홍길동"
+              value={phoneName}
+              onChange={(e) => { setPhoneName(e.target.value); setError(''); }}
+              className="input"
+            />
+          </div>
+          <div>
+            <label className="label">전화번호</label>
+            <input
+              type="tel"
+              placeholder="010-0000-0000"
+              value={phoneNum}
+              onChange={(e) => { setPhoneNum(e.target.value); setError(''); }}
+              className="input"
+            />
+          </div>
+          <p className="text-xs text-text-muted">SMS로 초대 링크를 발송합니다 (48시간 유효).</p>
+          {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+          {success && <p className="text-xs text-green-600 bg-green-50 px-3 py-2 rounded-lg">{success}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={() => { reset(); onClose(); }}>취소</Button>
+            <Button
+              loading={phoneMutation.isPending}
+              disabled={!phoneName.trim() || !phoneNum.trim() || phoneMutation.isPending}
+              onClick={() => phoneMutation.mutate({ name: phoneName, phone: phoneNum, role })}
+            >
+              <Smartphone className="h-3.5 w-3.5" />
+              SMS 초대
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ── 이메일 탭 ── */}
+      {tab === 'email' && (
+        <div className="space-y-3">
+          <div>
+            <label className="label">이메일</label>
+            <input
+              type="email"
+              placeholder="employee@company.com"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setError(''); }}
+              className="input"
+            />
+          </div>
+          <p className="text-xs text-text-muted">이메일로 초대 링크를 발송합니다 (48시간 유효).</p>
+          {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+          {success && <p className="text-xs text-green-600 bg-green-50 px-3 py-2 rounded-lg">{success}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={() => { reset(); onClose(); }}>취소</Button>
+            <Button
+              loading={emailMutation.isPending}
+              disabled={!email.trim() || emailMutation.isPending}
+              onClick={() => emailMutation.mutate({ email, role })}
+            >
+              <Mail className="h-3.5 w-3.5" />
+              이메일 초대
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── 링크 공유 탭 ── */}
+      {tab === 'link' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">역할</label>
+              <select value={role} onChange={(e) => setRole(e.target.value)} className="input">
+                <option value="employee">직원</option>
+                <option value="manager">관리자</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">유효 기간</label>
+              <select value={validDays} onChange={(e) => setValidDays(Number(e.target.value))} className="input">
+                <option value={1}>1일</option>
+                <option value={3}>3일</option>
+                <option value={7}>7일</option>
+                <option value={14}>14일</option>
+                <option value={30}>30일</option>
+              </select>
+            </div>
+          </div>
+          <p className="text-xs text-text-muted">링크를 가진 누구나 가입할 수 있습니다. 카카오톡, 문자 등으로 공유하거나 사무실에 QR로 게시하세요.</p>
+
+          {generatedLink ? (
+            <div className="space-y-3">
+              <div className="bg-zinc-50 rounded-xl border border-border px-3 py-2.5 flex items-center gap-2">
+                <p className="flex-1 text-xs text-text-secondary truncate font-mono">{generatedLink}</p>
+                <button
+                  onClick={copyLink}
+                  className="flex-shrink-0 flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium"
+                >
+                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied ? '복사됨' : '복사'}
+                </button>
+              </div>
+              <p className="text-xs text-text-muted text-center">위 링크를 직원들에게 공유하세요.</p>
+            </div>
+          ) : (
+            <>
+              {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+              <div className="flex justify-end gap-2">
+                <Button variant="secondary" onClick={() => { reset(); onClose(); }}>취소</Button>
+                <Button
+                  loading={linkMutation.isPending}
+                  onClick={() => linkMutation.mutate({ role, validDays })}
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  링크 생성
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </Modal>
   );
 }
@@ -99,11 +268,12 @@ function ConfirmDialog({ state, onClose }: { state: ConfirmState; onClose: () =>
 }
 
 function UserActionMenu({
-  userId, role, currentUserRole, currentUserId, onClose, onConfirm,
+  userId, role, currentUserRole, currentUserId, onClose, onConfirm, onOpenPermissions,
 }: {
   userId: string; role: string; currentUserRole: string;
   currentUserId: string; onClose: () => void;
   onConfirm: (s: ConfirmState) => void;
+  onOpenPermissions: (id: string) => void;
 }) {
   const queryClient = useQueryClient();
 
@@ -140,7 +310,7 @@ function UserActionMenu({
   };
 
   return (
-    <div className="absolute right-0 top-8 z-10 bg-white border border-border rounded-xl shadow-lg py-1 w-40">
+    <div className="absolute right-0 top-8 z-10 bg-white border border-border rounded-xl shadow-lg py-1 w-44">
       {role === 'employee' && (
         <button
           onClick={() => handleRoleChange('manager')}
@@ -150,12 +320,20 @@ function UserActionMenu({
         </button>
       )}
       {role === 'manager' && (
-        <button
-          onClick={() => handleRoleChange('employee')}
-          className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-background flex items-center gap-2 transition-colors"
-        >
-          <User className="h-4 w-4 text-text-muted" /> 직원으로 변경
-        </button>
+        <>
+          <button
+            onClick={() => handleRoleChange('employee')}
+            className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-background flex items-center gap-2 transition-colors"
+          >
+            <User className="h-4 w-4 text-text-muted" /> 직원으로 변경
+          </button>
+          <button
+            onClick={() => { onOpenPermissions(userId); onClose(); }}
+            className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-background flex items-center gap-2 transition-colors"
+          >
+            <Shield className="h-4 w-4 text-amber-500" /> 권한 설정
+          </button>
+        </>
       )}
       <hr className="my-1 border-border" />
       <button
@@ -176,6 +354,190 @@ function UserActionMenu({
   );
 }
 
+function PermissionsModal({
+  open, onClose, userId, currentData,
+}: {
+  open: boolean; onClose: () => void; userId: string;
+  currentData?: { managedDepartments?: string[] | null; permissions?: Record<string, boolean> | null };
+}) {
+  const queryClient = useQueryClient();
+  const [allDepts, setAllDepts] = useState(true);
+  const [deptInput, setDeptInput] = useState('');
+  const [depts, setDepts] = useState<string[]>([]);
+  const [perms, setPerms] = useState({
+    canInvite: false, canManagePayroll: false,
+    canManageContracts: false, canManageEvaluations: false,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    if (currentData?.managedDepartments === null || currentData?.managedDepartments === undefined) {
+      setAllDepts(true); setDepts([]);
+    } else {
+      setAllDepts(false); setDepts(currentData.managedDepartments ?? []);
+    }
+    setPerms({
+      canInvite: currentData?.permissions?.canInvite ?? false,
+      canManagePayroll: currentData?.permissions?.canManagePayroll ?? false,
+      canManageContracts: currentData?.permissions?.canManageContracts ?? false,
+      canManageEvaluations: currentData?.permissions?.canManageEvaluations ?? false,
+    });
+  }, [open, currentData]);
+
+  const mutation = useMutation({
+    mutationFn: (payload: any) => api.patch(`/users/${userId}/permissions`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team'] });
+      toast.success('권한이 저장되었습니다.');
+      onClose();
+    },
+    onError: () => toast.error('저장에 실패했습니다.'),
+  });
+
+  const addDept = () => {
+    const v = deptInput.trim();
+    if (v && !depts.includes(v)) setDepts([...depts, v]);
+    setDeptInput('');
+  };
+
+  const PERM_LABELS: { key: keyof typeof perms; label: string }[] = [
+    { key: 'canInvite', label: '직원 초대' },
+    { key: 'canManagePayroll', label: '급여 관리' },
+    { key: 'canManageContracts', label: '계약 관리' },
+    { key: 'canManageEvaluations', label: '인사평가 관리' },
+  ];
+
+  return (
+    <Modal open={open} onClose={onClose} title="관리자 권한 설정">
+      <div className="space-y-5">
+        {/* 담당 부서 */}
+        <div>
+          <p className="text-sm font-medium text-text-primary mb-2">담당 부서 범위</p>
+          <div className="flex gap-3 mb-3">
+            <button
+              onClick={() => setAllDepts(true)}
+              className={clsx('flex-1 py-2 rounded-lg border text-sm font-medium transition-all', allDepts ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-border text-text-secondary hover:border-gray-300')}
+            >
+              전체 부서
+            </button>
+            <button
+              onClick={() => setAllDepts(false)}
+              className={clsx('flex-1 py-2 rounded-lg border text-sm font-medium transition-all', !allDepts ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-border text-text-secondary hover:border-gray-300')}
+            >
+              지정 부서만
+            </button>
+          </div>
+          {!allDepts && (
+            <div>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text" placeholder="부서명 입력" value={deptInput}
+                  onChange={(e) => setDeptInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addDept())}
+                  className="flex-1 px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:border-primary-500"
+                />
+                <Button size="sm" onClick={addDept}>추가</Button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {depts.map((d) => (
+                  <span key={d} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs">
+                    {d}
+                    <button onClick={() => setDepts(depts.filter((x) => x !== d))} className="hover:text-blue-900">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+                {depts.length === 0 && <p className="text-xs text-text-muted">부서를 추가하세요.</p>}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 세부 권한 */}
+        <div>
+          <p className="text-sm font-medium text-text-primary mb-2">세부 권한</p>
+          <div className="space-y-2">
+            {PERM_LABELS.map(({ key, label }) => (
+              <label key={key} className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox" checked={perms[key]}
+                  onChange={(e) => setPerms({ ...perms, [key]: e.target.checked })}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-text-primary">{label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose}>취소</Button>
+          <Button loading={mutation.isPending} onClick={() => mutation.mutate({
+            managedDepartments: allDepts ? null : depts,
+            permissions: perms,
+          })}>
+            저장
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── 부서 트리 사이드바 ────────────────────────
+function DeptTree({
+  members,
+  selected,
+  onSelect,
+}: {
+  members: any[];
+  selected: string | null;
+  onSelect: (dept: string | null) => void;
+}) {
+  // 부서별 인원 수 집계
+  const deptMap = new Map<string, number>();
+  let unclassified = 0;
+  for (const m of members) {
+    if (!m.department) { unclassified++; continue; }
+    deptMap.set(m.department, (deptMap.get(m.department) ?? 0) + 1);
+  }
+  const depts = Array.from(deptMap.entries()).sort((a, b) => a[0].localeCompare(b[0], 'ko'));
+
+  const item = (key: string | null, label: string, count: number) => (
+    <button
+      key={key ?? '__all'}
+      onClick={() => onSelect(key)}
+      className={clsx(
+        'flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors text-left',
+        selected === key
+          ? 'bg-primary-50 text-primary-600 font-medium'
+          : 'text-text-secondary hover:bg-background',
+      )}
+    >
+      <span className="truncate">{label}</span>
+      <span className={clsx('ml-1.5 text-xs px-1.5 py-0.5 rounded-full flex-shrink-0',
+        selected === key ? 'bg-primary-100 text-primary-600' : 'bg-gray-100 text-text-muted'
+      )}>
+        {count}
+      </span>
+    </button>
+  );
+
+  return (
+    <div className="w-44 flex-shrink-0">
+      <div className="flex items-center gap-1.5 px-1 mb-2">
+        <Building2 className="h-3.5 w-3.5 text-text-muted" />
+        <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">부서</span>
+      </div>
+      <nav className="space-y-0.5">
+        {item(null, '전체', members.length)}
+        {depts.map(([dept, count]) => item(dept, dept, count))}
+        {unclassified > 0 && item('__unclassified', '미배정', unclassified)}
+      </nav>
+    </div>
+  );
+}
+
 export default function TeamPage() {
   usePageTitle('팀 관리');
   const router = useRouter();
@@ -186,7 +548,9 @@ export default function TeamPage() {
   const [showInvite, setShowInvite] = useState(false);
   const [search, setSearch] = useState('');
   const [confirm, setConfirm] = useState<ConfirmState>(CONFIRM_INIT);
+  const [permissionsUserId, setPermissionsUserId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [filterDept, setFilterDept] = useState<string | null>(null);
   const PAGE_SIZE = 20;
 
   const { data: members = [], isLoading } = useQuery({
@@ -222,6 +586,8 @@ export default function TeamPage() {
   const filtered = members.filter((m: any) => {
     if (tab === 'manager'  && m.role !== 'manager')  return false;
     if (tab === 'employee' && m.role !== 'employee') return false;
+    if (filterDept === '__unclassified' && m.department) return false;
+    if (filterDept && filterDept !== '__unclassified' && m.department !== filterDept) return false;
     if (searchLower && !m.name.toLowerCase().includes(searchLower) && !m.email.toLowerCase().includes(searchLower)) return false;
     return true;
   });
@@ -237,9 +603,17 @@ export default function TeamPage() {
 
   return (
     <div className="flex-1 overflow-y-auto" onClick={() => setOpenMenu(null)}>
-      <Header title="팀 관리" />
+      <main className="p-8 max-w-[1280px]">
+        <div className="flex gap-5">
+          {/* 부서 트리 사이드바 */}
+          <DeptTree
+            members={members}
+            selected={filterDept}
+            onSelect={(d) => { setFilterDept(d); setPage(1); }}
+          />
 
-      <main className="p-8 space-y-4 max-w-[1200px]">
+          {/* 오른쪽 콘텐츠 */}
+          <div className="flex-1 min-w-0 space-y-4">
         {/* 상단 액션 */}
         <div className="flex items-center justify-between">
           <input
@@ -349,6 +723,7 @@ export default function TeamPage() {
                               currentUserId={user?.id ?? ''}
                               onClose={() => setOpenMenu(null)}
                               onConfirm={setConfirm}
+                              onOpenPermissions={(id) => setPermissionsUserId(id)}
                             />
                           )}
                         </td>
@@ -451,10 +826,20 @@ export default function TeamPage() {
             )}
           </Card>
         )}
+          </div> {/* 오른쪽 콘텐츠 끝 */}
+        </div> {/* flex gap-5 끝 */}
       </main>
 
       <InviteModal open={showInvite} onClose={() => setShowInvite(false)} />
       <ConfirmDialog state={confirm} onClose={() => setConfirm(CONFIRM_INIT)} />
+      {permissionsUserId && (
+        <PermissionsModal
+          open={!!permissionsUserId}
+          onClose={() => setPermissionsUserId(null)}
+          userId={permissionsUserId}
+          currentData={members.find((m: any) => m.id === permissionsUserId)}
+        />
+      )}
     </div>
   );
 }

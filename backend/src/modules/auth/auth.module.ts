@@ -12,6 +12,7 @@ import { Company } from '../../database/entities/company.entity';
 import { User } from '../../database/entities/user.entity';
 import { EmailVerification } from '../../database/entities/email-verification.entity';
 import { PasswordResetToken } from '../../database/entities/password-reset-token.entity';
+import { PhoneOtp } from '../../database/entities/phone-otp.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LoginLockService } from './services/login-lock.service';
 
@@ -28,7 +29,7 @@ import { LoginLockService } from './services/login-lock.service';
         },
       }),
     }),
-    TypeOrmModule.forFeature([Company, User, EmailVerification, PasswordResetToken]),
+    TypeOrmModule.forFeature([Company, User, EmailVerification, PasswordResetToken, PhoneOtp]),
     NotificationsModule,
   ],
   controllers: [AuthController],

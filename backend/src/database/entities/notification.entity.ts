@@ -22,7 +22,9 @@ export type NotificationType =
   | 'schedule_reminder'
   | 'schedule_new'
   | 'attendance_late'
-  | 'attendance_absent';
+  | 'attendance_absent'
+  | 'tax_deadline'
+  | 'labor_event';
 
 export type NotificationRefType =
   | 'task'

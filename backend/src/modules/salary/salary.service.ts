@@ -11,6 +11,21 @@ import {
   CreateSalaryDto, UpdateSalaryDto, SalaryQueryDto, AutoCalculateDto,
 } from './dto/salary.dto';
 
+// ── 연도별 최저시급 (원) ─────────────────────────────────
+const MIN_WAGE_TABLE: Record<number, number> = {
+  2024: 9_860,
+  2025: 10_030,
+  2026: 10_030, // 2026년 미확정 시 2025년 동일 적용
+};
+/** 해당 연도 최저시급 (없으면 가장 최근 연도 값) */
+function getMinWage(year: number): number {
+  if (MIN_WAGE_TABLE[year]) return MIN_WAGE_TABLE[year];
+  const latest = Math.max(...Object.keys(MIN_WAGE_TABLE).map(Number).filter((y) => y <= year));
+  return MIN_WAGE_TABLE[latest] ?? MIN_WAGE_TABLE[2025];
+}
+/** 월 소정근로시간 (주 40h × 4.345주) = 209h */
+const MONTHLY_WORK_HOURS = 209;
+
 // ── 2024년 4대보험 요율 (근로자 부담분) ─────────────────
 const RATES = {
   nationalPension:      0.045,   // 4.5%
@@ -51,7 +66,17 @@ export function autoCalcDeductions(dto: AutoCalculateDto) {
   const incomeTax  = estimateIncomeTax(taxableTotal);
   const localTax   = Math.round(incomeTax * 0.1 / 10) * 10;
 
-  return { nationalPension, healthInsurance: health, careInsurance, employmentInsurance: employment, incomeTax, localTax };
+  // 최저시급 위반 검사 (기본급 기준)
+  const minWageHourly  = getMinWage(dto.year);
+  const minWageMonthly = minWageHourly * MONTHLY_WORK_HOURS;
+  const minWageViolation = base_salary < minWageMonthly;
+  const shortfall = minWageViolation ? minWageMonthly - base_salary : 0;
+
+  return {
+    nationalPension, healthInsurance: health, careInsurance,
+    employmentInsurance: employment, incomeTax, localTax,
+    minWageHourly, minWageMonthly, minWageViolation, shortfall,
+  };
 }
 
 @Injectable()

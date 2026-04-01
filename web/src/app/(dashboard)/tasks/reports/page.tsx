@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Filter, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
-import Header from '@/components/layout/Header';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import api from '@/lib/api';
@@ -42,8 +41,6 @@ export default function ReportsPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <Header title="업무 보고" />
-
       <main className="p-8 space-y-4 max-w-[1200px]">
         {/* 필터 영역 */}
         <Card>

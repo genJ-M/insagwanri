@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
-import Header from '@/components/layout/Header';
 import Card, { CardHeader } from '@/components/ui/Card';
 import Badge, { ATTENDANCE_STATUS_BADGE } from '@/components/ui/Badge';
 import Avatar from '@/components/ui/Avatar';
@@ -373,6 +372,160 @@ function TeamStatsTab({ onSelectEmployee }: {
   );
 }
 
+// 상태별 셀 색상
+const CELL_COLOR: Record<string, string> = {
+  normal:      'bg-emerald-100 text-emerald-700',
+  late:        'bg-amber-100 text-amber-700',
+  absent:      'bg-red-100 text-red-700',
+  early_leave: 'bg-orange-100 text-orange-700',
+  vacation:    'bg-primary-100 text-primary-600',
+  half_day:    'bg-indigo-100 text-indigo-600',
+  pending:     'bg-gray-100 text-gray-400',
+};
+const CELL_SHORT: Record<string, string> = {
+  normal: '정', late: '지', absent: '결', early_leave: '조', vacation: '휴', half_day: '반', pending: '?',
+};
+
+function MonthlyGridTab() {
+  const [month, setMonth] = useState(new Date());
+  const year = month.getFullYear();
+  const mon  = month.getMonth() + 1;
+  const daysInMonth = getDaysInMonth(month);
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  const startDate = format(startOfMonth(month), 'yyyy-MM-dd');
+  const endDate   = format(endOfMonth(month), 'yyyy-MM-dd');
+
+  // 월간 전체 출결 레코드 (관리자용)
+  const { data: records = [], isLoading } = useQuery({
+    queryKey: ['attendance-monthly-grid', year, mon],
+    queryFn: async () => {
+      const { data } = await api.get('/attendance', { params: { start_date: startDate, end_date: endDate } });
+      return (data.data?.records ?? data.records ?? []) as AttendanceRecord[];
+    },
+  });
+
+  const { data: members = [] } = useQuery({
+    queryKey: ['team'],
+    queryFn: async () => { const { data } = await api.get('/users'); return data.data ?? data; },
+  });
+
+  // userId → (day → status) 맵
+  const grid = useMemo(() => {
+    const map = new Map<string, Map<number, string>>();
+    for (const r of records as any[]) {
+      const uid = r.userId ?? r.user_id;
+      if (!uid) continue;
+      if (!map.has(uid)) map.set(uid, new Map());
+      const d = new Date(r.workDate ?? r.work_date);
+      map.get(uid)!.set(d.getDate(), r.status);
+    }
+    return map;
+  }, [records]);
+
+  const isFuture = month > new Date();
+
+  return (
+    <div className="space-y-4">
+      {/* 월 네비 */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setMonth((m) => subMonths(m, 1))}
+          className="w-8 h-8 rounded-lg border border-border flex items-center justify-center hover:bg-gray-50 text-text-secondary transition-colors"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <span className="text-base font-semibold text-text-primary w-28 text-center">
+          {format(month, 'yyyy년 M월', { locale: ko })}
+        </span>
+        <button
+          onClick={() => setMonth((m) => addMonths(m, 1))}
+          disabled={isFuture}
+          className="w-8 h-8 rounded-lg border border-border flex items-center justify-center hover:bg-gray-50 text-text-secondary disabled:opacity-30 transition-colors"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* 범례 */}
+      <div className="flex flex-wrap gap-2 text-xs">
+        {Object.entries(CELL_SHORT).filter(([k]) => k !== 'pending').map(([k, v]) => (
+          <span key={k} className={clsx('px-2 py-0.5 rounded-full font-medium', CELL_COLOR[k])}>
+            {v} {STATUS_KO[k]}
+          </span>
+        ))}
+      </div>
+
+      {/* 그리드 */}
+      <div className="bg-white rounded-2xl border border-border overflow-auto">
+        {isLoading ? (
+          <div className="p-6 space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 bg-gray-100 rounded animate-pulse" />)}</div>
+        ) : (
+          <table className="text-xs border-collapse w-max min-w-full">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="px-3 py-2 text-left font-semibold text-gray-500 sticky left-0 bg-gray-50 z-10 min-w-[100px] border-b border-r border-border">직원</th>
+                {days.map((d) => {
+                  const date = new Date(year, mon - 1, d);
+                  const dow = getDay(date);
+                  return (
+                    <th
+                      key={d}
+                      className={clsx(
+                        'w-8 min-w-[32px] py-2 text-center font-semibold border-b border-border',
+                        dow === 0 ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-gray-500',
+                      )}
+                    >
+                      {d}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {(members as any[]).map((m) => {
+                const dayMap = grid.get(m.id);
+                return (
+                  <tr key={m.id} className="border-b border-gray-50 hover:bg-primary-50/30 transition-colors">
+                    <td className="px-3 py-2 sticky left-0 bg-white z-10 border-r border-border">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-text-primary truncate max-w-[70px]">{m.name}</span>
+                        {m.department && <span className="text-text-muted truncate max-w-[40px]">{m.department}</span>}
+                      </div>
+                    </td>
+                    {days.map((d) => {
+                      const status = dayMap?.get(d);
+                      const date = new Date(year, mon - 1, d);
+                      const isWeekend = [0, 6].includes(getDay(date));
+                      return (
+                        <td
+                          key={d}
+                          className={clsx(
+                            'text-center py-1.5 border-r border-gray-50',
+                            isWeekend && 'bg-gray-50/60',
+                          )}
+                        >
+                          {status ? (
+                            <span className={clsx('inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold', CELL_COLOR[status])}>
+                              {CELL_SHORT[status]}
+                            </span>
+                          ) : (
+                            <span className="text-gray-200">·</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── 메인 페이지 ─────────────────────────────────────────────
 export default function AttendancePage() {
   usePageTitle('출퇴근');
@@ -384,13 +537,14 @@ export default function AttendancePage() {
   const [selectedEmployee, setSelectedEmployee] = useState<{ id: string; name: string; department?: string } | null>(null);
   const isManager = user?.role === 'owner' || user?.role === 'manager';
 
-  type TabKey = 'me' | 'today' | 'stats';
+  type TabKey = 'me' | 'today' | 'stats' | 'grid';
   const [tab, setTab] = useState<TabKey>('me');
 
   const TABS: { key: TabKey; label: string; managerOnly?: boolean }[] = [
     { key: 'me',    label: '내 근태' },
     { key: 'today', label: '오늘 현황', managerOnly: true },
     { key: 'stats', label: '팀 통계',   managerOnly: true },
+    { key: 'grid',  label: '월간 뷰',   managerOnly: true },
   ];
 
   useEffect(() => {
@@ -451,8 +605,6 @@ export default function AttendancePage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <Header title="출퇴근" />
-
       <main className="p-8 space-y-5 max-w-[1200px]">
         {/* 탭 */}
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
@@ -561,6 +713,11 @@ export default function AttendancePage() {
         {/* ── 팀 통계 탭 ── */}
         {tab === 'stats' && isManager && (
           <TeamStatsTab onSelectEmployee={setSelectedEmployee} />
+        )}
+
+        {/* ── 월간 뷰 탭 ── */}
+        {tab === 'grid' && isManager && (
+          <MonthlyGridTab />
         )}
       </main>
 

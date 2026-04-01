@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
-import Header from '@/components/layout/Header';
 import Avatar from '@/components/ui/Avatar';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
@@ -342,8 +341,6 @@ export default function HrNotesPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <Header title="인사 노트" />
-
       <main className="page-container">
         <div className="flex gap-6">
           {/* ── 좌측: 직원 목록 ───────────────────────── */}

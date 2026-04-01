@@ -116,6 +116,26 @@ export class User {
   @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
   lastLoginAt: Date | null;
 
+  /**
+   * 담당 부서 범위 (manager 전용)
+   * null = 전체 부서, 배열 = 해당 부서만 접근 가능
+   */
+  @Column({ name: 'managed_departments', type: 'jsonb', nullable: true })
+  managedDepartments: string[] | null;
+
+  /**
+   * 세부 권한 플래그 (manager 전용)
+   * canInvite: 초대 가능, canManagePayroll: 급여 조회/관리,
+   * canManageContracts: 계약 관리, canManageEvaluations: 인사평가 관리
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  permissions: {
+    canInvite?: boolean;
+    canManagePayroll?: boolean;
+    canManageContracts?: boolean;
+    canManageEvaluations?: boolean;
+  } | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
