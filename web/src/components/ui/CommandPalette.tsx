@@ -3,23 +3,18 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Search, Sparkles, X, ArrowRight,
   Users, ClipboardList, FilePen, Loader2,
-  CornerDownLeft, Clock, ChevronRight,
+  CornerDownLeft, ChevronRight,
 } from 'lucide-react';
 import { useUiStore } from '@/store/ui.store';
 import { useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
+import { useSearchIndex, SearchIndexItem } from '@/hooks/useSearchIndex';
 
 // ── 타입 ────────────────────────────────────────────────────────────────────
 
-interface SearchResult {
-  type: 'employee' | 'task' | 'approval';
-  id: string;
-  label: string;
-  sub?: string;
-  href: string;
-}
+type SearchResult = SearchIndexItem;
 
 interface AiMessage {
   role: 'user' | 'assistant';
@@ -73,54 +68,17 @@ function ResultRow({
 
 function SearchMode({ query, onNavigate }: { query: string; onNavigate: () => void }) {
   const router = useRouter();
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { data: index = [], isLoading: loading } = useSearchIndex();
 
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!query.trim()) { setResults([]); setLoading(false); return; }
+  const results: SearchResult[] = query.trim()
+    ? index.filter((item) => {
+        const q = query.toLowerCase();
+        return item.label.toLowerCase().includes(q) || item.sub?.toLowerCase().includes(q);
+      }).slice(0, 9)
+    : [];
 
-    setLoading(true);
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const [usersRes, tasksRes, approvalsRes] = await Promise.allSettled([
-          api.get(`/users?search=${encodeURIComponent(query)}&limit=3`),
-          api.get(`/tasks?search=${encodeURIComponent(query)}&limit=3`),
-          api.get(`/approvals?search=${encodeURIComponent(query)}&limit=3`),
-        ]);
-
-        const combined: SearchResult[] = [];
-
-        if (usersRes.status === 'fulfilled') {
-          const users = usersRes.value.data?.data?.items ?? usersRes.value.data?.data ?? [];
-          (Array.isArray(users) ? users : []).slice(0, 3).forEach((u: any) => {
-            combined.push({ type: 'employee', id: u.id, label: u.name, sub: `${u.department ?? ''} ${u.position ?? ''}`.trim() || u.email, href: `/team/${u.id}` });
-          });
-        }
-        if (tasksRes.status === 'fulfilled') {
-          const tasks = tasksRes.value.data?.data?.items ?? tasksRes.value.data?.data ?? [];
-          (Array.isArray(tasks) ? tasks : []).slice(0, 3).forEach((t: any) => {
-            combined.push({ type: 'task', id: t.id, label: t.title, sub: t.assigneeName ?? t.status, href: `/tasks/${t.id}` });
-          });
-        }
-        if (approvalsRes.status === 'fulfilled') {
-          const approvals = approvalsRes.value.data?.data?.items ?? approvalsRes.value.data?.data ?? [];
-          (Array.isArray(approvals) ? approvals : []).slice(0, 3).forEach((a: any) => {
-            combined.push({ type: 'approval', id: a.id, label: a.title, sub: a.status, href: `/approvals` });
-          });
-        }
-
-        setResults(combined);
-        setSelectedIdx(0);
-      } finally {
-        setLoading(false);
-      }
-    }, 300);
-
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query]);
+  useEffect(() => { setSelectedIdx(0); }, [query]);
 
   const navigate = useCallback((href: string) => {
     router.push(href);

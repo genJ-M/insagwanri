@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
@@ -10,15 +10,13 @@ import PageLoader from '@/components/ui/PageLoader';
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => { setHydrated(true); }, []);
+  const hasHydrated = useAuthStore((s) => s._hasHydrated);
 
   useEffect(() => {
-    if (hydrated && !isAuthenticated) router.replace('/login');
-  }, [hydrated, isAuthenticated, router]);
+    if (hasHydrated && !isAuthenticated) router.replace('/login');
+  }, [hasHydrated, isAuthenticated, router]);
 
-  if (!hydrated || !isAuthenticated) {
+  if (!hasHydrated || !isAuthenticated) {
     return <PageLoader message="인증 확인 중..." />;
   }
 

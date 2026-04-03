@@ -12,10 +12,12 @@ import {
 } from './dto/salary.dto';
 
 // ── 연도별 최저시급 (원) ─────────────────────────────────
+// [유지보수] 매년 8월 고용노동부 고시 → 다음해 1월 1일 적용
+// 새 연도 확정 시: MIN_WAGE_TABLE에 항목 추가 (docs/time-sensitive-maintenance.md)
 const MIN_WAGE_TABLE: Record<number, number> = {
   2024: 9_860,
   2025: 10_030,
-  2026: 10_030, // 2026년 미확정 시 2025년 동일 적용
+  2026: 10_030, // 2026년 확정값 (2025년과 동일)
 };
 /** 해당 연도 최저시급 (없으면 가장 최근 연도 값) */
 function getMinWage(year: number): number {
@@ -26,12 +28,16 @@ function getMinWage(year: number): number {
 /** 월 소정근로시간 (주 40h × 4.345주) = 209h */
 const MONTHLY_WORK_HOURS = 209;
 
-// ── 2024년 4대보험 요율 (근로자 부담분) ─────────────────
+// ── 4대보험 요율 (근로자 부담분) ────────────────────────
+// [유지보수] 매년 초 건강보험공단·고용부 고시 확인 후 갱신
+// 요율 변경 시: 아래 값 + RATE_YEAR 를 함께 수정 (docs/time-sensitive-maintenance.md)
+/** 현재 요율이 적용되는 기준 연도 — 요율 변경 시 반드시 같이 수정 */
+export const RATE_YEAR = 2026;
 const RATES = {
-  nationalPension:      0.045,   // 4.5%
-  healthInsurance:      0.03545, // 3.545%
-  careInsuranceRatio:   0.1295,  // 장기요양 = 건강보험료 × 12.95%
-  employmentInsurance:  0.009,   // 0.9%
+  nationalPension:      0.045,   // 4.5%  (2024~2026 동일)
+  healthInsurance:      0.03545, // 3.545% (2024~2026 동일)
+  careInsuranceRatio:   0.1295,  // 장기요양 = 건강보험료 × 12.95% (2024~2026 동일)
+  employmentInsurance:  0.009,   // 0.9%  (2024~2026 동일)
 };
 
 /** 월 근로소득세 (간이세액표 근사치) */

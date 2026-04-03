@@ -7,13 +7,15 @@ import { User } from '../../database/entities/user.entity';
 import { Company } from '../../database/entities/company.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 
-// ── 4대보험 사업주 부담 요율 (2024~2026) ─────────────────
+// ── 4대보험 사업주 부담 요율 ────────────────────────────
+// [유지보수] salary.service.ts의 RATE_YEAR/RATES와 항상 동기화 유지
+// 요율 변경 시: salary.service.ts와 이 파일을 함께 수정 (docs/time-sensitive-maintenance.md)
 const EMPLOYER_RATES = {
-  nationalPension:     0.045,  // 4.5%
-  healthInsurance:     0.03545,
-  careInsuranceRatio:  0.1295, // 건강보험료 × 12.95%
-  employmentInsurance: 0.009,  // 0.9% (150인 미만)
-  industrialAccident:  0.009,  // 산재 0.9% (업종별 다름, 평균치)
+  nationalPension:     0.045,   // 4.5%  (2024~2026 동일)
+  healthInsurance:     0.03545, // 3.545% (2024~2026 동일)
+  careInsuranceRatio:  0.1295,  // 건강보험료 × 12.95% (2024~2026 동일)
+  employmentInsurance: 0.009,   // 0.9% 150인 미만 (2024~2026 동일)
+  industrialAccident:  0.009,   // 산재 평균 0.9% (업종별 상이 — 매년 3월 고용부 고시)
 };
 
 // ── 세무 캘린더 (고정 일정) ───────────────────────────────

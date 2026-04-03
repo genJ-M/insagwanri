@@ -16,6 +16,7 @@
     "migration:run:prod": "node ./node_modules/.bin/typeorm migration:run --dataSource dist/data-source.prod.js",
     "migration:show:prod": "node ./node_modules/.bin/typeorm migration:show --dataSource dist/data-source.prod.js",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts",
+    "seed:demo": "ts-node -r tsconfig-paths/register src/database/seeds/demo.seed.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:integration": "jest --testPathPattern=test/",

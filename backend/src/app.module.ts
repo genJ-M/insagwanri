@@ -27,6 +27,7 @@ import { CalendarModule } from './modules/calendar/calendar.module';
 import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { TrainingModule } from './modules/training/training.module';
 import { TaxDocumentsModule } from './modules/tax-documents/tax-documents.module';
+import { SearchModule } from './modules/search/search.module';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { SmsModule } from './common/sms/sms.module';
 import { ActivityLogModule } from './modules/activity-logs/activity-log.module';
@@ -195,6 +196,7 @@ import { PhoneOtp } from './database/entities/phone-otp.entity';
     EvaluationsModule,
     TrainingModule,
     TaxDocumentsModule,
+    SearchModule,
 
     // 활동 로그 (통신비밀보호법, 전역)
     ActivityLogModule,

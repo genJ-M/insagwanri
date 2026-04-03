@@ -468,7 +468,7 @@ export default function DashboardPage() {
                 value={tasksData?.meta?.status_summary?.in_progress ?? tasks.length}
                 icon={ClipboardCheck}
                 iconBg="bg-primary-500"
-                trendLabel="in_progress 상태"
+                trendLabel="진행 중 상태"
               />
             </div>
           ) : (
@@ -584,7 +584,7 @@ export default function DashboardPage() {
                 <Zap className="h-4 w-4 text-primary-500" />
                 진행 중 업무
               </h3>
-              <p className="text-xs text-text-muted mt-0.5">in_progress 상태 최근 8건</p>
+              <p className="text-xs text-text-muted mt-0.5">진행 중 상태 최근 8건</p>
             </div>
             <Link
               href="/tasks"

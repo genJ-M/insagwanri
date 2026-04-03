@@ -6,6 +6,8 @@ import { AuthUser } from '../types';
 interface AuthState {
   user: AuthUser | null;
   isAuthenticated: boolean;
+  _hasHydrated: boolean;
+  setHasHydrated: (v: boolean) => void;
   setUser: (user: AuthUser, tokens: { access_token: string; refresh_token: string }) => void;
   clearAuth: () => void;
 }
@@ -15,6 +17,9 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       user: null,
       isAuthenticated: false,
+      _hasHydrated: false,
+
+      setHasHydrated: (v) => set({ _hasHydrated: v }),
 
       setUser: (user, tokens) => {
         if (typeof window !== 'undefined') {
@@ -35,6 +40,9 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'auth-storage',
       partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     },
   ),
 );

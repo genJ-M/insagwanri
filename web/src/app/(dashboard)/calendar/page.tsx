@@ -11,6 +11,7 @@ import { ko } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
+import { getHolidayMap } from '@/lib/korean-holidays';
 
 // ─── 타입 ────────────────────────────────────────────
 type EventScope = 'company' | 'team' | 'personal';
@@ -278,6 +279,9 @@ export default function CalendarPage() {
   const firstDayOfWeek = getDay(startOfMonth(currentDate)); // 0=일
   const totalCells = Math.ceil((daysInMonth + firstDayOfWeek) / 7) * 7;
 
+  // 공휴일 맵 (key: YYYY-MM-DD, value: 공휴일명)
+  const holidayMap = useMemo(() => getHolidayMap(year, month), [year, month]);
+
   // 날짜별 이벤트 맵
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -377,6 +381,10 @@ export default function CalendarPage() {
               <span className="text-[11px] text-gray-500">{cfg.label}</span>
             </div>
           ))}
+          <div className="flex items-center gap-1">
+            <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
+            <span className="text-[11px] text-gray-500">공휴일</span>
+          </div>
         </div>
       </div>
 
@@ -408,6 +416,8 @@ export default function CalendarPage() {
                 const dayEvents = dateStr ? (eventsByDate.get(dateStr) ?? []) : [];
                 const isToday = dateStr === new Date().toISOString().split('T')[0];
                 const dow = idx % 7;
+                const holidayName = dateStr ? holidayMap.get(dateStr) : undefined;
+                const isHoliday = !!holidayName;
 
                 return (
                   <div
@@ -416,19 +426,25 @@ export default function CalendarPage() {
                       'min-h-[100px] border-b border-r border-gray-50 p-1.5 cursor-pointer hover:bg-gray-50/80 transition-colors',
                       !isCurrentMonth && 'bg-gray-50/50',
                       isToday && 'bg-primary-50/30',
+                      isHoliday && isCurrentMonth && 'bg-red-50/40',
                     )}
                     onClick={() => isCurrentMonth && handleDayClick(dateStr)}
                   >
                     {isCurrentMonth && (
                       <>
                         <div className={clsx(
-                          'w-7 h-7 flex items-center justify-center rounded-full text-[13px] font-semibold mb-1',
+                          'w-7 h-7 flex items-center justify-center rounded-full text-[13px] font-semibold mb-0.5',
                           isToday ? 'bg-primary-500 text-white' :
-                          dow === 0 ? 'text-red-500' :
+                          (isHoliday || dow === 0) ? 'text-red-500' :
                           dow === 6 ? 'text-blue-500' : 'text-gray-700',
                         )}>
                           {dayNum}
                         </div>
+                        {holidayName && (
+                          <div className="text-[9px] font-semibold text-red-400 truncate px-0.5 mb-0.5 leading-tight">
+                            {holidayName}
+                          </div>
+                        )}
                         <div className="space-y-0.5">
                           {dayEvents.slice(0, 3).map(ev => {
                             const scopeColor = ev.color
@@ -484,11 +500,13 @@ export default function CalendarPage() {
                         const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                         const isToday = dateStr === new Date().toISOString().split('T')[0];
                         const eventsOnDay = eventsByDate.get(dateStr) ?? [];
+                        const isHolidayCell = holidayMap.has(dateStr);
                         return (
                           <th key={d} className={clsx(
                             'py-1 text-center font-semibold relative border-l border-gray-50 min-w-[36px]',
                             isToday && 'bg-primary-50',
-                            dow === 0 ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-gray-500',
+                            isHolidayCell && 'bg-red-50/60',
+                            (isHolidayCell || dow === 0) ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-gray-500',
                           )}>
                             <div>{d}</div>
                             <div className="text-[9px] font-normal">{WEEKDAYS[dow]}</div>
@@ -530,13 +548,14 @@ export default function CalendarPage() {
                             const dow = date.getDay();
                             const isWeekend = dow === 0 || dow === 6;
                             const isToday = dateStr === new Date().toISOString().split('T')[0];
+                            const isHolidayTd = holidayMap.has(dateStr);
 
                             const statusStyle = rec ? (ATT_STATUS_STYLE[rec.status] ?? ATT_STATUS_STYLE.pending) : null;
 
                             return (
                               <td key={d} className={clsx(
                                 'text-center py-1.5 border-l border-gray-50',
-                                isWeekend && 'bg-gray-50/40',
+                                isHolidayTd ? 'bg-red-50/50' : isWeekend && 'bg-gray-50/40',
                                 isToday && 'bg-primary-50/30',
                               )}>
                                 {rec ? (

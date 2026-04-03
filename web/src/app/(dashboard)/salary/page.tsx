@@ -17,6 +17,10 @@ import toast from 'react-hot-toast';
 
 // ── 유틸 ──────────────────────────────────────────────
 const KRW = (v: number) => v.toLocaleString('ko-KR') + '원';
+// [유지보수] 4대보험 요율 기준 연도 — new Date().getFullYear() 이 아닌 하드코딩
+// 요율 변경 시 backend/salary.service.ts의 RATE_YEAR, RATES 와 함께 수정
+// (docs/time-sensitive-maintenance.md 참고)
+const INSURANCE_RATE_YEAR = 2026;
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   draft:     { label: '초안',     color: 'bg-gray-100 text-gray-500' },
@@ -185,7 +189,7 @@ function SlipModal({ salary, onClose }: { salary: any; onClose: () => void }) {
 
         <div className="px-6 py-3 border-t border-border">
           <p className="text-[11px] text-text-muted">
-            ※ 본 급여명세서는 관리왕 시스템에서 자동 생성되었습니다. 4대보험료는 2024년 기준 근사값이며 실제 고지서를 기준으로 조정하시기 바랍니다.
+            {`※ 본 급여명세서는 관리왕 시스템에서 자동 생성되었습니다. 4대보험료는 ${INSURANCE_RATE_YEAR}년 기준 근사값이며 실제 고지서를 기준으로 조정하시기 바랍니다.`}
           </p>
         </div>
       </div>
@@ -194,10 +198,12 @@ function SlipModal({ salary, onClose }: { salary: any; onClose: () => void }) {
 }
 
 // ── 최저시급 테이블 (연도별) ─────────────────────────
+// [유지보수] 매년 8월 고시 → 다음해 1월 1일 적용
+// backend/salary.service.ts의 MIN_WAGE_TABLE 과 항상 동기화 유지
 const MIN_WAGE_TABLE: Record<number, number> = {
   2024: 9_860,
   2025: 10_030,
-  2026: 10_030,
+  2026: 10_030, // 2026년 확정값
 };
 const MONTHLY_WORK_HOURS = 209;
 function getMinWage(year: number) {
@@ -709,7 +715,7 @@ export default function SalaryPage() {
         </div>
 
         <p className="text-[11px] text-text-muted text-center pb-2">
-          ※ 4대보험료 자동 계산은 2024년 기준 근사값입니다. 실제 고지서를 기준으로 조정하시기 바랍니다.
+          {`※ 4대보험료 자동 계산은 ${INSURANCE_RATE_YEAR}년 기준 근사값입니다. 실제 고지서를 기준으로 조정하시기 바랍니다.`}
         </p>
       </main>
 
