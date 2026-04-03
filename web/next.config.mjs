@@ -3,7 +3,16 @@ import { withSentryConfig } from '@sentry/nextjs';
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  transpilePackages: ['recharts'],
+  transpilePackages: [
+    'recharts',
+    '@tiptap/react',
+    '@tiptap/core',
+    '@tiptap/pm',
+    '@tiptap/starter-kit',
+    '@tiptap/extension-underline',
+    '@tiptap/extension-text-align',
+    '@tiptap/extension-placeholder',
+  ],
 };
 
 export default withSentryConfig(nextConfig, {
