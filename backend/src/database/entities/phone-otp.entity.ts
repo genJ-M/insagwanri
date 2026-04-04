@@ -31,7 +31,7 @@ export class PhoneOtp {
   verifiedAt: Date | null;
 
   /** OTP 검증 후 발급하는 일회용 리셋 토큰 */
-  @Column({ name: 'reset_token', length: 64, nullable: true, unique: true })
+  @Column({ name: 'reset_token', type: 'varchar', length: 64, nullable: true, unique: true })
   resetToken: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })

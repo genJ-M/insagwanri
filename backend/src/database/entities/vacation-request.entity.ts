@@ -65,7 +65,7 @@ export class VacationRequest {
   status: VacationStatus;
 
   // ─── 승인/반려 ─────────────────────────────────────
-  @Column({ name: 'approver_id', nullable: true })
+  @Column({ name: 'approver_id', type: 'varchar', nullable: true })
   approverId: string | null;
 
   @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })

@@ -72,7 +72,7 @@ export class Contract {
   @Column({ name: 'terminate_reason', type: 'text', nullable: true })
   terminateReason: string | null;
 
-  @Column({ name: 'created_by', nullable: true })
+  @Column({ name: 'created_by', type: 'varchar', nullable: true })
   createdBy: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })

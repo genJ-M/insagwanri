@@ -20,11 +20,11 @@ export class UserCareer {
   companyName: string;
 
   /** 직위/직책 */
-  @Column({ length: 100, nullable: true })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   position: string | null;
 
   /** 부서 */
-  @Column({ length: 100, nullable: true })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   department: string | null;
 
   @Column({ name: 'start_date', type: 'date' })

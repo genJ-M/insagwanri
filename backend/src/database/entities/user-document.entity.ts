@@ -46,7 +46,7 @@ export class UserDocument {
   fileUrl: string;
 
   /** 원본 파일명 */
-  @Column({ name: 'original_name', length: 255, nullable: true })
+  @Column({ name: 'original_name', type: 'varchar', length: 255, nullable: true })
   originalName: string | null;
 
   /** 파일 크기 (bytes) */

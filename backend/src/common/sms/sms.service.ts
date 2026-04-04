@@ -75,6 +75,7 @@ export class SmsService {
 
     // Coolsms Node SDK (npm install coolsms-node-sdk)
     // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // @ts-ignore
     const { default: coolsms } = await import('coolsms-node-sdk').catch(() => {
       throw new Error('coolsms-node-sdk가 설치되지 않았습니다. npm install coolsms-node-sdk');
     });
@@ -84,6 +85,7 @@ export class SmsService {
       from: this.fromNumber,
       text: message,
       type: 'SMS',
+      autoTypeDetect: false,
     });
   }
 

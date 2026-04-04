@@ -21,7 +21,11 @@ export class CryptoMigrationService implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap() {
-    await this.backfillEncryption();
+    try {
+      await this.backfillEncryption();
+    } catch (err: any) {
+      this.logger.warn(`암호화 백필 건너뜀 (마이그레이션 미실행 가능성): ${err?.message}`);
+    }
   }
 
   private async backfillEncryption(): Promise<void> {

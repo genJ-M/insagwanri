@@ -103,7 +103,7 @@ export class Salary {
   @Column({ type: 'text', nullable: true })
   note: string | null;
 
-  @Column({ name: 'created_by', nullable: true })
+  @Column({ name: 'created_by', type: 'varchar', nullable: true })
   createdBy: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })

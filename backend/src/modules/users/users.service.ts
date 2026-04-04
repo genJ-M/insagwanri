@@ -430,7 +430,7 @@ export class UsersService {
     const inviter = await this.userRepo.findOne({ where: { id: currentUser.id } });
     const expiresAtStr = expiresAt.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
     this.emailService.sendInviteEmail({
-      to: invite.email,
+      to: invite.email ?? '',
       inviterName: inviter?.name ?? '관리자',
       companyName: company?.name ?? '',
       inviteUrl: `${frontendUrl}/invite?token=${token}`,

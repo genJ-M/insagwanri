@@ -34,7 +34,7 @@ export class User {
   company: Company;
 
   /** 평문 이메일 — BeforeInsert/Update 시 암호화 후 emailEncrypted에 저장, AfterLoad 시 복호화하여 복원 */
-  @Column({ length: 255, nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   email: string;
 
   /** HMAC-SHA256 이메일 해시 — WHERE 조건 및 유니크 제약에 사용 */

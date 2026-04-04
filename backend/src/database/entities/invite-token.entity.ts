@@ -40,15 +40,15 @@ export class InviteToken {
 
   /** 이메일 초대 시 수신자 이메일 (nullable — 전화번호·링크 초대는 null) */
   @Index()
-  @Column({ length: 255, nullable: true, default: null })
+  @Column({ type: 'varchar', length: 255, nullable: true, default: null })
   email: string | null;
 
   /** 전화번호 초대 시 수신자 전화번호 */
-  @Column({ name: 'recipient_phone', length: 20, nullable: true, default: null })
+  @Column({ name: 'recipient_phone', type: 'varchar', length: 20, nullable: true, default: null })
   recipientPhone: string | null;
 
   /** 초대 시 미리 지정한 수신자 이름 (전화번호·링크 초대) */
-  @Column({ name: 'recipient_name', length: 100, nullable: true, default: null })
+  @Column({ name: 'recipient_name', type: 'varchar', length: 100, nullable: true, default: null })
   recipientName: string | null;
 
   /** 초대 유형: email | phone | link */

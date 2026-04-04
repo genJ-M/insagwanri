@@ -27,7 +27,7 @@ export class UserEducation {
   @Column({ name: 'school_name', length: 200 })
   schoolName: string;
 
-  @Column({ length: 150, nullable: true })
+  @Column({ type: 'varchar', length: 150, nullable: true })
   major: string | null;
 
   @Column({
