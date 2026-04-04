@@ -1,6 +1,5 @@
 'use client';
-
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 import { Building2 } from 'lucide-react';
@@ -13,7 +12,7 @@ import Button from '@/components/ui/Button';
  * 소셜 신규 가입자 — 회사명 입력 후 가입 완료.
  * URL 파라미터: pending_token, name, email
  */
-export default function SocialCompletePage() {
+function SocialCompleteContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const setUser = useAuthStore((s) => s.setUser);
@@ -136,5 +135,13 @@ export default function SocialCompletePage() {
 
       <p className="text-xs text-text-muted mt-8">© 2026 관리왕. All rights reserved.</p>
     </div>
+  );
+}
+
+export default function SocialCompletePage() {
+  return (
+    <Suspense>
+      <SocialCompleteContent />
+    </Suspense>
   );
 }

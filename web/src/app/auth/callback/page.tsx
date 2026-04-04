@@ -1,6 +1,5 @@
 'use client';
-
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -10,7 +9,7 @@ import api from '@/lib/api';
  * 소셜 OAuth 완료 후 백엔드가 리다이렉트하는 페이지.
  * URL 파라미터: access_token, refresh_token
  */
-export default function AuthCallbackPage() {
+function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const setUser = useAuthStore((s) => s.setUser);
@@ -49,5 +48,13 @@ export default function AuthCallbackPage() {
         <p className="text-sm text-gray-500">로그인 처리 중...</p>
       </div>
     </div>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense>
+      <AuthCallbackContent />
+    </Suspense>
   );
 }

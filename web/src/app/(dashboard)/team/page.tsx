@@ -1,6 +1,6 @@
 'use client';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { UserPlus, MoreVertical, Mail, Shield, User, RefreshCw, X, Smartphone, Link2, Copy, Check, QrCode, ChevronRight, Building2 } from 'lucide-react';

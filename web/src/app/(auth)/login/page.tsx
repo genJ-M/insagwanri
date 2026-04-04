@@ -1,4 +1,5 @@
 'use client';
+import { Suspense } from 'react';
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -36,7 +37,7 @@ function SocialButtons() {
   );
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const oauthError = searchParams?.get('error');
@@ -181,5 +182,13 @@ export default function LoginPage() {
 
       <p className="text-xs text-text-muted mt-8">© 2026 관리왕. All rights reserved.</p>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginPageContent />
+    </Suspense>
   );
 }
