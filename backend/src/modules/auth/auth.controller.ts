@@ -196,6 +196,10 @@ export class AuthController {
   @Get('google')
   @UseGuards(AuthGuard('google'))
   googleLogin() {
+    const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    if (!clientId || clientId === 'GOOGLE_NOT_CONFIGURED') {
+      return { success: false, error: { code: 'NOT_CONFIGURED', message: 'Google OAuth 환경변수가 설정되지 않았습니다.' } };
+    }
     // Passport가 Google 로그인 페이지로 리다이렉트
   }
 

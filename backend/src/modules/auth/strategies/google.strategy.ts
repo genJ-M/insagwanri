@@ -11,12 +11,16 @@ export interface SocialUser {
   profileImageUrl: string | null;
 }
 
+// GOOGLE_CLIENT_ID가 없을 때 앱 시작이 실패하지 않도록 placeholder 사용
+// 실제 Google 로그인 시 컨트롤러에서 credentials 유무를 체크함
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   constructor(config: ConfigService) {
+    const clientID = config.get<string>('GOOGLE_CLIENT_ID') || 'GOOGLE_NOT_CONFIGURED';
+    const clientSecret = config.get<string>('GOOGLE_CLIENT_SECRET') || 'GOOGLE_NOT_CONFIGURED';
     super({
-      clientID: config.get<string>('GOOGLE_CLIENT_ID', ''),
-      clientSecret: config.get<string>('GOOGLE_CLIENT_SECRET', ''),
+      clientID,
+      clientSecret,
       callbackURL: config.get<string>('GOOGLE_CALLBACK_URL', 'http://localhost:3001/api/v1/auth/google/callback'),
       scope: ['email', 'profile'],
     });
