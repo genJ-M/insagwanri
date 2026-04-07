@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
 import CommandPalette from '@/components/ui/CommandPalette';
+import ContextMenu from '@/components/feedback/ContextMenu';
+import HelpButton from '@/components/feedback/HelpButton';
 import { useAuthStore } from '@/store/auth.store';
 import PageLoader from '@/components/ui/PageLoader';
 
@@ -32,6 +34,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
       {/* ⌘K 커맨드 팔레트 — layout-level 마운트 */}
       <CommandPalette />
+      {/* 우클릭 신고 메뉴 (데스크탑) */}
+      <ContextMenu />
+      {/* ? 도움 버튼 (우하단 상시) */}
+      <HelpButton />
     </div>
   );
 }

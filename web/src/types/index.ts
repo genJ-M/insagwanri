@@ -3,12 +3,33 @@
 // ─────────────────────────────────────────
 export type UserRole = 'owner' | 'manager' | 'employee';
 
+export interface UserPermissions {
+  canInvite?: boolean;
+  canManagePayroll?: boolean;
+  canManageContracts?: boolean;
+  canManageEvaluations?: boolean;
+  // HR 노트
+  canViewHrNotes?: boolean;
+  canManageHrNotes?: boolean;
+  hrNoteScope?: 'all' | 'managed_departments';
+  // 급여
+  canViewSalary?: boolean;
+  canManageSalary?: boolean;
+  salaryScope?: 'all' | 'managed_departments';
+  // 위임
+  canGrantHrAccess?: boolean;
+  canGrantSalaryAccess?: boolean;
+}
+
 export interface AuthUser {
   id: string;
   name: string;
   email: string;
   role: UserRole;
   companyId: string;
+  department?: string | null;
+  permissions?: UserPermissions | null;
+  managedDepartments?: string[] | null;
 }
 
 export interface AuthTokens {
@@ -46,14 +67,24 @@ export interface Task {
   id: string;
   title: string;
   description: string;
+  scope: string | null;
   status: TaskStatus;
   priority: TaskPriority;
   category: string;
-  dueDate: string;
+  dueDate: string | null;
+  dueDatetime: string | null;         // ISO8601 (날짜+시간)
+  templateId: string | null;
   creator: { id: string; name: string };
   assignee: { id: string; name: string; department: string } | null;
   createdAt: string;
   reports?: TaskReport[];
+  // 기한 조정 워크플로우
+  deletionRequestedAt?: string | null;
+  deletionRequesterRole?: string | null;
+  timeAdjustStatus: 'pending' | 'approved' | 'rejected' | null;
+  timeAdjustProposedDatetime: string | null;
+  timeAdjustMessage: string | null;
+  timeAdjustRequestedAt: string | null;
 }
 
 export interface TaskReport {

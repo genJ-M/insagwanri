@@ -8,7 +8,9 @@ import { TaskReport } from '../../database/entities/task-report.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import {
   CreateTaskDto, UpdateTaskDto, CreateReportDto, FeedbackDto, TaskQueryDto,
+  RequestTimeAdjustDto, RespondTimeAdjustDto,
 } from './dto/tasks.dto';
+import { TASK_TEMPLATES, TASK_CATEGORIES } from './task-templates.constant';
 
 @Injectable()
 export class TasksService {
@@ -19,6 +21,13 @@ export class TasksService {
     @InjectRepository(TaskReport)
     private reportRepo: Repository<TaskReport>,
   ) {}
+
+  // ─────────────────────────────────────────
+  // 템플릿 목록
+  // ─────────────────────────────────────────
+  getTemplates() {
+    return { templates: TASK_TEMPLATES, categories: TASK_CATEGORIES };
+  }
 
   // ─────────────────────────────────────────
   // 업무 생성
@@ -32,16 +41,29 @@ export class TasksService {
       if (!parent) throw new NotFoundException('상위 업무를 찾을 수 없습니다.');
     }
 
+    // 기한 유효성 검증: 오늘 이전 날짜 불가
+    if (dto.due_datetime) {
+      const proposed = new Date(dto.due_datetime);
+      const now = new Date();
+      now.setMinutes(0, 0, 0); // 현재 시간 정각으로 내림
+      if (proposed < now) {
+        throw new BadRequestException('기한은 현재 시각 이후로 설정해야 합니다.');
+      }
+    }
+
     const task = this.taskRepo.create({
       companyId:      currentUser.companyId,
       creatorId:      currentUser.id,
       title:          dto.title,
-      description:    dto.description,
+      description:    dto.description ?? null,
+      scope:          dto.scope ?? null,
       assigneeId:     dto.assignee_id ?? null,
       priority:       (dto.priority as TaskPriority) ?? TaskPriority.NORMAL,
       category:       dto.category ?? null,
       startDate:      dto.start_date ?? null,
       dueDate:        dto.due_date ?? null,
+      dueDatetime:    dto.due_datetime ? new Date(dto.due_datetime) : null,
+      templateId:     dto.template_id ?? null,
       attachmentUrls: dto.attachment_urls ?? [],
       parentTaskId:   dto.parent_task_id ?? null,
       status:         TaskStatus.PENDING,
@@ -55,7 +77,7 @@ export class TasksService {
   // 업무 목록
   // ─────────────────────────────────────────
   async getTasks(currentUser: AuthenticatedUser, query: TaskQueryDto) {
-    const { status, priority, assignee_id, due_date, category, page, limit } = query;
+    const { status, priority, assignee_id, due_date, category, search, page, limit } = query;
     const skip = ((page ?? 1) - 1) * (limit ?? 20);
 
     const qb = this.taskRepo
@@ -66,7 +88,7 @@ export class TasksService {
         't.id', 't.title', 't.status', 't.priority', 't.category',
         't.dueDate', 't.createdAt', 't.assigneeId',
         'creator.id', 'creator.name',
-        'assignee.id', 'assignee.name', 'assignee.department',
+        'assignee.id', 'assignee.name', 'assignee.department', 'assignee.profileImageUrl',
       ])
       .where('t.company_id = :companyId', { companyId: currentUser.companyId })
       .andWhere('t.deleted_at IS NULL');
@@ -80,6 +102,7 @@ export class TasksService {
     if (priority)    qb.andWhere('t.priority = :priority', { priority });
     if (due_date)    qb.andWhere('t.due_date = :dueDate', { dueDate: due_date });
     if (category)    qb.andWhere('t.category = :category', { category });
+    if (search)      qb.andWhere('t.title ILIKE :search', { search: `%${search}%` });
 
     // manager 이상만 assignee_id 필터 사용 가능
     if (assignee_id && currentUser.role !== UserRole.EMPLOYEE) {
@@ -174,6 +197,7 @@ export class TasksService {
     // manager/owner: 모든 필드 수정 가능
     if (dto.title)           task.title          = dto.title;
     if (dto.description !== undefined) task.description = dto.description;
+    if (dto.scope !== undefined)       task.scope       = dto.scope;
     if (dto.assignee_id !== undefined) task.assigneeId  = dto.assignee_id;
     if (dto.priority)        task.priority       = dto.priority as TaskPriority;
     if (dto.category !== undefined)    task.category    = dto.category;
@@ -182,6 +206,16 @@ export class TasksService {
       if (dto.status === TaskStatus.DONE) task.completedAt = new Date();
     }
     if (dto.due_date !== undefined)    task.dueDate         = dto.due_date;
+    if (dto.due_datetime !== undefined) {
+      if (dto.due_datetime) {
+        const proposed = new Date(dto.due_datetime);
+        const now = new Date(); now.setMinutes(0, 0, 0);
+        if (proposed < now) throw new BadRequestException('기한은 현재 시각 이후로 설정해야 합니다.');
+        task.dueDatetime = proposed;
+      } else {
+        task.dueDatetime = null;
+      }
+    }
     if (dto.attachment_urls)           task.attachmentUrls  = dto.attachment_urls;
 
     return this.taskRepo.save(task);
@@ -195,6 +229,57 @@ export class TasksService {
       where: { id, companyId: currentUser.companyId },
     });
     if (!task || task.deletedAt) throw new NotFoundException('업무를 찾을 수 없습니다.');
+    await this.taskRepo.softDelete(id);
+    return { id, deleted_at: new Date() };
+  }
+
+  // ─────────────────────────────────────────
+  // 삭제 요청 (관리자 or 담당자)
+  // ─────────────────────────────────────────
+  async requestDeletion(id: string, currentUser: AuthenticatedUser) {
+    const task = await this.taskRepo.findOne({
+      where: { id, companyId: currentUser.companyId },
+    });
+    if (!task || task.deletedAt) throw new NotFoundException('업무를 찾을 수 없습니다.');
+    if (task.deletionRequestedAt) throw new ForbiddenException('이미 삭제 요청된 업무입니다.');
+
+    const isManager  = currentUser.role !== UserRole.EMPLOYEE;
+    const isAssignee = task.assigneeId === currentUser.id;
+    if (!isManager && !isAssignee) {
+      throw new ForbiddenException('삭제 요청 권한이 없습니다.');
+    }
+
+    await this.taskRepo.update(id, {
+      deletionRequestedAt:  new Date(),
+      deletionRequestedById: currentUser.id,
+      deletionRequesterRole: isManager ? 'manager' : 'assignee',
+    });
+    return { id, deletion_requested: true };
+  }
+
+  // ─────────────────────────────────────────
+  // 삭제 승인 (요청자의 반대편이 승인)
+  // ─────────────────────────────────────────
+  async approveDeletion(id: string, currentUser: AuthenticatedUser) {
+    const task = await this.taskRepo.findOne({
+      where: { id, companyId: currentUser.companyId },
+    });
+    if (!task || task.deletedAt) throw new NotFoundException('업무를 찾을 수 없습니다.');
+    if (!task.deletionRequestedAt) throw new ForbiddenException('삭제 요청이 없는 업무입니다.');
+
+    const requesterRole = task.deletionRequesterRole;
+    const isManager     = currentUser.role !== UserRole.EMPLOYEE;
+    const isAssignee    = task.assigneeId === currentUser.id;
+
+    // 관리자가 요청 → 담당자가 승인 / 담당자가 요청 → 관리자가 승인
+    const canApprove =
+      (requesterRole === 'manager'  && isAssignee && !isManager) ||
+      (requesterRole === 'assignee' && isManager);
+
+    if (!canApprove) {
+      throw new ForbiddenException('삭제 승인 권한이 없습니다. 요청자의 반대편만 승인할 수 있습니다.');
+    }
+
     await this.taskRepo.softDelete(id);
     return { id, deleted_at: new Date() };
   }
@@ -292,5 +377,81 @@ export class TasksService {
       relations: ['task'],
       order: { createdAt: 'DESC' },
     });
+  }
+
+  // ─────────────────────────────────────────
+  // 기한 조정 요청 (담당자)
+  // ─────────────────────────────────────────
+  async requestTimeAdjust(
+    id: string,
+    currentUser: AuthenticatedUser,
+    dto: RequestTimeAdjustDto,
+  ) {
+    const task = await this.taskRepo.findOne({
+      where: { id, companyId: currentUser.companyId },
+    });
+    if (!task || task.deletedAt) throw new NotFoundException('업무를 찾을 수 없습니다.');
+    if (task.assigneeId !== currentUser.id) throw new ForbiddenException('담당자만 기한 조정을 요청할 수 있습니다.');
+    if (task.status === TaskStatus.DONE || task.status === TaskStatus.CANCELLED) {
+      throw new BadRequestException('완료·취소된 업무는 기한 조정을 요청할 수 없습니다.');
+    }
+    if (task.timeAdjustStatus === 'pending') {
+      throw new BadRequestException('이미 기한 조정 요청이 대기 중입니다.');
+    }
+
+    const proposed = new Date(dto.proposed_datetime);
+    const now = new Date(); now.setMinutes(0, 0, 0);
+    if (proposed < now) throw new BadRequestException('제안 기한은 현재 시각 이후로 설정해야 합니다.');
+
+    await this.taskRepo.update(id, {
+      timeAdjustStatus: 'pending',
+      timeAdjustProposedDatetime: proposed,
+      timeAdjustMessage: dto.message ?? null,
+      timeAdjustRequestedAt: new Date(),
+      timeAdjustRespondedAt: null,
+    });
+
+    // TODO: 알림 발송 (task_time_adjust_request) — 지시자(creatorId)에게
+    // await this.notificationsService.push(task.creatorId, 'task_time_adjust_request', { taskId: id });
+
+    return this.taskRepo.findOne({ where: { id } });
+  }
+
+  // ─────────────────────────────────────────
+  // 기한 조정 응답 (지시자/관리자)
+  // ─────────────────────────────────────────
+  async respondTimeAdjust(
+    id: string,
+    currentUser: AuthenticatedUser,
+    dto: RespondTimeAdjustDto,
+  ) {
+    const task = await this.taskRepo.findOne({
+      where: { id, companyId: currentUser.companyId },
+    });
+    if (!task || task.deletedAt) throw new NotFoundException('업무를 찾을 수 없습니다.');
+
+    // 지시자(creator) 또는 manager/owner만 응답 가능
+    const isCreator  = task.creatorId === currentUser.id;
+    const isManager  = currentUser.role !== UserRole.EMPLOYEE;
+    if (!isCreator && !isManager) throw new ForbiddenException('기한 조정 응답 권한이 없습니다.');
+    if (task.timeAdjustStatus !== 'pending') throw new BadRequestException('대기 중인 기한 조정 요청이 없습니다.');
+
+    const updateData: Partial<Task> = {
+      timeAdjustStatus: dto.action,
+      timeAdjustRespondedAt: new Date(),
+    };
+
+    // 승인 시 실제 기한 변경
+    if (dto.action === 'approved' && task.timeAdjustProposedDatetime) {
+      updateData.dueDatetime = task.timeAdjustProposedDatetime;
+    }
+
+    await this.taskRepo.update(id, updateData);
+
+    // TODO: 알림 발송 — 담당자(assigneeId)에게
+    // const notifType = dto.action === 'approved' ? 'task_time_adjust_approved' : 'task_time_adjust_rejected';
+    // await this.notificationsService.push(task.assigneeId, notifType, { taskId: id });
+
+    return this.taskRepo.findOne({ where: { id } });
   }
 }

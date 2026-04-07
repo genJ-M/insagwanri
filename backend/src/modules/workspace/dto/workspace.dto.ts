@@ -1,8 +1,10 @@
 import {
   IsString, IsOptional, IsBoolean, IsNumber,
-  IsArray, Min, Max, MaxLength, IsEnum,
+  IsArray, Min, Max, MaxLength, IsEnum, IsIn, ValidateNested, IsInt,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { CompanyType } from '../../../database/entities/company.entity';
+import { ATTENDANCE_METHODS, AttendanceMethod } from '../../attendance/dto/attendance.dto';
 
 export class UpdateWorkspaceDto {
   @IsOptional()
@@ -133,4 +135,35 @@ export class UpdateGpsSettingsDto {
   @IsOptional()
   @IsBoolean()
   gpsStrictMode?: boolean;
+}
+
+export class AttendanceMethodsWifiDto {
+  @IsArray()
+  @IsString({ each: true })
+  ssids: string[];
+}
+
+export class AttendanceMethodsQrDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  windowMinutes?: number;
+}
+
+export class UpdateAttendanceMethodsDto {
+  /** 활성화할 출퇴근 방식 목록 (순서 = 우선순위) */
+  @IsArray()
+  @IsIn(ATTENDANCE_METHODS, { each: true })
+  enabled: AttendanceMethod[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AttendanceMethodsWifiDto)
+  wifi?: AttendanceMethodsWifiDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AttendanceMethodsQrDto)
+  qr?: AttendanceMethodsQrDto;
 }

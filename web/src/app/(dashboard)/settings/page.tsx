@@ -1,6 +1,7 @@
 'use client';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User, Building2, Clock, MapPin, Bell, Image,
@@ -16,7 +17,16 @@ import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ImageUploader from '@/components/ui/ImageUploader';
 import CoverCropModal from '@/components/ui/CoverCropModal';
 
-type Section = 'profile' | 'company' | 'work' | 'gps' | 'notification' | 'branding';
+type Section = 'profile' | 'company' | 'work' | 'gps' | 'attendance-methods' | 'notification' | 'branding';
+
+type AttendanceMethod = 'manual' | 'gps' | 'wifi' | 'qr' | 'face';
+const ALL_METHODS: { value: AttendanceMethod; label: string; desc: string }[] = [
+  { value: 'manual',  label: '클릭 출퇴근',  desc: '앱/웹에서 버튼을 눌러 직접 출퇴근 처리' },
+  { value: 'gps',     label: 'GPS 위치',     desc: '회사 GPS 반경 내에서 출퇴근 처리 (GPS 설정 필요)' },
+  { value: 'wifi',    label: 'WiFi',          desc: '사내 WiFi 연결 상태에서 출퇴근 처리' },
+  { value: 'qr',      label: 'QR 코드',       desc: '관리자가 띄운 QR을 스캔해 출퇴근 처리' },
+  { value: 'face',    label: '생체 인증',     desc: '기기 지문/Face ID 인증 후 출퇴근 처리' },
+];
 
 const DAYS = [
   { value: 0, label: '일' },
@@ -1146,11 +1156,155 @@ function BrandingSection() {
   );
 }
 
+// ── 출퇴근 방식 설정 섹션 ────────────────────────
+function AttendanceMethodsSection() {
+  const queryClient = useQueryClient();
+
+  const [enabled, setEnabled] = useState<AttendanceMethod[]>(['manual']);
+  const [wifiSsids, setWifiSsids] = useState('');   // comma-separated
+  const [qrWindow, setQrWindow] = useState(5);
+  const [isDirty, setIsDirty] = useState(false);
+
+  useUnsavedChanges(isDirty);
+
+  const { data: settings } = useQuery({
+    queryKey: ['workspace'],
+    queryFn: async () => { const { data } = await api.get('/workspace/settings'); return data.data ?? data; },
+  });
+
+  useEffect(() => {
+    if (settings?.attendanceMethods) {
+      const m = settings.attendanceMethods;
+      setEnabled(m.enabled ?? ['manual']);
+      setWifiSsids((m.wifi?.ssids ?? []).join(', '));
+      setQrWindow(m.qr?.windowMinutes ?? 5);
+      setIsDirty(false);
+    }
+  }, [settings]);
+
+  const mutation = useMutation({
+    mutationFn: (p: any) => api.patch('/workspace/attendance-methods', p),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace'] });
+      setIsDirty(false);
+      toast.success('저장되었습니다.', { id: 'settings-save' });
+    },
+    onError: () => toast.error('저장에 실패했습니다.'),
+  });
+
+  const toggleMethod = (m: AttendanceMethod) => {
+    setEnabled((prev) =>
+      prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m],
+    );
+    setIsDirty(true);
+  };
+
+  const handleSave = () => {
+    if (enabled.length === 0) { toast.error('최소 1개 이상의 방식을 선택해야 합니다.'); return; }
+    const ssids = wifiSsids.split(',').map((s) => s.trim()).filter(Boolean);
+    if (enabled.includes('wifi') && ssids.length === 0) {
+      toast.error('WiFi 방식을 사용하려면 허용 SSID를 하나 이상 입력해야 합니다.'); return;
+    }
+    mutation.mutate({
+      enabled,
+      ...(enabled.includes('wifi') && { wifi: { ssids } }),
+      ...(enabled.includes('qr')   && { qr: { windowMinutes: qrWindow } }),
+    });
+  };
+
+  const inputCls = 'w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all';
+
+  return (
+    <Card>
+      <CardHeader
+        title="출퇴근 방식 설정"
+        description="사용할 출퇴근 방식을 선택하세요. 여러 방식을 동시에 활성화할 수 있으며, 먼저 처리된 방식이 기록됩니다."
+      />
+      <div className="p-6 space-y-5">
+        {/* 방식 선택 */}
+        <div className="space-y-3">
+          {ALL_METHODS.map(({ value, label, desc }) => {
+            const checked = enabled.includes(value);
+            return (
+              <label
+                key={value}
+                className={clsx(
+                  'flex items-start gap-3 p-3.5 rounded-xl border-[1.5px] cursor-pointer transition-all',
+                  checked ? 'border-primary-400 bg-primary-50' : 'border-border hover:border-primary-200',
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleMethod(value)}
+                  className="mt-0.5 h-4 w-4 rounded text-primary-500 focus:ring-primary-400"
+                />
+                <div>
+                  <p className="text-sm font-medium text-text-primary">{label}</p>
+                  <p className="text-xs text-text-muted mt-0.5">{desc}</p>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+
+        {/* WiFi SSID 설정 */}
+        {enabled.includes('wifi') && (
+          <div className="space-y-1.5 p-4 rounded-xl bg-blue-50 border border-blue-100">
+            <label className="text-sm font-medium text-text-primary">허용 WiFi SSID</label>
+            <input
+              type="text"
+              className={inputCls}
+              placeholder="사무실WiFi, 본사5G (쉼표로 구분)"
+              value={wifiSsids}
+              onChange={(e) => { setWifiSsids(e.target.value); setIsDirty(true); }}
+            />
+            <p className="text-xs text-text-muted">
+              사내 WiFi SSID를 쉼표로 구분하여 입력하세요.<br />
+              iOS에서는 위치 권한 및 특수 앱 등록이 필요할 수 있습니다.
+            </p>
+          </div>
+        )}
+
+        {/* QR 토큰 유효 시간 설정 */}
+        {enabled.includes('qr') && (
+          <div className="space-y-1.5 p-4 rounded-xl bg-amber-50 border border-amber-100">
+            <label className="text-sm font-medium text-text-primary">QR 코드 갱신 주기 (분)</label>
+            <input
+              type="number"
+              className={inputCls}
+              min={1} max={60}
+              value={qrWindow}
+              onChange={(e) => { setQrWindow(Number(e.target.value)); setIsDirty(true); }}
+            />
+            <p className="text-xs text-text-muted">
+              설정한 주기마다 QR 코드가 자동 갱신됩니다. 짧을수록 보안이 강화됩니다.
+            </p>
+          </div>
+        )}
+
+        <div className="flex justify-end">
+          <Button onClick={handleSave} loading={mutation.isPending} disabled={!isDirty}>
+            저장
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 // ── 메인 설정 페이지 ─────────────────────────────
 export default function SettingsPage() {
   usePageTitle('설정');
   const { user } = useAuthStore();
-  const [section, setSection] = useState<Section>('profile');
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get('tab') as Section | null;
+  const [section, setSection] = useState<Section>(tabParam ?? 'profile');
+
+  // URL 쿼리 변경 시 탭 동기화
+  useEffect(() => {
+    if (tabParam) setSection(tabParam);
+  }, [tabParam]);
 
   const isOwner = user?.role === 'owner';
 
@@ -1159,17 +1313,44 @@ export default function SettingsPage() {
     { key: 'company',      label: '회사 정보',   icon: Building2, ownerOnly: true },
     { key: 'branding',     label: '브랜딩',      icon: Image,     ownerOnly: true },
     { key: 'work',         label: '근무 설정',   icon: Clock,     ownerOnly: true },
-    { key: 'gps',          label: 'GPS 설정',    icon: MapPin,    ownerOnly: true },
-    { key: 'notification', label: '알림 설정',   icon: Bell },
+    { key: 'gps',                label: 'GPS 설정',      icon: MapPin,       ownerOnly: true },
+    { key: 'attendance-methods', label: '출퇴근 방식',   icon: Smartphone,   ownerOnly: true },
+    { key: 'notification',       label: '알림 설정',     icon: Bell },
   ];
   const menus = allMenus.filter((m) => !m.ownerOnly || isOwner);
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <main className="p-6">
-        <div className="flex gap-6 max-w-4xl">
-          {/* 좌측 메뉴 */}
-          <div className="w-48 flex-shrink-0">
+      <main className="p-4 md:p-6">
+        {/* 모바일: 상단 수평 스크롤 탭 / PC: 좌측 세로 메뉴 */}
+        <div className="flex flex-col md:flex-row md:gap-6 max-w-4xl">
+
+          {/* ── 모바일 상단 탭 (md 미만) ── */}
+          <div className="md:hidden mb-4">
+            <nav className="flex gap-1 overflow-x-auto pb-1 scrollbar-hide">
+              {menus.map(({ key, label, icon: Icon, disabled }) => (
+                <button
+                  key={key}
+                  onClick={() => !disabled && setSection(key)}
+                  disabled={disabled}
+                  className={clsx(
+                    'flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold whitespace-nowrap flex-shrink-0 transition-colors',
+                    disabled
+                      ? 'text-text-muted cursor-not-allowed bg-gray-50'
+                      : section === key
+                        ? 'bg-primary-500 text-white shadow-sm'
+                        : 'bg-white border border-border text-text-secondary hover:bg-gray-50',
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                  {label}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          {/* ── PC 좌측 메뉴 (md 이상) ── */}
+          <div className="hidden md:block w-44 flex-shrink-0">
             <nav className="space-y-0.5">
               {menus.map(({ key, label, icon: Icon, disabled }) => (
                 <button
@@ -1193,14 +1374,15 @@ export default function SettingsPage() {
             </nav>
           </div>
 
-          {/* 우측 콘텐츠 */}
+          {/* 콘텐츠 */}
           <div className="flex-1 min-w-0">
-            {section === 'profile'      && <ProfileSection />}
-            {section === 'company'      && <CompanySection />}
-            {section === 'branding'     && <BrandingSection />}
-            {section === 'work'         && <WorkSection />}
-            {section === 'gps'          && <GpsSection />}
-            {section === 'notification' && <NotificationSection />}
+            {section === 'profile'            && <ProfileSection />}
+            {section === 'company'            && <CompanySection />}
+            {section === 'branding'           && <BrandingSection />}
+            {section === 'work'               && <WorkSection />}
+            {section === 'gps'                && <GpsSection />}
+            {section === 'attendance-methods' && <AttendanceMethodsSection />}
+            {section === 'notification'       && <NotificationSection />}
           </div>
         </div>
       </main>

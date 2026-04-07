@@ -162,8 +162,13 @@ async function main() {
       status:         UserStatus.ACTIVE,
       joinedAt:       new Date(def.joined),
       permissions: def.role === UserRole.MANAGER ? {
-        canInvite: true, canManagePayroll: true,
-        canManageContracts: true, canManageEvaluations: true,
+        canInvite: true,
+        canManageContracts: true,
+        canManageEvaluations: true,
+        // 인사팀 manager: HR 노트 관리 권한
+        ...(def.dept.includes('인사') ? { canManageHrNotes: true, canViewHrNotes: true } : {}),
+        // 경영지원팀 manager: 급여 관리 권한
+        ...(def.dept.includes('경영지원') ? { canManageSalary: true, canViewSalary: true } : {}),
       } : null,
     }));
     users.push(u);

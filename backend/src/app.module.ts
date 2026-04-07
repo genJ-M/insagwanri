@@ -28,6 +28,8 @@ import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { TrainingModule } from './modules/training/training.module';
 import { TaxDocumentsModule } from './modules/tax-documents/tax-documents.module';
 import { SearchModule } from './modules/search/search.module';
+import { FeedbackModule } from './modules/feedback/feedback.module';
+import { CreditModule } from './modules/credits/credit.module';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { SmsModule } from './common/sms/sms.module';
 import { ActivityLogModule } from './modules/activity-logs/activity-log.module';
@@ -66,6 +68,8 @@ import { ApprovalDocument } from './database/entities/approval-document.entity';
 import { ApprovalStep } from './database/entities/approval-step.entity';
 import { Contract } from './database/entities/contract.entity';
 import { CalendarEvent } from './database/entities/calendar-event.entity';
+import { CalendarEventShare } from './database/entities/calendar-event-share.entity';
+import { CalendarShareRequest } from './database/entities/calendar-share-request.entity';
 import { EvaluationCycle } from './database/entities/evaluation-cycle.entity';
 import { Evaluation } from './database/entities/evaluation.entity';
 import { EvaluationAnswer } from './database/entities/evaluation-answer.entity';
@@ -75,6 +79,8 @@ import { UserDocument } from './database/entities/user-document.entity';
 import { Training } from './database/entities/training.entity';
 import { TrainingEnrollment } from './database/entities/training-enrollment.entity';
 import { PhoneOtp } from './database/entities/phone-otp.entity';
+import { Feedback } from './database/entities/feedback.entity';
+import { Credit, CreditTransaction } from './database/entities/credit.entity';
 
 @Module({
   imports: [
@@ -139,6 +145,8 @@ import { PhoneOtp } from './database/entities/phone-otp.entity';
             ApprovalStep,
             Contract,
             CalendarEvent,
+            CalendarEventShare,
+            CalendarShareRequest,
             EvaluationCycle,
             Evaluation,
             EvaluationAnswer,
@@ -149,6 +157,9 @@ import { PhoneOtp } from './database/entities/phone-otp.entity';
             TrainingEnrollment,
             UserActivityLog,
             PhoneOtp,
+            Feedback,
+            Credit,
+            CreditTransaction,
           ],
           synchronize: false, // Migration으로 스키마 관리
           logging: config.get<string>('NODE_ENV') === 'development',
@@ -197,6 +208,8 @@ import { PhoneOtp } from './database/entities/phone-otp.entity';
     TrainingModule,
     TaxDocumentsModule,
     SearchModule,
+    FeedbackModule,
+    CreditModule,
 
     // 활동 로그 (통신비밀보호법, 전역)
     ActivityLogModule,

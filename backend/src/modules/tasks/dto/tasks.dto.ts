@@ -1,7 +1,7 @@
 import {
   IsString, IsOptional, IsUUID, IsIn, IsDateString,
   IsArray, IsUrl, MinLength, MaxLength, IsNumber, Min, Max,
-  IsBoolean,
+  IsBoolean, IsISO8601,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -11,6 +11,9 @@ export class CreateTaskDto {
 
   @IsOptional() @IsString()
   description?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  scope?: string;
 
   @IsOptional() @IsUUID()
   assignee_id?: string;
@@ -27,6 +30,13 @@ export class CreateTaskDto {
   @IsOptional() @IsDateString()
   due_date?: string;
 
+  /** ISO8601 datetime (날짜+시간, 1시간 단위) */
+  @IsOptional() @IsISO8601()
+  due_datetime?: string;
+
+  @IsOptional() @IsString() @MaxLength(60)
+  template_id?: string;
+
   @IsOptional() @IsArray() @IsUrl({}, { each: true })
   attachment_urls?: string[] = [];
 
@@ -40,6 +50,9 @@ export class UpdateTaskDto {
 
   @IsOptional() @IsString()
   description?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  scope?: string;
 
   @IsOptional() @IsUUID()
   assignee_id?: string;
@@ -56,8 +69,25 @@ export class UpdateTaskDto {
   @IsOptional() @IsDateString()
   due_date?: string;
 
+  @IsOptional() @IsISO8601()
+  due_datetime?: string;
+
   @IsOptional() @IsArray() @IsUrl({}, { each: true })
   attachment_urls?: string[];
+}
+
+export class RequestTimeAdjustDto {
+  /** 담당자가 제안하는 새 기한 (ISO8601) */
+  @IsISO8601()
+  proposed_datetime: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  message?: string;
+}
+
+export class RespondTimeAdjustDto {
+  @IsIn(['approved', 'rejected'])
+  action: 'approved' | 'rejected';
 }
 
 export class CreateReportDto {
@@ -95,6 +125,10 @@ export class TaskQueryDto {
 
   @IsOptional() @IsString()
   category?: string;
+
+  /** 제목 검색 (자동완성 용도) */
+  @IsOptional() @IsString() @MaxLength(100)
+  search?: string;
 
   @IsOptional() @Type(() => Number) @Min(1)
   page?: number = 1;

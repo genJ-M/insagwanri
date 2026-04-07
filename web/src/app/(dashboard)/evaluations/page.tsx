@@ -429,34 +429,34 @@ export default function EvaluationsPage() {
   ];
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-5xl mx-auto px-4 py-4 md:py-6 space-y-4 md:space-y-6">
       {/* 헤더 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <ClipboardCheck className="w-7 h-7 text-blue-600" />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <ClipboardCheck className="w-6 h-6 md:w-7 md:h-7 text-blue-600 flex-shrink-0" />
             인사평가
           </h1>
-          <p className="text-sm text-gray-500 mt-1">정기 평가 사이클을 관리하고 평가를 작성합니다.</p>
+          <p className="text-xs md:text-sm text-gray-500 mt-1">정기 평가 사이클을 관리하고 평가를 작성합니다.</p>
         </div>
         {isAdmin && (
           <button
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+            className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2 bg-blue-600 text-white rounded-lg text-xs md:text-sm font-medium hover:bg-blue-700 whitespace-nowrap flex-shrink-0"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5 md:w-4 md:h-4" />
             새 사이클
           </button>
         )}
       </div>
 
       {/* 탭 */}
-      <div className="flex border-b border-gray-200">
+      <div className="flex border-b border-gray-200 overflow-x-auto scrollbar-hide">
         {tabs.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
+            className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
               tab === t.key
                 ? 'border-b-2 border-blue-600 text-blue-600'
                 : 'text-gray-500 hover:text-gray-700'

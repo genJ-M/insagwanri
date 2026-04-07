@@ -24,7 +24,11 @@ export type NotificationType =
   | 'attendance_late'
   | 'attendance_absent'
   | 'tax_deadline'
-  | 'labor_event';
+  | 'labor_event'
+  | 'task_instruction'
+  | 'task_time_adjust_request'
+  | 'task_time_adjust_approved'
+  | 'task_time_adjust_rejected';
 
 export type NotificationRefType =
   | 'task'

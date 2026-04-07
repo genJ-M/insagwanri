@@ -3,7 +3,7 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { Send, Hash, Megaphone, MessageSquare, Plus, Pencil, Trash2, Check, X } from 'lucide-react';
+import { Send, Hash, Megaphone, MessageSquare, Plus, Pencil, Trash2, Check, X, ChevronLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
@@ -377,10 +377,18 @@ export default function MessagesPage() {
 
   const activeChannel = channels.find((c) => c.id === activeChannelId);
 
+  // 모바일: 채널 목록 / 채팅 전환 (activeChannelId 있으면 채팅 표시)
+  const [showChannelList, setShowChannelList] = useState(false);
+
   return (
     <div className="flex-1 flex overflow-hidden">
       {/* 채널 사이드바 — 다크 테마 유지 (채팅 UI 관례) */}
-      <div className="w-56 bg-gray-900 flex flex-col flex-shrink-0">
+      {/* 모바일: activeChannel 없을 때 전체폭, 있을 때 숨김 / PC: 항상 표시 w-56 */}
+      <div className={clsx(
+        'bg-gray-900 flex flex-col flex-shrink-0 transition-all',
+        'w-full md:w-56',
+        activeChannelId && !showChannelList ? 'hidden md:flex' : 'flex',
+      )}>
         <div className="px-3 py-4 flex-1">
           <div className="flex items-center justify-between px-3 mb-2">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">채널</p>
@@ -410,7 +418,7 @@ export default function MessagesPage() {
                   key={ch.id}
                   channel={ch}
                   isActive={ch.id === activeChannelId}
-                  onClick={() => setActiveChannelId(ch.id)}
+                  onClick={() => { setActiveChannelId(ch.id); setShowChannelList(false); }}
                 />
               ))}
             </div>
@@ -418,8 +426,11 @@ export default function MessagesPage() {
         </div>
       </div>
 
-      {/* 메시지 영역 */}
-      <div className="flex-1 flex flex-col min-w-0 bg-background">
+      {/* 메시지 영역 — 모바일: 채널 선택 시만 표시, PC: 항상 표시 */}
+      <div className={clsx(
+        'flex-1 flex flex-col min-w-0 bg-background',
+        !activeChannelId || showChannelList ? 'hidden md:flex' : 'flex',
+      )}>
         {!channelsLoading && channels.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
             <Hash className="h-12 w-12 text-text-muted mb-4" />
@@ -433,7 +444,15 @@ export default function MessagesPage() {
           <>
             {/* 채널 헤더 */}
             {activeChannel && (
-              <div className="h-14 bg-white border-b border-border flex items-center px-5 gap-2">
+              <div className="h-14 bg-white border-b border-border flex items-center px-3 md:px-5 gap-2">
+                {/* 모바일 뒤로가기 버튼 */}
+                <button
+                  onClick={() => setShowChannelList(true)}
+                  className="md:hidden p-1.5 rounded-lg hover:bg-background text-text-secondary transition-colors"
+                  aria-label="채널 목록"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
                 {(() => {
                   const Icon = CHANNEL_ICONS[activeChannel.type] ?? Hash;
                   return <Icon className="h-5 w-5 text-text-muted" />;

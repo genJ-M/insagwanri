@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -7,7 +7,7 @@ import {
   Briefcase, CalendarDays, Clock, Hash, ChevronRight,
   UserCog, AlertTriangle, RefreshCw, FileText, Plus,
   Lock, Trash2, ChevronDown, GraduationCap, Paperclip,
-  UploadCloud, Download, ExternalLink,
+  UploadCloud, Download, ExternalLink, ShieldCheck,
 } from 'lucide-react';
 import { format, differenceInMonths, differenceInYears, formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
@@ -87,12 +87,13 @@ function EditableField({
 
 // ─── 탭 목록 ─────────────────────────────────────────────────
 const TABS = [
-  { key: 'basic',    label: '기본정보',   icon: Mail },
-  { key: 'hr',       label: '인사정보',   icon: Briefcase },
-  { key: 'work',     label: '근무 설정',  icon: Clock },
-  { key: 'notes',    label: '인사 노트',  icon: FileText },
-  { key: 'career',   label: '경력/학력',  icon: GraduationCap },
-  { key: 'docs',     label: '첨부문서',   icon: Paperclip },
+  { key: 'basic',       label: '기본정보',   icon: Mail },
+  { key: 'hr',          label: '인사정보',   icon: Briefcase },
+  { key: 'work',        label: '근무 설정',  icon: Clock },
+  { key: 'notes',       label: '인사 노트',  icon: FileText },
+  { key: 'career',      label: '경력/학력',  icon: GraduationCap },
+  { key: 'docs',        label: '첨부문서',   icon: Paperclip },
+  { key: 'permissions', label: '접근 권한',  icon: ShieldCheck },
 ] as const;
 type TabKey = typeof TABS[number]['key'];
 
@@ -960,35 +961,12 @@ export default function EmployeeDetailPage() {
               </div>
             )}
 
-            {/* 근무 설정 */}
-            {tab === 'work' && (
-              <div>
-                <SectionHeader title="근무 시간 설정" desc="개인별 출퇴근 시간 오버라이드" />
-                <EditableField
-                  label="출근 시간"
-                  value={user.customWorkStart ?? null}
-                  name="customWorkStart"
-                  type="time"
-                  editable={canEdit}
-                  onSave={handleSave}
-                />
-                <EditableField
-                  label="퇴근 시간"
-                  value={user.customWorkEnd ?? null}
-                  name="customWorkEnd"
-                  type="time"
-                  editable={canEdit}
-                  onSave={handleSave}
-                />
-                <p className="text-xs text-text-muted mt-4 bg-gray-50 px-4 py-3 rounded-xl">
-                  미설정 시 워크스페이스 기본 근무 시간이 적용됩니다.
-                </p>
-              </div>
-            )}
+            {tab === 'work' && <WorkScheduleTab userId={id} me={me} canDirectEdit={canEdit} />}
 
-            {tab === 'notes'  && <NotesTab userId={id} canWrite={canEdit} />}
-            {tab === 'career' && <CareerTab userId={id} canEdit={canEdit} />}
-            {tab === 'docs'   && <DocsTab userId={id} canEdit={canEdit} />}
+            {tab === 'notes'       && <NotesTab userId={id} canWrite={canEdit} />}
+            {tab === 'career'      && <CareerTab userId={id} canEdit={canEdit} />}
+            {tab === 'docs'        && <DocsTab userId={id} canEdit={canEdit} />}
+            {tab === 'permissions' && <PermissionsTab userId={id} me={me} targetUser={user} />}
           </div>
         </main>
       </div>
@@ -1000,6 +978,663 @@ export default function EmployeeDetailPage() {
           onClose={() => setActionModal(null)}
           userId={id}
         />
+      )}
+    </div>
+  );
+}
+
+// ─── 근무 스케줄 탭 ──────────────────────────────────────────
+function WorkScheduleTab({
+  userId, me, canDirectEdit,
+}: { userId: string; me: any; canDirectEdit: boolean }) {
+  const queryClient = useQueryClient();
+  const isOwner = me?.role === 'owner';
+
+  const { data: schedule, isLoading } = useQuery({
+    queryKey: ['work-schedule', userId],
+    queryFn: async () => {
+      const { data } = await api.get(`/users/${userId}/work-schedule`);
+      return data.data;
+    },
+    retry: false,
+  });
+
+  const [form, setForm] = useState({ workStartTime: '', workEndTime: '', breakMinutes: '', lateThresholdMin: '', note: '' });
+  const [showApproval, setShowApproval] = useState(false);
+  const [approverIds, setApproverIds] = useState('');
+  const [reason, setReason] = useState('');
+
+  const { data: managers } = useQuery({
+    queryKey: ['users-managers'],
+    queryFn: async () => {
+      const { data } = await api.get('/users', { params: { role: 'manager' } });
+      return (data.data ?? data) as any[];
+    },
+    enabled: showApproval,
+  });
+
+  // 스케줄 로드 시 폼 초기화
+  useEffect(() => {
+    if (schedule) {
+      const c = schedule.custom;
+      setForm({
+        workStartTime: c.workStartTime ?? '',
+        workEndTime:   c.workEndTime   ?? '',
+        breakMinutes:  c.breakMinutes  != null ? String(c.breakMinutes) : '',
+        lateThresholdMin: c.lateThresholdMin != null ? String(c.lateThresholdMin) : '',
+        note: c.note ?? '',
+      });
+    }
+  }, [schedule]);
+
+  const directMutation = useMutation({
+    mutationFn: (p: any) => api.patch(`/users/${userId}/work-schedule`, p),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['work-schedule', userId] });
+      toast.success('근무 스케줄이 변경되었습니다.');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message ?? '변경에 실패했습니다.'),
+  });
+
+  const approvalMutation = useMutation({
+    mutationFn: (p: any) => api.post('/users/work-schedule-change', p),
+    onSuccess: () => {
+      setShowApproval(false);
+      toast.success('결재 기안이 생성되었습니다.');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message ?? '기안 생성에 실패했습니다.'),
+  });
+
+  const handleDirectSave = () => {
+    directMutation.mutate({
+      workStartTime: form.workStartTime || null,
+      workEndTime:   form.workEndTime   || null,
+      breakMinutes:  form.breakMinutes  ? Number(form.breakMinutes)  : null,
+      lateThresholdMin: form.lateThresholdMin ? Number(form.lateThresholdMin) : null,
+      note: form.note || undefined,
+    });
+  };
+
+  const handleApprovalSubmit = () => {
+    const ids = approverIds.split(',').map(s => s.trim()).filter(Boolean);
+    if (!ids.length) { toast.error('결재자를 선택해주세요.'); return; }
+    approvalMutation.mutate({
+      targetUserId: userId,
+      workStartTime: form.workStartTime || null,
+      workEndTime:   form.workEndTime   || null,
+      breakMinutes:  form.breakMinutes  ? Number(form.breakMinutes)  : null,
+      lateThresholdMin: form.lateThresholdMin ? Number(form.lateThresholdMin) : null,
+      reason,
+      approver_ids: ids,
+    });
+  };
+
+  const inputCls = 'w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400';
+  const labelCls = 'block text-xs text-text-muted mb-1';
+
+  if (isLoading) return <div className="py-10 text-center text-sm text-text-muted">로딩 중...</div>;
+
+  const eff = schedule?.effective;
+  const comp = schedule?.companyDefault;
+
+  return (
+    <div className="space-y-5">
+      {/* 현재 적용 스케줄 요약 */}
+      <div className="bg-primary-50 border border-primary-100 rounded-2xl p-5 space-y-3">
+        <p className="text-sm font-semibold text-primary-700">현재 적용 근무 스케줄</p>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <span className="text-xs text-text-muted block">출근 시간</span>
+            <span className="font-semibold text-text-primary">{eff?.workStartTime ?? '—'}</span>
+            {schedule?.custom?.workStartTime && <span className="text-xs text-primary-500 ml-1">(개인 설정)</span>}
+          </div>
+          <div>
+            <span className="text-xs text-text-muted block">퇴근 시간</span>
+            <span className="font-semibold text-text-primary">{eff?.workEndTime ?? '—'}</span>
+            {schedule?.custom?.workEndTime && <span className="text-xs text-primary-500 ml-1">(개인 설정)</span>}
+          </div>
+          <div>
+            <span className="text-xs text-text-muted block">휴게시간</span>
+            <span className="font-semibold text-text-primary">
+              {eff?.breakMinutes != null ? `${eff.breakMinutes}분` : '법정 최소 자동'}
+            </span>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted block">지각 허용</span>
+            <span className="font-semibold text-text-primary">{eff?.lateThresholdMin}분</span>
+          </div>
+        </div>
+        <div className="text-xs text-text-muted bg-white/60 rounded-lg px-3 py-2">
+          ⚖️ {schedule?.legalBreakNote}
+        </div>
+        {comp && (
+          <p className="text-xs text-text-muted">
+            회사 기본: {comp.workStartTime} ~ {comp.workEndTime} · 지각 허용 {comp.lateThresholdMin}분
+          </p>
+        )}
+      </div>
+
+      {/* 편집 폼 */}
+      {(canDirectEdit || !isOwner) && (
+        <div className="space-y-4">
+          <p className="text-sm font-semibold text-text-primary">개인 스케줄 변경</p>
+          <p className="text-xs text-text-muted -mt-2">비워두면 회사 기본값을 사용합니다.</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>출근 시간 (HH:mm)</label>
+              <input type="time" className={inputCls} value={form.workStartTime}
+                onChange={e => setForm(f => ({ ...f, workStartTime: e.target.value }))} />
+            </div>
+            <div>
+              <label className={labelCls}>퇴근 시간 (HH:mm)</label>
+              <input type="time" className={inputCls} value={form.workEndTime}
+                onChange={e => setForm(f => ({ ...f, workEndTime: e.target.value }))} />
+            </div>
+            <div>
+              <label className={labelCls}>휴게시간 (분, 비워두면 법정 최소 자동)</label>
+              <input type="number" min={0} max={480} className={inputCls} value={form.breakMinutes}
+                placeholder="예: 60"
+                onChange={e => setForm(f => ({ ...f, breakMinutes: e.target.value }))} />
+              <p className="text-xs text-text-muted mt-1">4h이상 30분, 8h이상 60분 (근로기준법 제54조)</p>
+            </div>
+            <div>
+              <label className={labelCls}>지각 허용 시간 (분)</label>
+              <input type="number" min={0} max={120} className={inputCls} value={form.lateThresholdMin}
+                placeholder="예: 10"
+                onChange={e => setForm(f => ({ ...f, lateThresholdMin: e.target.value }))} />
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>변경 사유 / 메모</label>
+            <input type="text" className={inputCls} value={form.note}
+              placeholder="예: 계약서 기반 탄력근무제 적용"
+              onChange={e => setForm(f => ({ ...f, note: e.target.value }))} />
+          </div>
+
+          <div className="flex gap-3">
+            {canDirectEdit ? (
+              <Button onClick={handleDirectSave} loading={directMutation.isPending}>
+                직접 변경 (즉시 적용)
+              </Button>
+            ) : null}
+            <Button
+              variant="secondary"
+              onClick={() => setShowApproval(!showApproval)}
+            >
+              결재 기안으로 변경 요청
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* 결재 기안 폼 */}
+      {showApproval && (
+        <div className="border border-amber-200 bg-amber-50 rounded-2xl p-5 space-y-3">
+          <p className="text-sm font-semibold text-amber-800">결재 기안 — 근무 스케줄 변경</p>
+          <div>
+            <label className={labelCls}>변경 사유 (결재 문서에 표시)</label>
+            <textarea className={`${inputCls} min-h-[80px]`} value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="계약서 제○조에 따른 개인 근무시간 조정..." />
+          </div>
+          <div>
+            <label className={labelCls}>결재자 (관리자 선택)</label>
+            {managers && managers.length > 0 ? (
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {managers.filter((m: any) => m.id !== userId).map((m: any) => (
+                  <label key={m.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={approverIds.includes(m.id)}
+                      onChange={(e) => {
+                        const ids = approverIds ? approverIds.split(',') : [];
+                        if (e.target.checked) setApproverIds([...ids, m.id].join(','));
+                        else setApproverIds(ids.filter((i: string) => i !== m.id).join(','));
+                      }}
+                    />
+                    <span>{m.name}</span>
+                    <span className="text-text-muted text-xs">{m.department} · {m.position}</span>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-text-muted">관리자 목록을 불러오는 중...</p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={handleApprovalSubmit} loading={approvalMutation.isPending}>
+              기안 제출
+            </Button>
+            <Button variant="ghost" onClick={() => setShowApproval(false)}>취소</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── 접근 권한 탭 ─────────────────────────────────────────────
+function PermissionsTab({
+  userId,
+  me,
+  targetUser,
+}: {
+  userId: string;
+  me: any;
+  targetUser: any;
+}) {
+  const qc = useQueryClient();
+  const myPerms = me?.permissions ?? {};
+  const isOwner = me?.role === 'owner';
+  const canDirectGrant = isOwner || myPerms.canGrantHrAccess || myPerms.canGrantSalaryAccess;
+  const canRequestGrant = me?.role === 'manager';
+
+  // 현재 대상 직원의 권한
+  const perms = targetUser?.permissions ?? {};
+  const depts = targetUser?.managedDepartments;
+
+  // ── 직접 권한 설정 (OWNER 또는 위임자) ──
+  const [editPerms, setEditPerms] = useState<Record<string, any>>({});
+  const [editDepts, setEditDepts] = useState<string>('');
+  const [showDirectForm, setShowDirectForm] = useState(false);
+
+  // ── 결재 기안 양식 ──
+  const [showRequestForm, setShowRequestForm] = useState(false);
+  const [reqForm, setReqForm] = useState({
+    reason: '',
+    approver_ids_text: '',
+    permissions: {} as Record<string, any>,
+  });
+
+  const directMutation = useMutation({
+    mutationFn: (payload: any) =>
+      api.patch(`/users/${userId}/permissions`, payload).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['user', userId] });
+      toast.success('권한이 업데이트되었습니다.');
+      setShowDirectForm(false);
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? '권한 설정에 실패했습니다.'),
+  });
+
+  const requestMutation = useMutation({
+    mutationFn: (payload: any) =>
+      api.post(`/users/${userId}/permissions/request`, payload).then((r) => r.data),
+    onSuccess: () => {
+      toast.success('권한 변경 기안이 제출되었습니다. 결재 완료 후 자동 적용됩니다.');
+      setShowRequestForm(false);
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? '기안 제출에 실패했습니다.'),
+  });
+
+  const PERM_LABELS: Record<string, string> = {
+    canViewHrNotes:       'HR 노트 열람',
+    canManageHrNotes:     'HR 노트 관리 (작성/수정/삭제)',
+    canViewSalary:        '급여 열람 (타인)',
+    canManageSalary:      '급여 관리 (등록/수정/확정/지급)',
+    canInvite:            '직원 초대',
+    canManageContracts:   '계약서 관리',
+    canManageEvaluations: '인사평가 관리',
+  };
+
+  // OWNER 전용
+  const OWNER_ONLY_LABELS: Record<string, string> = {
+    canGrantHrAccess:     'HR 권한 위임 (소유자 전용)',
+    canGrantSalaryAccess: '급여 권한 위임 (소유자 전용)',
+  };
+
+  const HR_PERMS = ['canViewHrNotes', 'canManageHrNotes'];
+  const SALARY_PERMS = ['canViewSalary', 'canManageSalary'];
+
+  const handleDirectSave = () => {
+    const deptsArr = editDepts.trim()
+      ? editDepts.split(',').map((d) => d.trim()).filter(Boolean)
+      : undefined;
+    directMutation.mutate({
+      permissions: Object.keys(editPerms).length ? editPerms : undefined,
+      managedDepartments: deptsArr,
+    });
+  };
+
+  const handleRequest = () => {
+    const approverIds = reqForm.approver_ids_text
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (approverIds.length === 0) {
+      toast.error('결재자 ID를 입력해주세요.');
+      return;
+    }
+    if (reqForm.reason.length < 10) {
+      toast.error('사유를 10자 이상 입력해주세요.');
+      return;
+    }
+    requestMutation.mutate({
+      target_user_id: userId,
+      permissions: Object.keys(reqForm.permissions).length ? reqForm.permissions : undefined,
+      reason: reqForm.reason,
+      approver_ids: approverIds,
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-sm font-semibold text-text-primary mb-1">현재 접근 권한</h3>
+        <p className="text-xs text-text-muted mb-4">
+          인사 노트·급여 등 민감 데이터에 대한 이 직원의 접근 권한입니다.
+        </p>
+
+        {/* 현재 권한 목록 */}
+        <div className="rounded-xl border border-border overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-border">
+                <th className="text-left text-xs font-medium text-text-muted px-4 py-3">권한 항목</th>
+                <th className="text-center text-xs font-medium text-text-muted px-4 py-3 w-24">상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(PERM_LABELS).map(([key, label]) => (
+                <tr key={key} className="border-b border-gray-50 last:border-0">
+                  <td className="px-4 py-3 text-text-secondary">{label}</td>
+                  <td className="px-4 py-3 text-center">
+                    {(perms as any)[key]
+                      ? <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">허용</span>
+                      : <span className="text-xs text-text-muted bg-gray-50 px-2 py-0.5 rounded-full">없음</span>
+                    }
+                  </td>
+                </tr>
+              ))}
+              {isOwner && Object.entries(OWNER_ONLY_LABELS).map(([key, label]) => (
+                <tr key={key} className="border-b border-gray-50 last:border-0 bg-amber-50/30">
+                  <td className="px-4 py-3 text-amber-700 text-xs">{label}</td>
+                  <td className="px-4 py-3 text-center">
+                    {(perms as any)[key]
+                      ? <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">위임됨</span>
+                      : <span className="text-xs text-text-muted bg-gray-50 px-2 py-0.5 rounded-full">없음</span>
+                    }
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 열람 범위 */}
+        {(depts && depts.length > 0) && (
+          <div className="mt-3 p-3 bg-blue-50 rounded-xl text-xs text-blue-700">
+            <span className="font-medium">담당 부서 범위:</span> {depts.join(', ')}
+            {perms.hrNoteScope === 'managed_departments' && ' · HR 노트 담당 부서만'}
+            {perms.salaryScope === 'managed_departments' && ' · 급여 담당 부서만'}
+          </div>
+        )}
+      </div>
+
+      {/* 부서별 접근 설명 */}
+      <div className="p-4 bg-gray-50 rounded-xl text-xs text-text-muted space-y-1.5">
+        <p className="font-medium text-text-secondary">자동 부여 권한 안내</p>
+        <p>• <span className="font-medium">인사팀 관리자</span>: HR 노트 자동 접근 (부서명에 "인사", "HR", "노무" 포함)</p>
+        <p>• <span className="font-medium">재무팀 관리자</span>: 급여 자동 접근 (부서명에 "재무", "회계", "경리", "급여" 포함)</p>
+        <p>• 소유자(owner)는 모든 데이터에 항상 접근 가능합니다.</p>
+      </div>
+
+      {/* 직접 권한 설정 (OWNER 또는 위임자) */}
+      {canDirectGrant && (
+        <div>
+          {!showDirectForm ? (
+            <button
+              onClick={() => {
+                setEditPerms({ ...perms });
+                setEditDepts(depts?.join(', ') ?? '');
+                setShowDirectForm(true);
+              }}
+              className="flex items-center gap-2 text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              권한 직접 수정
+            </button>
+          ) : (
+            <div className="border border-border rounded-xl p-5 space-y-4">
+              <h4 className="text-sm font-semibold text-text-primary">권한 직접 수정</h4>
+
+              {/* HR 권한 */}
+              {(isOwner || myPerms.canGrantHrAccess) && (
+                <div>
+                  <p className="text-xs font-medium text-text-muted mb-2">HR 노트 권한</p>
+                  <div className="space-y-2">
+                    {HR_PERMS.map((key) => (
+                      <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!editPerms[key]}
+                          onChange={(e) => setEditPerms((p) => ({ ...p, [key]: e.target.checked }))}
+                          className="w-4 h-4 rounded"
+                        />
+                        {PERM_LABELS[key]}
+                      </label>
+                    ))}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-text-muted">열람 범위:</span>
+                      <select
+                        value={editPerms.hrNoteScope ?? 'all'}
+                        onChange={(e) => setEditPerms((p) => ({ ...p, hrNoteScope: e.target.value }))}
+                        className="text-xs border border-border rounded px-2 py-1"
+                      >
+                        <option value="all">전체 직원</option>
+                        <option value="managed_departments">담당 부서만</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 급여 권한 */}
+              {(isOwner || myPerms.canGrantSalaryAccess) && (
+                <div>
+                  <p className="text-xs font-medium text-text-muted mb-2">급여 권한</p>
+                  <div className="space-y-2">
+                    {SALARY_PERMS.map((key) => (
+                      <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!editPerms[key]}
+                          onChange={(e) => setEditPerms((p) => ({ ...p, [key]: e.target.checked }))}
+                          className="w-4 h-4 rounded"
+                        />
+                        {PERM_LABELS[key]}
+                      </label>
+                    ))}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-text-muted">열람 범위:</span>
+                      <select
+                        value={editPerms.salaryScope ?? 'all'}
+                        onChange={(e) => setEditPerms((p) => ({ ...p, salaryScope: e.target.value }))}
+                        className="text-xs border border-border rounded px-2 py-1"
+                      >
+                        <option value="all">전체 직원</option>
+                        <option value="managed_departments">담당 부서만</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 기타 권한 */}
+              {isOwner && (
+                <div>
+                  <p className="text-xs font-medium text-text-muted mb-2">기타 권한</p>
+                  <div className="space-y-2">
+                    {['canInvite', 'canManageContracts', 'canManageEvaluations'].map((key) => (
+                      <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!editPerms[key]}
+                          onChange={(e) => setEditPerms((p) => ({ ...p, [key]: e.target.checked }))}
+                          className="w-4 h-4 rounded"
+                        />
+                        {PERM_LABELS[key]}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 위임 권한 — OWNER 전용 */}
+              {isOwner && (
+                <div className="p-3 bg-amber-50 rounded-xl">
+                  <p className="text-xs font-medium text-amber-700 mb-2">권한 위임 (소유자 전용)</p>
+                  <div className="space-y-2">
+                    {Object.entries(OWNER_ONLY_LABELS).map(([key, label]) => (
+                      <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!editPerms[key]}
+                          onChange={(e) => setEditPerms((p) => ({ ...p, [key]: e.target.checked }))}
+                          className="w-4 h-4 rounded"
+                        />
+                        <span className="text-amber-700">{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 담당 부서 */}
+              <div>
+                <label className="block text-xs font-medium text-text-muted mb-1">
+                  담당 부서 범위 (쉼표로 구분, 비워두면 전체)
+                </label>
+                <input
+                  type="text"
+                  value={editDepts}
+                  onChange={(e) => setEditDepts(e.target.value)}
+                  placeholder="예: 재무팀, 인사팀"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setShowDirectForm(false)}
+                  className="text-sm px-4 py-2 rounded-lg border border-border hover:bg-gray-50"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleDirectSave}
+                  disabled={directMutation.isPending}
+                  className="text-sm px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+                >
+                  {directMutation.isPending ? '저장 중…' : '저장'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 결재 기안으로 권한 요청 (MANAGER) */}
+      {canRequestGrant && !canDirectGrant && (
+        <div>
+          {!showRequestForm ? (
+            <button
+              onClick={() => setShowRequestForm(true)}
+              className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
+            >
+              <FileText className="h-4 w-4" />
+              권한 변경 기안 요청
+            </button>
+          ) : (
+            <div className="border border-blue-200 bg-blue-50/40 rounded-xl p-5 space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-text-primary mb-1">권한 변경 결재 기안</h4>
+                <p className="text-xs text-text-muted">
+                  결재가 최종 승인되면 권한이 자동으로 적용됩니다. 반려 시 기존 권한이 유지됩니다.
+                </p>
+              </div>
+
+              {/* 요청 권한 선택 */}
+              <div>
+                <p className="text-xs font-medium text-text-muted mb-2">변경할 권한</p>
+                <div className="space-y-2">
+                  {Object.entries(PERM_LABELS).map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!reqForm.permissions[key]}
+                        onChange={(e) =>
+                          setReqForm((f) => ({
+                            ...f,
+                            permissions: { ...f.permissions, [key]: e.target.checked },
+                          }))
+                        }
+                        className="w-4 h-4 rounded"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* 결재자 ID */}
+              <div>
+                <label className="block text-xs font-medium text-text-muted mb-1">
+                  결재자 UUID (쉼표 구분, 순서대로 결재)
+                </label>
+                <input
+                  type="text"
+                  value={reqForm.approver_ids_text}
+                  onChange={(e) => setReqForm((f) => ({ ...f, approver_ids_text: e.target.value }))}
+                  placeholder="예: uuid1, uuid2"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+                />
+                <p className="text-[11px] text-text-muted mt-1">결재자 UUID는 직원 프로필 URL에서 확인할 수 있습니다.</p>
+              </div>
+
+              {/* 사유 */}
+              <div>
+                <label className="block text-xs font-medium text-text-muted mb-1">변경 사유 (10자 이상)</label>
+                <textarea
+                  value={reqForm.reason}
+                  onChange={(e) => setReqForm((f) => ({ ...f, reason: e.target.value }))}
+                  rows={3}
+                  placeholder="권한 변경이 필요한 사유를 구체적으로 입력하세요."
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary-300"
+                />
+              </div>
+
+              <div className="p-3 bg-amber-50 rounded-xl text-xs text-amber-700">
+                위임 권한(canGrantHrAccess, canGrantSalaryAccess) 부여는 소유자만 직접 설정 가능하며 기안으로 요청할 수 없습니다.
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setShowRequestForm(false)}
+                  className="text-sm px-4 py-2 rounded-lg border border-border hover:bg-gray-50"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleRequest}
+                  disabled={requestMutation.isPending}
+                  className="text-sm px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {requestMutation.isPending ? '제출 중…' : '기안 제출'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* EMPLOYEE이거나 권한 없는 경우 안내 */}
+      {!canDirectGrant && !canRequestGrant && (
+        <div className="p-4 bg-gray-50 rounded-xl text-sm text-text-muted text-center">
+          권한 변경은 관리자(manager) 이상만 요청할 수 있습니다.
+        </div>
       )}
     </div>
   );

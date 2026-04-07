@@ -4,6 +4,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, IsNull, Not } from 'typeorm';
+import { createHmac } from 'crypto';
+import { ConfigService } from '@nestjs/config';
 import { AttendanceRecord, AttendanceStatus } from '../../database/entities/attendance-record.entity';
 import { User } from '../../database/entities/user.entity';
 import { Company } from '../../database/entities/company.entity';
@@ -11,6 +13,7 @@ import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type
 import {
   ClockInDto, ClockOutDto, UpdateAttendanceDto,
   AttendanceQueryDto, AttendanceReportQueryDto,
+  AttendanceMethod,
 } from './dto/attendance.dto';
 
 @Injectable()
@@ -24,7 +27,47 @@ export class AttendanceService {
 
     @InjectRepository(Company)
     private companyRepo: Repository<Company>,
+
+    private configService: ConfigService,
   ) {}
+
+  // ─────────────────────────────────────────
+  // 출퇴근 방식 목록 조회
+  // ─────────────────────────────────────────
+  async getAttendanceMethods(currentUser: AuthenticatedUser) {
+    const company = await this.companyRepo.findOne({
+      where: { id: currentUser.companyId },
+      select: ['attendanceMethods'] as any,
+    });
+
+    const methods = company?.attendanceMethods;
+    return {
+      enabled: methods?.enabled ?? ['manual'],
+      wifi: methods?.wifi ?? null,
+      qr: methods?.qr ?? null,
+    };
+  }
+
+  // ─────────────────────────────────────────
+  // QR 코드 토큰 발급 (관리자용)
+  // ─────────────────────────────────────────
+  async getQrToken(currentUser: AuthenticatedUser) {
+    if (currentUser.role === UserRole.EMPLOYEE) {
+      throw new ForbiddenException('QR 코드 발급은 관리자만 가능합니다.');
+    }
+
+    const company = await this.companyRepo.findOne({
+      where: { id: currentUser.companyId },
+      select: ['attendanceMethods'] as any,
+    });
+
+    const windowMinutes = company?.attendanceMethods?.qr?.windowMinutes ?? 5;
+    const token = this.generateQrToken(currentUser.companyId, windowMinutes);
+    const windowMs = windowMinutes * 60_000;
+    const expiresAt = new Date(Math.ceil(Date.now() / windowMs) * windowMs);
+
+    return { token, windowMinutes, expiresAt };
+  }
 
   // ─────────────────────────────────────────
   // 출근
@@ -32,28 +75,40 @@ export class AttendanceService {
   async clockIn(currentUser: AuthenticatedUser, dto: ClockInDto) {
     const today = this.getTodayDate();
 
-    // 당일 중복 출근 방지
+    // 이미 출근한 경우 — 멱등성: 기존 기록 반환 (first-wins)
     const existing = await this.attendanceRepo.findOne({
       where: { userId: currentUser.id, workDate: today },
     });
 
     if (existing?.clockInAt) {
-      throw new ConflictException('이미 출근 처리되었습니다.');
+      return { ...existing, alreadyClockedIn: true };
     }
 
-    // 회사 설정 조회 (근무 시간 + GPS)
+    // 회사 설정 조회 (근무 시간 + GPS + 출퇴근 방식)
     const company = await this.companyRepo.findOne({
       where: { id: currentUser.companyId },
       select: [
         'workStartTime', 'lateThresholdMin', 'timezone',
         'gpsEnabled', 'gpsLat', 'gpsLng', 'gpsRadiusM',
+        'attendanceMethods',
       ] as any,
     });
 
-    const now = new Date();
-    const { isLate, lateMinutes } = this.calcLateStatus(now, company ?? {});
+    // 개인 근무 스케줄 조회 (customWorkStart/End/lateThresholdMinOverride)
+    const userSchedule = await this.userRepo.findOne({
+      where: { id: currentUser.id },
+      select: ['customWorkStart', 'customWorkEnd', 'lateThresholdMinOverride', 'breakMinutes'] as any,
+    });
 
-    // GPS 검증
+    // 출퇴근 방식 검증
+    const method = await this.resolveAndValidateMethod(dto, company ?? {}, 'clock-in');
+
+    const now = new Date();
+    // 개인 스케줄 우선, 없으면 회사 기본값
+    const effectiveSchedule = this.mergeSchedule(userSchedule, company ?? {});
+    const { isLate, lateMinutes } = this.calcLateStatus(now, effectiveSchedule);
+
+    // GPS 검증 (gps 방식이거나 회사 GPS 활성화 시)
     const gpsResult = this.validateGps(dto.latitude ?? null, dto.longitude ?? null, dto.accuracyM ?? null, company ?? {});
 
     const clockInData = {
@@ -63,6 +118,7 @@ export class AttendanceService {
       clockInDistanceM: gpsResult.distanceM,
       clockInOutOfRange: gpsResult.outOfRange,
       gpsBypassed: gpsResult.bypassed,
+      clockInMethod: method,
       isLate,
       lateMinutes: isLate ? lateMinutes : null,
       status: isLate ? AttendanceStatus.LATE : AttendanceStatus.NORMAL,
@@ -99,26 +155,42 @@ export class AttendanceService {
       throw new BadRequestException('출근 기록이 없습니다. 먼저 출근 처리를 해주세요.');
     }
 
+    // 이미 퇴근한 경우 — 멱등성: 기존 기록 반환 (first-wins)
     if (record.clockOutAt) {
-      throw new ConflictException('이미 퇴근 처리되었습니다.');
+      return { ...record, alreadyClockedOut: true };
     }
 
-    const now = new Date();
     const company = await this.companyRepo.findOne({
       where: { id: currentUser.companyId },
-      select: ['workEndTime'],
+      select: ['workEndTime', 'attendanceMethods'] as any,
     });
 
-    const totalWorkMinutes = Math.floor(
+    const userSchedule = await this.userRepo.findOne({
+      where: { id: currentUser.id },
+      select: ['customWorkStart', 'customWorkEnd', 'lateThresholdMinOverride', 'breakMinutes'] as any,
+    });
+
+    // 출퇴근 방식 검증
+    const method = await this.resolveAndValidateMethod(dto, company ?? {}, 'clock-out');
+
+    const now = new Date();
+    const effectiveSchedule = this.mergeSchedule(userSchedule, company ?? {});
+
+    // 총 근무시간 (출퇴근 사이) — 법정 휴게시간 차감
+    const grossWorkMinutes = Math.floor(
       (now.getTime() - record.clockInAt.getTime()) / 60000,
     );
+    const breakMinutes = this.calcEffectiveBreak(grossWorkMinutes, effectiveSchedule.breakMinutes);
+    const totalWorkMinutes = Math.max(0, grossWorkMinutes - breakMinutes);
 
-    const isEarlyLeave = this.isEarlyLeave(now, company ?? {});
+    const isEarlyLeave = this.isEarlyLeave(now, effectiveSchedule);
 
     record.clockOutAt = now;
     record.clockOutLat = dto.latitude ?? null;
     record.clockOutLng = dto.longitude ?? null;
+    record.clockOutMethod = method;
     record.totalWorkMinutes = totalWorkMinutes;
+    record.breakMinutes = breakMinutes;
 
     if (isEarlyLeave && record.status === AttendanceStatus.NORMAL) {
       record.status = AttendanceStatus.EARLY_LEAVE;
@@ -298,17 +370,126 @@ export class AttendanceService {
     if (dto.status)       record.status     = dto.status as AttendanceStatus;
     if (dto.note !== undefined) record.note = dto.note;
 
-    // 수정 시 근무시간 재계산
+    // 수정 시 근무시간 재계산 (휴게시간 포함)
     if (record.clockInAt && record.clockOutAt) {
-      record.totalWorkMinutes = Math.floor(
+      const userSchedule = await this.userRepo.findOne({
+        where: { id: record.userId },
+        select: ['customWorkStart', 'customWorkEnd', 'lateThresholdMinOverride', 'breakMinutes'] as any,
+      });
+      const company = await this.companyRepo.findOne({
+        where: { id: currentUser.companyId },
+        select: ['workStartTime', 'workEndTime', 'lateThresholdMin'] as any,
+      });
+      const effectiveSchedule = this.mergeSchedule(userSchedule, company ?? {});
+      const grossWorkMinutes = Math.floor(
         (record.clockOutAt.getTime() - record.clockInAt.getTime()) / 60000,
       );
+      record.breakMinutes = this.calcEffectiveBreak(grossWorkMinutes, effectiveSchedule.breakMinutes);
+      record.totalWorkMinutes = Math.max(0, grossWorkMinutes - record.breakMinutes);
     }
 
     record.approvedBy = currentUser.id;
     record.approvedAt = new Date();
 
     return this.attendanceRepo.save(record);
+  }
+
+  // ─────────────────────────────────────────
+  // 출퇴근 방식 결정 및 검증
+  // ─────────────────────────────────────────
+  /**
+   * 클라이언트가 보낸 method + payload를 검증하여 실제 기록할 방식을 반환한다.
+   * - 회사에서 활성화된 방식(enabled 배열) 중 첫 번째로 유효한 것이 기록 (first-wins)
+   * - method 미전송 시 enabled[0] 방식으로 자동 처리 (fallback)
+   */
+  private async resolveAndValidateMethod(
+    dto: { method?: AttendanceMethod; qrToken?: string; wifiSsid?: string },
+    company: Partial<Company>,
+    action: 'clock-in' | 'clock-out',
+  ): Promise<string> {
+    const enabled: AttendanceMethod[] = company.attendanceMethods?.enabled ?? ['manual'];
+    const requestedMethod: AttendanceMethod = dto.method ?? enabled[0] ?? 'manual';
+
+    // 회사에서 비활성화된 방식 거부
+    if (!enabled.includes(requestedMethod)) {
+      throw new BadRequestException(
+        `'${requestedMethod}' 방식은 현재 사용할 수 없습니다. 허용 방식: ${enabled.join(', ')}`,
+      );
+    }
+
+    switch (requestedMethod) {
+      case 'qr':
+        this.validateQrToken(dto.qrToken, company);
+        break;
+      case 'wifi':
+        this.validateWifiSsid(dto.wifiSsid, company);
+        break;
+      case 'gps':
+        // GPS 거리 검증은 validateGps()에서 처리 (flag-not-reject 정책 유지)
+        break;
+      case 'face':
+        // 생체인증은 클라이언트(기기)에서 완료 후 호출하므로 서버 추가 검증 불필요
+        break;
+      case 'manual':
+      default:
+        break;
+    }
+
+    return requestedMethod;
+  }
+
+  // ─────────────────────────────────────────
+  // QR 토큰 생성 / 검증 (HMAC-SHA256 stateless)
+  // ─────────────────────────────────────────
+  private generateQrToken(companyId: string, windowMinutes: number): string {
+    const window = Math.floor(Date.now() / (windowMinutes * 60_000));
+    return createHmac('sha256', this.configService.get<string>('JWT_ACCESS_SECRET') ?? 'fallback')
+      .update(`${companyId}:${window}`)
+      .digest('hex')
+      .slice(0, 24);
+  }
+
+  private validateQrToken(token: string | undefined, company: Partial<Company>): void {
+    if (!token) {
+      throw new BadRequestException('QR 토큰이 필요합니다.');
+    }
+
+    const companyId = (company as any).id as string | undefined;
+    if (!companyId) throw new BadRequestException('회사 정보를 확인할 수 없습니다.');
+
+    const windowMinutes = company.attendanceMethods?.qr?.windowMinutes ?? 5;
+    // 현재 window + 이전 window 허용 (시계 오차 대응)
+    const currentWindow  = Math.floor(Date.now() / (windowMinutes * 60_000));
+    const secret = this.configService.get<string>('JWT_ACCESS_SECRET') ?? 'fallback';
+
+    const makeToken = (w: number) =>
+      createHmac('sha256', secret)
+        .update(`${companyId}:${w}`)
+        .digest('hex')
+        .slice(0, 24);
+
+    const valid = [currentWindow, currentWindow - 1].some(w => makeToken(w) === token);
+    if (!valid) {
+      throw new BadRequestException('유효하지 않거나 만료된 QR 코드입니다.');
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // WiFi SSID 검증
+  // ─────────────────────────────────────────
+  private validateWifiSsid(ssid: string | undefined, company: Partial<Company>): void {
+    if (!ssid) {
+      throw new BadRequestException('WiFi SSID가 필요합니다.');
+    }
+
+    const allowedSsids = company.attendanceMethods?.wifi?.ssids ?? [];
+    if (allowedSsids.length === 0) {
+      throw new BadRequestException('허용된 WiFi SSID가 설정되어 있지 않습니다.');
+    }
+
+    if (!allowedSsids.includes(ssid)) {
+      throw new BadRequestException('허용된 사내 WiFi에 연결된 상태에서만 출퇴근할 수 있습니다.');
+    }
   }
 
   // ─────────────────────────────────────────
@@ -369,11 +550,46 @@ export class AttendanceService {
     return d.toISOString().split('T')[0];
   }
 
-  private calcLateStatus(now: Date, company: Partial<Company>) {
-    if (!company?.workStartTime) return { isLate: false, lateMinutes: 0 };
+  // ─────────────────────────────────────────
+  // 개인 + 회사 스케줄 병합
+  // ─────────────────────────────────────────
+  private mergeSchedule(
+    user: Partial<{ customWorkStart: string | null; customWorkEnd: string | null; lateThresholdMinOverride: number | null; breakMinutes: number | null }> | null,
+    company: Partial<Company>,
+  ): { workStartTime: string; workEndTime: string; lateThresholdMin: number; breakMinutes: number | null } {
+    return {
+      workStartTime: user?.customWorkStart ?? company.workStartTime ?? '09:00',
+      workEndTime:   user?.customWorkEnd   ?? company.workEndTime   ?? '18:00',
+      lateThresholdMin: user?.lateThresholdMinOverride ?? company.lateThresholdMin ?? 10,
+      breakMinutes: user?.breakMinutes ?? null,  // null = 법정 최소 자동 계산
+    };
+  }
 
-    const [h, m] = company.workStartTime.split(':').map(Number);
-    const threshold = company.lateThresholdMin ?? 10;
+  // ─────────────────────────────────────────
+  // 법정 휴게시간 계산 (근로기준법 제54조)
+  // ─────────────────────────────────────────
+  /**
+   * 실 적용 휴게시간(분) 반환
+   * - configuredBreak가 있으면 법정 최소와 비교해 큰 값 사용
+   * - null이면 법정 최소 자동 계산
+   *
+   * 법정 기준:
+   *   총 근무 4h 이상 → 최소 30분
+   *   총 근무 8h 이상 → 최소 60분
+   */
+  calcEffectiveBreak(grossWorkMinutes: number, configuredBreak: number | null): number {
+    const legalMin =
+      grossWorkMinutes >= 480 ? 60 :
+      grossWorkMinutes >= 240 ? 30 : 0;
+    if (configuredBreak == null) return legalMin;
+    return Math.max(legalMin, configuredBreak);
+  }
+
+  private calcLateStatus(now: Date, schedule: { workStartTime: string; lateThresholdMin: number }) {
+    if (!schedule?.workStartTime) return { isLate: false, lateMinutes: 0 };
+
+    const [h, m] = schedule.workStartTime.split(':').map(Number);
+    const threshold = schedule.lateThresholdMin ?? 10;
 
     const workStart = new Date(now);
     workStart.setHours(h, m + threshold, 0, 0);
@@ -382,9 +598,9 @@ export class AttendanceService {
     return { isLate: lateMinutes > 0, lateMinutes: Math.max(lateMinutes, 0) };
   }
 
-  private isEarlyLeave(now: Date, company: Partial<Company>): boolean {
-    if (!company?.workEndTime) return false;
-    const [h, m] = company.workEndTime.split(':').map(Number);
+  private isEarlyLeave(now: Date, schedule: { workEndTime: string }): boolean {
+    if (!schedule?.workEndTime) return false;
+    const [h, m] = schedule.workEndTime.split(':').map(Number);
     const workEnd = new Date(now);
     workEnd.setHours(h, m, 0, 0);
     return now < workEnd;

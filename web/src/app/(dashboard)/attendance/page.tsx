@@ -9,8 +9,9 @@ import {
 import { ko } from 'date-fns/locale';
 import {
   LogIn, LogOut, MapPin, ChevronLeft, ChevronRight,
-  Users, Clock, AlertTriangle, TrendingDown,
+  Users, Clock, AlertTriangle, TrendingDown, QrCode, RefreshCw,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import Card, { CardHeader } from '@/components/ui/Card';
@@ -569,6 +570,32 @@ export default function AttendancePage() {
     enabled: isManager && tab === 'today',
   });
 
+  const { data: attendanceMethods } = useQuery({
+    queryKey: ['attendance-methods'],
+    queryFn: async () => { const { data } = await api.get('/attendance/methods'); return data.data; },
+    enabled: isManager,
+  });
+  const qrEnabled = attendanceMethods?.enabled?.includes('qr');
+
+  const [showQr, setShowQr] = useState(false);
+  const { data: qrData, refetch: refetchQr, isFetching: qrFetching } = useQuery({
+    queryKey: ['qr-token'],
+    queryFn: async () => { const { data } = await api.get('/attendance/qr-token'); return data.data; },
+    enabled: false,
+    staleTime: 0,
+  });
+
+  const handleShowQr = async () => {
+    setShowQr(true);
+    await refetchQr();
+    // 자동 갱신: windowMinutes마다 재호출
+    if (qrData?.windowMinutes) {
+      const ms = qrData.windowMinutes * 60_000;
+      const timeout = setTimeout(() => refetchQr(), ms);
+      return () => clearTimeout(timeout);
+    }
+  };
+
   const clockInMutation = useMutation({
     mutationFn: (pos: { latitude?: number; longitude?: number }) => api.post('/attendance/clock-in', pos),
     onSuccess: () => {
@@ -605,7 +632,7 @@ export default function AttendancePage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <main className="p-8 space-y-5 max-w-[1200px]">
+      <main className="p-4 md:p-8 space-y-5 max-w-[1200px]">
         {/* 탭 */}
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
           {TABS.filter((t) => !t.managerOnly || isManager).map((t) => (
@@ -646,7 +673,7 @@ export default function AttendancePage() {
                 </div>
 
                 {myToday && (
-                  <div className="mt-6 inline-flex gap-6 bg-gray-50 rounded-2xl px-6 py-3 text-sm text-text-secondary">
+                  <div className="mt-6 inline-flex flex-wrap justify-center gap-3 md:gap-6 bg-gray-50 rounded-2xl px-4 md:px-6 py-3 text-sm text-text-secondary">
                     <span>출근 <b className="text-text-primary">{myToday.clockInAt ? format(new Date(myToday.clockInAt), 'HH:mm') : '-'}</b></span>
                     <span>퇴근 <b className="text-text-primary">{myToday.clockOutAt ? format(new Date(myToday.clockOutAt), 'HH:mm') : '-'}</b></span>
                     {myToday.totalWorkMinutes != null && myToday.clockOutAt && (
@@ -668,6 +695,45 @@ export default function AttendancePage() {
 
         {/* ── 오늘 현황 탭 ── */}
         {tab === 'today' && isManager && (
+          <>
+          {/* QR 코드 패널 (QR 방식 활성화 시만 표시) */}
+          {qrEnabled && (
+            <Card>
+              <div className="flex items-center justify-between p-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                    <QrCode className="h-5 w-5 text-primary-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary">QR 출퇴근 코드</p>
+                    <p className="text-xs text-text-muted">직원이 이 QR을 스캔해 출퇴근합니다</p>
+                  </div>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={handleShowQr}
+                  loading={qrFetching}
+                >
+                  {showQr ? '새로고침' : 'QR 표시'}
+                </Button>
+              </div>
+              {showQr && qrData && (
+                <div className="border-t border-border flex flex-col items-center py-6 gap-3">
+                  <QRCodeSVG value={qrData.token} size={200} includeMargin />
+                  <div className="text-center">
+                    <p className="text-xs text-text-muted font-mono">{qrData.token}</p>
+                    <p className="text-xs text-text-muted mt-1">
+                      만료: {qrData.expiresAt ? format(new Date(qrData.expiresAt), 'HH:mm:ss') : '-'}
+                      {' · '}매 {qrData.windowMinutes}분 자동 갱신
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => refetchQr()}>
+                    <RefreshCw className="h-3.5 w-3.5 mr-1" />코드 갱신
+                  </Button>
+                </div>
+              )}
+            </Card>
+          )}
           <Card padding="none">
             <div className="px-6 py-4 border-b border-border">
               <CardHeader title="오늘 근태 현황" description={`${today} 기준`} />
@@ -708,6 +774,7 @@ export default function AttendancePage() {
               </table>
             </div>
           </Card>
+          </>
         )}
 
         {/* ── 팀 통계 탭 ── */}

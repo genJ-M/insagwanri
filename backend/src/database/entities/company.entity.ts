@@ -140,6 +140,19 @@ export class Company {
   @Column({ name: 'gps_strict_mode', default: false })
   gpsStrictMode: boolean;
 
+  /**
+   * 출퇴근 연동 방식 설정 (JSONB)
+   * enabled: 활성화된 방식 목록 (먼저 기록된 방식이 우선)
+   * wifi.ssids: 허용된 사내 WiFi SSID 목록
+   * qr.windowMinutes: QR 토큰 회전 주기 (기본 5분)
+   */
+  @Column({ name: 'attendance_methods', type: 'jsonb', nullable: true })
+  attendanceMethods: {
+    enabled: ('manual' | 'gps' | 'wifi' | 'qr' | 'face')[];
+    wifi?: { ssids: string[] };
+    qr?: { windowMinutes: number };
+  } | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

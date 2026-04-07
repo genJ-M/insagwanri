@@ -84,8 +84,20 @@ export class AttendanceRecord {
   @Column({ name: 'total_work_minutes', type: 'smallint', nullable: true })
   totalWorkMinutes: number | null;
 
+  /** 적용된 휴게시간(분) — 법정 최소 또는 개인 설정 */
+  @Column({ name: 'break_minutes', type: 'smallint', nullable: true })
+  breakMinutes: number | null;
+
   @Column({ type: 'text', nullable: true })
   note: string | null;
+
+  /** 출근에 사용된 연동 방식 (manual | gps | wifi | qr | face) */
+  @Column({ name: 'clock_in_method', type: 'varchar', length: 20, nullable: true })
+  clockInMethod: string | null;
+
+  /** 퇴근에 사용된 연동 방식 */
+  @Column({ name: 'clock_out_method', type: 'varchar', length: 20, nullable: true })
+  clockOutMethod: string | null;
 
   @Column({ name: 'approved_by', type: 'uuid', nullable: true })
   approvedBy: string | null;

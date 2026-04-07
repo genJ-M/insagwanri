@@ -7,17 +7,19 @@ import { Repository } from 'typeorm';
 import {
   ApprovalDocument,
   ApprovalDocStatus,
+  ApprovalDocType,
 } from '../../database/entities/approval-document.entity';
 import {
   ApprovalStep,
   StepStatus,
 } from '../../database/entities/approval-step.entity';
 import { User } from '../../database/entities/user.entity';
-import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
+import { AuthenticatedUser, UserRole, UserPermissions } from '../../common/types/jwt-payload.type';
 import {
   CreateApprovalDto, UpdateApprovalDto,
   ActApprovalDto, ApprovalQueryDto,
 } from './dto/approval.dto';
+import { APPROVAL_TEMPLATES, TEMPLATE_CATEGORIES } from './approval-templates.constant';
 
 @Injectable()
 export class ApprovalsService {
@@ -26,6 +28,11 @@ export class ApprovalsService {
     @InjectRepository(ApprovalStep)     private stepRepo: Repository<ApprovalStep>,
     @InjectRepository(User)             private userRepo: Repository<User>,
   ) {}
+
+  // ─── 템플릿 목록 ──────────────────────────────────
+  getTemplates() {
+    return { success: true, data: { templates: APPROVAL_TEMPLATES, categories: TEMPLATE_CATEGORIES } };
+  }
 
   // ─── 목록 ─────────────────────────────────────────
   async findAll(currentUser: AuthenticatedUser, query: ApprovalQueryDto) {
@@ -87,6 +94,8 @@ export class ApprovalsService {
       content: dto.content,
       status: ApprovalDocStatus.DRAFT,
       currentStep: 0,
+      relatedTaskIds: dto.related_task_ids ?? [],
+      templateId: dto.template_id ?? null,
     });
     const saved = await this.docRepo.save(doc);
 
@@ -110,8 +119,9 @@ export class ApprovalsService {
     if (doc.authorId !== currentUser.id) throw new ForbiddenException('기안자만 수정할 수 있습니다.');
     if (doc.status !== ApprovalDocStatus.DRAFT) throw new BadRequestException('초안 상태에서만 수정할 수 있습니다.');
 
-    if (dto.title)   doc.title   = dto.title;
-    if (dto.content) doc.content = dto.content;
+    if (dto.title)             doc.title          = dto.title;
+    if (dto.content)           doc.content        = dto.content;
+    if (dto.related_task_ids !== undefined) doc.relatedTaskIds = dto.related_task_ids;
     await this.docRepo.save(doc);
 
     // 결재선 변경
@@ -167,6 +177,15 @@ export class ApprovalsService {
       doc.completedAt = new Date();
     }
     await this.docRepo.save(doc);
+
+    // 권한 변경 기안: 최종 승인 시 자동 적용
+    if (doc.status === ApprovalDocStatus.APPROVED && doc.type === ApprovalDocType.PERMISSION_CHANGE) {
+      await this.applyPermissionChange(doc);
+    }
+    // 근무 스케줄 변경 기안: 최종 승인 시 자동 적용
+    if (doc.status === ApprovalDocStatus.APPROVED && doc.type === ApprovalDocType.WORK_SCHEDULE_CHANGE) {
+      await this.applyWorkScheduleChange(doc);
+    }
 
     return this.toResponse(await this.loadDoc(id, currentUser.companyId), currentUser.id);
   }
@@ -236,6 +255,72 @@ export class ApprovalsService {
     return doc.steps?.find(s => s.approverId === userId && s.step === doc.currentStep) ?? null;
   }
 
+  /**
+   * PERMISSION_CHANGE 기안 최종 승인 시 자동으로 권한 적용
+   * content: JSON 문자열 { targetUserId, permissions, managedDepartments }
+   */
+  private async applyPermissionChange(doc: ApprovalDocument): Promise<void> {
+    try {
+      const payload = JSON.parse(doc.content) as {
+        targetUserId: string;
+        permissions?: Partial<UserPermissions>;
+        managedDepartments?: string[] | null;
+      };
+
+      const target = await this.userRepo.findOne({
+        where: { id: payload.targetUserId, companyId: doc.companyId },
+      });
+      if (!target) return; // 대상 직원이 이미 삭제된 경우 무시
+
+      const mergedPermissions: UserPermissions = {
+        ...(target.permissions ?? {}),
+        ...(payload.permissions ?? {}),
+      };
+
+      await this.userRepo.update(
+        { id: payload.targetUserId, companyId: doc.companyId },
+        {
+          permissions: mergedPermissions,
+          ...(payload.managedDepartments !== undefined && {
+            managedDepartments: payload.managedDepartments,
+          }),
+        },
+      );
+    } catch {
+      // 파싱 실패 시 결재 자체는 성공으로 유지, 권한만 적용 안 됨
+    }
+  }
+
+  /**
+   * WORK_SCHEDULE_CHANGE 기안 최종 승인 시 개인 근무 스케줄 자동 적용
+   * content: JSON 문자열 { targetUserId, workStartTime, workEndTime, breakMinutes, lateThresholdMin }
+   */
+  private async applyWorkScheduleChange(doc: ApprovalDocument): Promise<void> {
+    try {
+      const payload = JSON.parse(doc.content) as {
+        targetUserId: string;
+        workStartTime?: string | null;
+        workEndTime?: string | null;
+        breakMinutes?: number | null;
+        lateThresholdMin?: number | null;
+      };
+
+      const updateData: Record<string, any> = {};
+      if (payload.workStartTime !== undefined) updateData.customWorkStart = payload.workStartTime;
+      if (payload.workEndTime   !== undefined) updateData.customWorkEnd   = payload.workEndTime;
+      if (payload.breakMinutes  !== undefined) updateData.breakMinutes    = payload.breakMinutes;
+      if (payload.lateThresholdMin !== undefined) updateData.lateThresholdMinOverride = payload.lateThresholdMin;
+      updateData.scheduleNote = `결재 승인 적용 (문서 ID: ${doc.id})`;
+
+      await this.userRepo.update(
+        { id: payload.targetUserId, companyId: doc.companyId },
+        updateData,
+      );
+    } catch {
+      // 파싱 실패 시 결재는 성공으로 유지, 스케줄만 적용 안 됨
+    }
+  }
+
   private toResponse(doc: ApprovalDocument, myId: string) {
     const steps = (doc.steps ?? [])
       .sort((a, b) => a.step - b.step)
@@ -263,6 +348,8 @@ export class ApprovalsService {
       createdAt: doc.createdAt,
       isMyTurn: steps.some(s => s.isMyTurn),
       isAuthor: doc.authorId === myId,
+      relatedTaskIds: doc.relatedTaskIds ?? [],
+      templateId: doc.templateId ?? null,
       author: doc.author
         ? { id: doc.author.id, name: doc.author.name, department: doc.author.department, position: doc.author.position }
         : null,

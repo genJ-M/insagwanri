@@ -14,6 +14,11 @@ import {
 export class ApprovalsController {
   constructor(private readonly svc: ApprovalsService) {}
 
+  @Get('templates')
+  getTemplates() {
+    return this.svc.getTemplates();
+  }
+
   @Get()
   findAll(@CurrentUser() user: AuthenticatedUser, @Query() query: ApprovalQueryDto) {
     return this.svc.findAll(user, query);

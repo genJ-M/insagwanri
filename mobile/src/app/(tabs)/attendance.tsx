@@ -7,6 +7,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from '@/hooks/useLocation';
 import api from '@/lib/api';
 
+// 출퇴근 방식 타입
+type AttendanceMethod = 'manual' | 'gps' | 'wifi' | 'qr' | 'face';
+
+const METHOD_LABELS: Record<AttendanceMethod, string> = {
+  manual: '📱 클릭 출퇴근',
+  gps:    '📍 GPS 출퇴근',
+  wifi:   '📶 WiFi 출퇴근',
+  qr:     '📷 QR 스캔',
+  face:   '🔐 생체 인증',
+};
+
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
 interface AttendanceRecord {
@@ -186,56 +197,132 @@ const calStyles = StyleSheet.create({
 export default function AttendanceScreen() {
   const queryClient = useQueryClient();
   const { locating, getCoords } = useLocation();
+  const [activeMethod, setActiveMethod] = useState<AttendanceMethod | null>(null);
 
+  // 오늘 근태 조회
   const { data: today, isLoading } = useQuery({
     queryKey: ['attendance-today'],
     queryFn: async () => {
-      const res = await api.get('/attendance/today');
-      return res.data.data as TodayAttendance;
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const res = await api.get('/attendance/me', { params: { start_date: today, end_date: today } });
+      const rec = res.data.data?.records?.[0] ?? null;
+      if (!rec) return null;
+      return {
+        id: rec.id,
+        checkIn: rec.clockInAt,
+        checkOut: rec.clockOutAt,
+        status: rec.clockInAt ? (rec.clockOutAt ? 'checked_out' : 'checked_in') : 'none',
+        gps_flagged: rec.clockInOutOfRange,
+      } as TodayAttendance;
     },
   });
 
+  // 이번 달 기록 조회 (camelCase → snake_case 매핑)
   const { data: records, refetch } = useQuery({
     queryKey: ['attendance-recent'],
     queryFn: async () => {
       const now = new Date();
       const from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-      const res = await api.get(`/attendance/me?from=${from}&limit=50`);
-      return res.data.data as AttendanceRecord[];
+      const res = await api.get('/attendance/me', { params: { start_date: from } });
+      const raw: any[] = res.data.data?.records ?? [];
+      return raw.map((r) => ({
+        id: r.id,
+        check_in_at: r.clockInAt,
+        check_out_at: r.clockOutAt ?? null,
+        work_minutes: r.totalWorkMinutes ?? null,
+        gps_flagged: r.clockInOutOfRange ?? false,
+        note: r.note ?? null,
+      })) as AttendanceRecord[];
     },
   });
 
-  const checkInMutation = useMutation({
-    mutationFn: (coords: object) => api.post('/attendance/check-in', coords),
+  // 활성 출퇴근 방식 조회
+  const { data: methods } = useQuery({
+    queryKey: ['attendance-methods'],
+    queryFn: async () => {
+      const res = await api.get('/attendance/methods');
+      return res.data.data as { enabled: AttendanceMethod[]; wifi?: { ssids: string[] }; qr?: { windowMinutes: number } };
+    },
+  });
+
+  const enabledMethods: AttendanceMethod[] = methods?.enabled ?? ['manual'];
+
+  // 출근 Mutation
+  const clockInMutation = useMutation({
+    mutationFn: (payload: object) => api.post('/attendance/clock-in', payload),
     onSuccess: () => {
+      setActiveMethod(null);
       queryClient.invalidateQueries({ queryKey: ['attendance-today'] });
       queryClient.invalidateQueries({ queryKey: ['attendance-recent'] });
+      Alert.alert('출근 완료', `${activeMethod ? METHOD_LABELS[activeMethod] : ''} 출근 처리되었습니다.`);
     },
-    onError: (err: any) => Alert.alert('오류', err.response?.data?.message ?? '출근 처리 중 오류가 발생했습니다.'),
+    onError: (err: any) => Alert.alert('오류', err.response?.data?.error?.message ?? '출근 처리 중 오류가 발생했습니다.'),
   });
 
-  const checkOutMutation = useMutation({
-    mutationFn: (coords: object) => api.post('/attendance/check-out', coords),
+  // 퇴근 Mutation
+  const clockOutMutation = useMutation({
+    mutationFn: (payload: object) => api.post('/attendance/clock-out', payload),
     onSuccess: () => {
+      setActiveMethod(null);
       queryClient.invalidateQueries({ queryKey: ['attendance-today'] });
       queryClient.invalidateQueries({ queryKey: ['attendance-recent'] });
+      Alert.alert('퇴근 완료', '퇴근 처리되었습니다.');
     },
-    onError: (err: any) => Alert.alert('오류', err.response?.data?.message ?? '퇴근 처리 중 오류가 발생했습니다.'),
+    onError: (err: any) => Alert.alert('오류', err.response?.data?.error?.message ?? '퇴근 처리 중 오류가 발생했습니다.'),
   });
 
-  const handleCheckIn = async () => {
-    const coords = await getCoords();
-    if (!coords) return;
-    checkInMutation.mutate(coords);
-  };
+  const isBusy = locating || clockInMutation.isPending || clockOutMutation.isPending;
+  const isClockIn = !today?.checkIn;
+  const mutate = isClockIn ? clockInMutation.mutate : clockOutMutation.mutate;
 
-  const handleCheckOut = async () => {
-    const coords = await getCoords();
-    if (!coords) return;
-    checkOutMutation.mutate(coords);
-  };
+  // ── 방식별 출퇴근 처리 ──────────────────────────────────────────────────────
+  const handleMethod = async (method: AttendanceMethod) => {
+    if (isBusy) return;
+    setActiveMethod(method);
 
-  const isBusy = locating || checkInMutation.isPending || checkOutMutation.isPending;
+    switch (method) {
+      case 'manual': {
+        mutate({ method: 'manual' });
+        break;
+      }
+      case 'gps': {
+        const coords = await getCoords();
+        mutate({ method: 'gps', latitude: coords?.latitude, longitude: coords?.longitude });
+        break;
+      }
+      case 'wifi': {
+        // expo-wifi / @react-native-community/netinfo 필요
+        // 설치: npx expo install @react-native-community/netinfo
+        Alert.alert(
+          'WiFi 출퇴근',
+          'WiFi 방식은 모바일 앱 업데이트(v1.1) 이후 사용 가능합니다.\n\n현재는 클릭 또는 GPS 방식을 이용해 주세요.',
+          [{ text: '확인', onPress: () => setActiveMethod(null) }],
+        );
+        break;
+      }
+      case 'qr': {
+        // expo-camera / expo-barcode-scanner 필요
+        // 설치: npx expo install expo-camera
+        Alert.alert(
+          'QR 스캔',
+          'QR 스캔은 모바일 앱 업데이트(v1.1) 이후 사용 가능합니다.\n\n관리자가 표시한 QR을 스캔하는 기능입니다.',
+          [{ text: '확인', onPress: () => setActiveMethod(null) }],
+        );
+        break;
+      }
+      case 'face': {
+        // expo-local-authentication 필요
+        // 설치: npx expo install expo-local-authentication
+        Alert.alert(
+          '생체 인증',
+          '생체 인증은 모바일 앱 업데이트(v1.1) 이후 사용 가능합니다.',
+          [{ text: '확인', onPress: () => setActiveMethod(null) }],
+        );
+        break;
+      }
+    }
+  };
 
   // 이번 달 기록만 필터 (월별 캘린더용)
   const now = new Date();
@@ -243,6 +330,10 @@ export default function AttendanceScreen() {
     const d = new Date(r.check_in_at);
     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
   });
+
+  const attendanceStatus: TodayAttendance['status'] = today
+    ? today.status
+    : 'none';
 
   return (
     <ScrollView
@@ -282,26 +373,34 @@ export default function AttendanceScreen() {
           </>
         )}
 
-        {/* 출근/퇴근 버튼 */}
-        {(!today || today.status === 'none') ? (
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.checkInBtn, isBusy && styles.btnDisabled]}
-            onPress={handleCheckIn}
-            disabled={isBusy}
-          >
-            {isBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.actionBtnText}>☀️ 출근하기</Text>}
-          </TouchableOpacity>
-        ) : today.status === 'checked_in' ? (
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.checkOutBtn, isBusy && styles.btnDisabled]}
-            onPress={handleCheckOut}
-            disabled={isBusy}
-          >
-            {isBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.actionBtnText}>🏃 퇴근하기</Text>}
-          </TouchableOpacity>
-        ) : (
+        {/* ── 출퇴근 버튼 영역 ── */}
+        {attendanceStatus === 'checked_out' ? (
           <View style={styles.completedBanner}>
             <Text style={styles.completedText}>✅ 오늘 근무 완료</Text>
+          </View>
+        ) : (
+          <View style={styles.methodList}>
+            <Text style={styles.methodHint}>
+              {attendanceStatus === 'none' ? '출근 방식을 선택하세요' : '퇴근 방식을 선택하세요'}
+            </Text>
+            {enabledMethods.map((m) => (
+              <TouchableOpacity
+                key={m}
+                style={[
+                  styles.methodBtn,
+                  attendanceStatus === 'none' ? styles.checkInBtn : styles.checkOutBtn,
+                  (isBusy && activeMethod !== m) && styles.btnDisabled,
+                ]}
+                onPress={() => handleMethod(m)}
+                disabled={isBusy}
+              >
+                {(isBusy && activeMethod === m) ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.actionBtnText}>{METHOD_LABELS[m]}</Text>
+                )}
+              </TouchableOpacity>
+            ))}
           </View>
         )}
       </View>
@@ -363,11 +462,14 @@ const styles = StyleSheet.create({
   timeSep: { width: 1, height: 48, backgroundColor: '#E5E7EB', marginHorizontal: 16 },
   flagBanner: { backgroundColor: '#FEF3C7', borderRadius: 8, padding: 10 },
   flagText: { fontSize: 12, color: '#92400E' },
+  methodList: { gap: 10 },
+  methodHint: { fontSize: 13, color: '#6B7280', textAlign: 'center', marginBottom: 4 },
+  methodBtn: { borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   actionBtn: { borderRadius: 12, paddingVertical: 15, alignItems: 'center' },
   checkInBtn: { backgroundColor: '#2563EB' },
   checkOutBtn: { backgroundColor: '#DC2626' },
   btnDisabled: { opacity: 0.6 },
-  actionBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  actionBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   completedBanner: {
     backgroundColor: '#D1FAE5', borderRadius: 12, paddingVertical: 14, alignItems: 'center',
   },

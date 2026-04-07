@@ -338,7 +338,7 @@ function SalaryForm({
 
         <div className="p-6 space-y-6">
           {/* 기본 정보 */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-medium text-text-muted mb-1">직원 *</label>
               <select
@@ -449,7 +449,7 @@ function SalaryForm({
           </div>
 
           {/* 합계 미리보기 */}
-          <div className="bg-gray-50 rounded-xl p-4 grid grid-cols-3 gap-4 text-center">
+          <div className="bg-gray-50 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
             <div>
               <p className="text-[11px] text-text-muted mb-1">지급 합계</p>
               <p className="text-sm font-bold text-emerald-600 tabular-nums">{KRW(grossPay)}</p>
@@ -504,13 +504,14 @@ export default function SalaryPage() {
   const nextMonth = () => { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); };
 
   // 급여 목록
-  const { data: salaryList = [], isLoading } = useQuery<any[]>({
+  const { data: salaryList = [], isLoading, error: salaryError } = useQuery<any[], any>({
     queryKey: ['salary', year, month],
     queryFn: async () => {
       const endpoint = isManager ? '/salary' : '/salary/me';
       const { data } = await api.get(endpoint, { params: { year, month } });
       return data.data ?? [];
     },
+    retry: false,
   });
 
   // 월별 요약 (관리자)
@@ -521,6 +522,7 @@ export default function SalaryPage() {
       return data.data ?? {};
     },
     enabled: isManager,
+    retry: false,
   });
 
   // 직원 목록 (관리자용 폼)
@@ -546,6 +548,26 @@ export default function SalaryPage() {
     mutationFn: (id: string) => api.delete(`/salary/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['salary'] }); toast.success('삭제되었습니다.'); },
   });
+
+  // 급여 접근 권한 없음 (403)
+  if (salaryError?.response?.status === 403) {
+    return (
+      <div className="flex-1 overflow-y-auto">
+        <main className="page-container">
+          <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center">
+              <Banknote className="h-8 w-8 text-amber-500" />
+            </div>
+            <h2 className="text-lg font-semibold text-text-primary">급여 열람 권한 없음</h2>
+            <p className="text-sm text-text-muted max-w-sm leading-relaxed">
+              급여 데이터는 재무팀 관리자 또는 별도의 열람 권한을 부여받은 인원만 접근할 수 있습니다.
+              <br />접근이 필요한 경우 소유자 또는 권한 위임자에게 요청하세요.
+            </p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -596,7 +618,8 @@ export default function SalaryPage() {
 
         {/* 급여 테이블 */}
         <div className="bg-white rounded-xl border border-border shadow-card overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="bg-gray-50 border-b border-border">
                 {['직원', '기본급', '수당 합계', '공제 합계', '차인지급액', '상태', ''].map((h) => (
@@ -712,6 +735,7 @@ export default function SalaryPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
 
         <p className="text-[11px] text-text-muted text-center pb-2">

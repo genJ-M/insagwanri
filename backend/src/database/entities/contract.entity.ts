@@ -14,6 +14,24 @@ export enum ContractType {
   OTHER       = 'other',        // 기타
 }
 
+/**
+ * 직무 카테고리 (근로계약서 업무 분류)
+ */
+export enum JobCategory {
+  MANAGEMENT  = 'management',   // 경영·관리
+  SALES       = 'sales',        // 영업·마케팅
+  DEVELOPMENT = 'development',  // IT·개발
+  DESIGN      = 'design',       // 디자인
+  FINANCE     = 'finance',      // 재무·회계
+  HR          = 'hr',           // 인사·총무
+  PRODUCTION  = 'production',   // 생산·제조
+  LOGISTICS   = 'logistics',    // 물류·운송
+  CUSTOMER    = 'customer',     // 고객지원
+  RESEARCH    = 'research',     // 연구·개발(R&D)
+  LEGAL       = 'legal',        // 법무·컴플라이언스
+  OTHER       = 'other',        // 기타
+}
+
 export enum ContractStatus {
   ACTIVE      = 'active',       // 유효
   EXPIRED     = 'expired',      // 만료
@@ -74,6 +92,44 @@ export class Contract {
 
   @Column({ name: 'created_by', type: 'varchar', nullable: true })
   createdBy: string | null;
+
+  // ─── 근로계약 주요 조건 ──────────────────────────────
+
+  /** 직무 카테고리 */
+  @Column({ name: 'job_category', type: 'varchar', length: 30, nullable: true })
+  jobCategory: JobCategory | null;
+
+  /** 업무 내용 */
+  @Column({ name: 'job_description', type: 'text', nullable: true })
+  jobDescription: string | null;
+
+  /** 근무 장소 */
+  @Column({ name: 'work_location', type: 'varchar', length: 200, nullable: true })
+  workLocation: string | null;
+
+  /** 월 기본급 (원) */
+  @Column({ name: 'monthly_salary', type: 'bigint', nullable: true })
+  monthlySalary: number | null;
+
+  /** 연봉 (원, null이면 월급×12로 계산) */
+  @Column({ name: 'annual_salary', type: 'bigint', nullable: true })
+  annualSalary: number | null;
+
+  /** 급여 상세 JSON (수당, 상여금 등) */
+  @Column({ name: 'salary_detail', type: 'jsonb', nullable: true })
+  salaryDetail: Record<string, number> | null;
+
+  /** 소정 근로 시간 (주간) */
+  @Column({ name: 'weekly_hours', type: 'smallint', nullable: true })
+  weeklyHours: number | null;
+
+  /** 사용한 계약서 템플릿 ID */
+  @Column({ name: 'template_id', type: 'varchar', length: 50, nullable: true })
+  templateId: string | null;
+
+  /** 이미지 OCR로 추출한 전체 텍스트 */
+  @Column({ name: 'ocr_text', type: 'text', nullable: true })
+  ocrText: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

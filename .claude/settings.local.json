@@ -91,7 +91,16 @@
       "Bash(sed -i \"s/await this\\\\.reqRepo\\\\.findOne\\({ where: { id: saved\\\\.id }, relations: \\\\[''user'', ''approver''\\\\] }\\)/await this.reqRepo.findOne\\({ where: { id: saved.id }, relations: [''user'', ''approver''] }\\) as VacationRequest/g\" C:/Users/coghd/gwanri_wang/backend/src/modules/vacations/vacations.service.ts)",
       "Bash(sed -i \"s/await this\\\\.reqRepo\\\\.findOne\\({ where: { id }, relations: \\\\[''user'', ''approver''\\\\] }\\)/await this.reqRepo.findOne\\({ where: { id }, relations: [''user'', ''approver''] }\\) as VacationRequest/g\" C:/Users/coghd/gwanri_wang/backend/src/modules/vacations/vacations.service.ts)",
       "Bash(head:*)",
-      "Bash(cat /c/Users/coghd/gwanri_wang/web/src/app/\\\\\\(auth\\\\\\)/forgot-password/page.tsx)"
+      "Bash(cat /c/Users/coghd/gwanri_wang/web/src/app/\\\\\\(auth\\\\\\)/forgot-password/page.tsx)",
+      "Bash(npm info:*)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(CI=1 npm run build)",
+      "Bash(npm ci:*)",
+      "Bash(npm --version)",
+      "Bash(node_modules/.bin/tsc --noEmit --skipLibCheck)",
+      "Bash(cmd:*)",
+      "Bash(node_modules/.bin/tsc --noEmit)"
     ]
   }
 }

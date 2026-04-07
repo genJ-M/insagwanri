@@ -5,6 +5,7 @@ import { Company } from '../../database/entities/company.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import {
   UpdateWorkspaceDto, UpdateWorkSettingsDto, UpdateGpsSettingsDto, UpdateBrandingDto,
+  UpdateAttendanceMethodsDto,
 } from './dto/workspace.dto';
 
 @Injectable()
@@ -70,6 +71,18 @@ export class WorkspaceService {
       ...(dto.coverImageMobileUrl !== undefined && { coverImageMobileUrl: dto.coverImageMobileUrl }),
       ...(dto.coverMobileCrop !== undefined     && { coverMobileCrop: dto.coverMobileCrop }),
       ...(dto.brandingTextColor                 && { brandingTextColor: dto.brandingTextColor }),
+    });
+    return this.getSettings(currentUser);
+  }
+
+  async updateAttendanceMethods(currentUser: AuthenticatedUser, dto: UpdateAttendanceMethodsDto) {
+    this.requireOwner(currentUser);
+    await this.companyRepo.update(currentUser.companyId, {
+      attendanceMethods: {
+        enabled: dto.enabled,
+        ...(dto.wifi && { wifi: { ssids: dto.wifi.ssids } }),
+        ...(dto.qr   && { qr: { windowMinutes: dto.qr.windowMinutes ?? 5 } }),
+      },
     });
     return this.getSettings(currentUser);
   }

@@ -1,7 +1,8 @@
 import {
   IsString, IsEnum, IsOptional, IsDateString, IsUUID,
+  IsNumber, IsInt, IsObject, Min, Max,
 } from 'class-validator';
-import { ContractType } from '../../../database/entities/contract.entity';
+import { ContractType, JobCategory } from '../../../database/entities/contract.entity';
 
 export class CreateContractDto {
   @IsUUID()
@@ -31,6 +32,42 @@ export class CreateContractDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  // ─── 신규 필드 ────────────────────────────────
+  @IsOptional()
+  @IsEnum(JobCategory)
+  job_category?: JobCategory;
+
+  @IsOptional()
+  @IsString()
+  job_description?: string;
+
+  @IsOptional()
+  @IsString()
+  work_location?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthly_salary?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  annual_salary?: number;
+
+  @IsOptional()
+  @IsObject()
+  salary_detail?: Record<string, number>;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1) @Max(52)
+  weekly_hours?: number;
+
+  @IsOptional()
+  @IsString()
+  template_id?: string;
 }
 
 export class UpdateContractDto {
@@ -57,6 +94,34 @@ export class UpdateContractDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @IsOptional()
+  @IsEnum(JobCategory)
+  job_category?: JobCategory;
+
+  @IsOptional()
+  @IsString()
+  job_description?: string;
+
+  @IsOptional()
+  @IsString()
+  work_location?: string;
+
+  @IsOptional()
+  @IsNumber()
+  monthly_salary?: number;
+
+  @IsOptional()
+  @IsNumber()
+  annual_salary?: number;
+
+  @IsOptional()
+  @IsObject()
+  salary_detail?: Record<string, number>;
+
+  @IsOptional()
+  @IsInt()
+  weekly_hours?: number;
 }
 
 export class TerminateContractDto {
@@ -77,4 +142,21 @@ export class ContractQueryDto {
   @IsOptional()
   @IsString()
   type?: string;
+
+  @IsOptional()
+  @IsString()
+  job_category?: string;
+}
+
+export class OcrImageDto {
+  /** base64 인코딩된 이미지 */
+  image_base64: string;
+
+  /** MIME 타입 (image/jpeg, image/png, image/webp) */
+  mime_type: string;
+
+  /** 저장할 계약 ID (선택) */
+  @IsOptional()
+  @IsUUID()
+  contract_id?: string;
 }

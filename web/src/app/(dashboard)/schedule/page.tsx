@@ -340,9 +340,9 @@ export default function SchedulePage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <main className="p-8 space-y-4 max-w-[1200px]">
+      <main className="p-4 md:p-8 space-y-4 max-w-[1200px]">
         {/* 상단 컨트롤 */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <button
               onClick={() => viewMode === 'week'
@@ -407,11 +407,15 @@ export default function SchedulePage() {
         {/* 주간 카드 뷰 */}
         {viewMode === 'week' && (
           <Card>
-            <WeeklyView
-              schedules={schedules}
-              weekStart={currentWeek}
-              onEdit={setEditTarget}
-            />
+            <div className="overflow-x-auto">
+              <div className="min-w-[560px]">
+                <WeeklyView
+                  schedules={schedules}
+                  weekStart={currentWeek}
+                  onEdit={setEditTarget}
+                />
+              </div>
+            </div>
           </Card>
         )}
 

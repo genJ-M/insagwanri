@@ -7,6 +7,7 @@ import {
   InviteUserDto, InviteByPhoneDto, CreateShareableLinkDto,
   AcceptInviteDto, UpdateUserDto,
   UpdateRoleDto, UpdatePermissionsDto, ChangePasswordDto, UserQueryDto,
+  RequestPermissionChangeDto, UpdateWorkScheduleDto, RequestWorkScheduleChangeDto,
 } from './dto/users.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../auth/decorators/get-user.decorator';
@@ -140,7 +141,13 @@ export class UsersController {
     return this.usersService.updateRole(user, id, dto);
   }
 
-  /** PATCH /users/:id/permissions — 세부 권한 설정 (owner → manager) */
+  /** GET /users/permission-change-template — 권한 변경 기안 작성 가이드 */
+  @Get('permission-change-template')
+  getPermissionChangeTemplate() {
+    return this.usersService.getPermissionChangeTemplate();
+  }
+
+  /** PATCH /users/:id/permissions — 세부 권한 직접 설정 (owner / 위임자만) */
   @Patch(':id/permissions')
   async updatePermissions(
     @GetUser() user: AuthenticatedUser,
@@ -148,6 +155,16 @@ export class UsersController {
     @Body() dto: UpdatePermissionsDto,
   ) {
     return this.usersService.updatePermissions(user, id, dto);
+  }
+
+  /** POST /users/:id/permissions/request — 권한 변경 결재 기안 (manager 이상) */
+  @Post(':id/permissions/request')
+  async requestPermissionChange(
+    @GetUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: RequestPermissionChangeDto,
+  ) {
+    return this.usersService.requestPermissionChange(user, id, dto);
   }
 
   /** DELETE /users/:id — 직원 비활성화 (owner) */
@@ -219,5 +236,55 @@ export class UsersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteDocument(@GetUser() user: AuthenticatedUser, @Param('id') id: string, @Param('did') did: string) {
     return this.usersService.deleteDocument(user, id, did);
+  }
+
+  // ── 개인 근무 스케줄 ──────────────────────────
+  /**
+   * GET /users/:id/work-schedule
+   * 개인 근무 스케줄 조회 (본인 또는 관리자)
+   */
+  @Get(':id/work-schedule')
+  async getWorkSchedule(@GetUser() user: AuthenticatedUser, @Param('id') id: string) {
+    const data = await this.usersService.getWorkSchedule(user, id);
+    return { success: true, data };
+  }
+
+  /**
+   * PATCH /users/:id/work-schedule
+   * 개인 근무 스케줄 직접 변경 (owner / 계약 관리 권한자)
+   */
+  @Patch(':id/work-schedule')
+  async updateWorkSchedule(
+    @GetUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateWorkScheduleDto,
+  ) {
+    const data = await this.usersService.updateWorkSchedule(user, id, dto);
+    return { success: true, data };
+  }
+
+  /**
+   * POST /users/work-schedule-change
+   * 근무 스케줄 변경 결재 기안 생성 (manager 이하)
+   * → 결재 완료 시 자동으로 개인 스케줄에 반영됨
+   */
+  @Post('work-schedule-change')
+  @HttpCode(HttpStatus.CREATED)
+  async requestWorkScheduleChange(
+    @GetUser() user: AuthenticatedUser,
+    @Body() dto: RequestWorkScheduleChangeDto,
+  ) {
+    const data = await this.usersService.requestWorkScheduleChange(user, dto);
+    return { success: true, data };
+  }
+
+  /**
+   * GET /users/me/work-schedule
+   * 내 근무 스케줄 조회
+   */
+  @Get('me/work-schedule')
+  async getMyWorkSchedule(@GetUser() user: AuthenticatedUser) {
+    const data = await this.usersService.getWorkSchedule(user, user.id);
+    return { success: true, data };
   }
 }

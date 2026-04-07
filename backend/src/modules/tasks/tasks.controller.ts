@@ -8,11 +8,19 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole, AuthenticatedUser } from '../../common/types/jwt-payload.type';
 import {
   CreateTaskDto, UpdateTaskDto, CreateReportDto, FeedbackDto, TaskQueryDto,
+  RequestTimeAdjustDto, RespondTimeAdjustDto,
 } from './dto/tasks.dto';
 
 @Controller()
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
+
+  // ───────────── Templates ─────────────
+
+  @Get('tasks/templates')
+  getTemplates() {
+    return { success: true, data: this.tasksService.getTemplates() };
+  }
 
   // ───────────── Tasks ─────────────
 
@@ -103,6 +111,32 @@ export class TasksController {
     return { success: true, data };
   }
 
+  /**
+   * PATCH /api/v1/tasks/:id/request-deletion
+   * 업무 삭제 요청 (관리자 또는 담당자)
+   */
+  @Patch('tasks/:id/request-deletion')
+  async requestDeletion(
+    @Param('id') id: string,
+    @GetUser() user: AuthenticatedUser,
+  ) {
+    const data = await this.tasksService.requestDeletion(id, user);
+    return { success: true, data };
+  }
+
+  /**
+   * PATCH /api/v1/tasks/:id/approve-deletion
+   * 업무 삭제 승인 (요청자의 반대편)
+   */
+  @Patch('tasks/:id/approve-deletion')
+  async approveDeletion(
+    @Param('id') id: string,
+    @GetUser() user: AuthenticatedUser,
+  ) {
+    const data = await this.tasksService.approveDeletion(id, user);
+    return { success: true, data };
+  }
+
   // ───────────── Reports ─────────────
 
   /**
@@ -167,6 +201,36 @@ export class TasksController {
   @Get('reports/me')
   async getMyReports(@GetUser() user: AuthenticatedUser) {
     const data = await this.tasksService.getMyReports(user);
+    return { success: true, data };
+  }
+
+  // ───────────── 기한 조정 ─────────────
+
+  /**
+   * POST /api/v1/tasks/:id/time-adjust-request
+   * 담당자: 기한 조정 제안
+   */
+  @Post('tasks/:id/time-adjust-request')
+  async requestTimeAdjust(
+    @Param('id') id: string,
+    @GetUser() user: AuthenticatedUser,
+    @Body() dto: RequestTimeAdjustDto,
+  ) {
+    const data = await this.tasksService.requestTimeAdjust(id, user, dto);
+    return { success: true, data };
+  }
+
+  /**
+   * PATCH /api/v1/tasks/:id/time-adjust-respond
+   * 지시자/관리자: 기한 조정 승인·거절
+   */
+  @Patch('tasks/:id/time-adjust-respond')
+  async respondTimeAdjust(
+    @Param('id') id: string,
+    @GetUser() user: AuthenticatedUser,
+    @Body() dto: RespondTimeAdjustDto,
+  ) {
+    const data = await this.tasksService.respondTimeAdjust(id, user, dto);
     return { success: true, data };
   }
 }

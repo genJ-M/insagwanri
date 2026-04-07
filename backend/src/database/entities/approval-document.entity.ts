@@ -7,12 +7,14 @@ import { Company } from './company.entity';
 import { User } from './user.entity';
 
 export enum ApprovalDocType {
-  GENERAL      = 'general',       // 일반
-  VACATION     = 'vacation',      // 휴가신청
-  EXPENSE      = 'expense',       // 지출결의
-  OVERTIME     = 'overtime',      // 연장근무
-  BUSINESS_TRIP = 'business_trip',// 출장
-  HR           = 'hr',            // 인사발령
+  GENERAL          = 'general',           // 일반
+  VACATION         = 'vacation',          // 휴가신청
+  EXPENSE          = 'expense',           // 지출결의
+  OVERTIME         = 'overtime',          // 연장근무
+  BUSINESS_TRIP    = 'business_trip',     // 출장
+  HR               = 'hr',               // 인사발령
+  PERMISSION_CHANGE   = 'permission_change',    // 접근권한 변경 기안 (승인 시 자동 적용)
+  WORK_SCHEDULE_CHANGE = 'work_schedule_change', // 근무 스케줄 변경 기안 (승인 시 자동 적용)
 }
 
 export enum ApprovalDocStatus {
@@ -65,6 +67,14 @@ export class ApprovalDocument {
 
   @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
   completedAt: Date | null;
+
+  // 연관 업무 ID 목록 (태그)
+  @Column({ name: 'related_task_ids', type: 'jsonb', nullable: true, default: () => "'[]'" })
+  relatedTaskIds: string[];
+
+  // 작성에 사용한 템플릿 ID (추적용, nullable)
+  @Column({ name: 'template_id', type: 'varchar', length: 60, nullable: true })
+  templateId: string | null;
 
   @OneToMany('ApprovalStep', 'document', { cascade: true })
   steps: any[];

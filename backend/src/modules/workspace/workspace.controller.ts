@@ -2,6 +2,7 @@ import { Controller, Get, Patch, Body } from '@nestjs/common';
 import { WorkspaceService } from './workspace.service';
 import {
   UpdateWorkspaceDto, UpdateWorkSettingsDto, UpdateGpsSettingsDto, UpdateBrandingDto,
+  UpdateAttendanceMethodsDto,
 } from './dto/workspace.dto';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { AuthenticatedUser } from '../../common/types/jwt-payload.type';
@@ -38,5 +39,12 @@ export class WorkspaceController {
   @Patch('branding')
   async updateBranding(@GetUser() user: AuthenticatedUser, @Body() dto: UpdateBrandingDto) {
     return this.workspaceService.updateBranding(user, dto);
+  }
+
+  /** PATCH /workspace/attendance-methods — 출퇴근 방식 설정 (owner) */
+  @Patch('attendance-methods')
+  async updateAttendanceMethods(@GetUser() user: AuthenticatedUser, @Body() dto: UpdateAttendanceMethodsDto) {
+    const data = await this.workspaceService.updateAttendanceMethods(user, dto);
+    return { success: true, data };
   }
 }

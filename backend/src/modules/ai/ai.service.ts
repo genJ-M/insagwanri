@@ -6,6 +6,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, MoreThanOrEqual } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
+import { CreditService, CREDIT_COSTS } from '../credits/credit.service';
 import { AiRequest, AiFeature, AiRequestStatus, AiRefType } from '../../database/entities/ai-request.entity';
 import { Company } from '../../database/entities/company.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
@@ -39,6 +40,7 @@ export class AiService {
     private companyRepo: Repository<Company>,
 
     private configService: ConfigService,
+    private creditService: CreditService,
   ) {
     this.openai = new OpenAI({
       apiKey: this.configService.get<string>('OPENAI_API_KEY'),
@@ -162,6 +164,77 @@ export class AiService {
       maxTokens: 500,
       temperature: 0.5,
     });
+  }
+
+  // ─────────────────────────────────────────
+  // 업무 카테고리 분류 (classify_task)
+  // ─────────────────────────────────────────
+  async classifyTask(currentUser: AuthenticatedUser, title: string): Promise<{ category_id: string; category_label: string }> {
+    await this.checkRateLimit(currentUser);
+    // 크레딧 차감 (1 크레딧)
+    await this.creditService.deduct(
+      currentUser.companyId, currentUser.id,
+      CREDIT_COSTS.AI_CLASSIFY, 'ai_classify', 'AI 업무 카테고리 분류',
+    );
+
+    const CATEGORIES = [
+      { id: 'weekly_report',   label: '주간 업무 보고' },
+      { id: 'monthly_report',  label: '월간 업무 보고' },
+      { id: 'planning',        label: '기획안 작성' },
+      { id: 'proposal',        label: '제안서 작성' },
+      { id: 'meeting_prep',    label: '회의 준비·진행' },
+      { id: 'presentation',    label: '발표·프레젠테이션' },
+      { id: 'research',        label: '조사·리서치' },
+      { id: 'hr_recruit',      label: '채용·인재 확보' },
+      { id: 'hr_training',     label: '교육·연수' },
+      { id: 'hr_evaluation',   label: '인사평가' },
+      { id: 'onboarding',      label: '온보딩·신입 교육' },
+      { id: 'accounting',      label: '회계·정산' },
+      { id: 'budget',          label: '예산 관리' },
+      { id: 'invoice',         label: '청구서·세금계산서' },
+      { id: 'payroll',         label: '급여·수당 처리' },
+      { id: 'sales',           label: '영업·세일즈' },
+      { id: 'customer_mgmt',   label: '고객 관리·응대' },
+      { id: 'marketing',       label: '마케팅·홍보' },
+      { id: 'social_media',    label: 'SNS·소셜미디어' },
+      { id: 'content',         label: '콘텐츠 제작' },
+      { id: 'event',           label: '행사·이벤트 기획' },
+      { id: 'development',     label: '개발·구현' },
+      { id: 'testing',         label: '테스트·QA' },
+      { id: 'deployment',      label: '배포·운영' },
+      { id: 'security',        label: '보안·접근 관리' },
+      { id: 'contract',        label: '계약 관리' },
+      { id: 'legal',           label: '법무·규정' },
+      { id: 'compliance',      label: '규정준수·감사' },
+      { id: 'procurement',     label: '구매·발주' },
+      { id: 'logistics',       label: '물류·배송' },
+      { id: 'facility',        label: '시설·장비 관리' },
+      { id: 'document_mgmt',   label: '문서 관리·정리' },
+      { id: 'cs_support',      label: '고객지원·CS' },
+      { id: 'communication',   label: '대외 커뮤니케이션' },
+      { id: 'project_mgmt',    label: '프로젝트 관리' },
+      { id: 'design',          label: '디자인·시각화' },
+      { id: 'other',           label: '기타 업무' },
+    ];
+
+    const categoryList = CATEGORIES.map((c) => `${c.id}: ${c.label}`).join('\n');
+
+    const result = await this.callOpenAi(
+      currentUser,
+      AiFeature.CLASSIFY_TASK,
+      title,
+      {
+        systemPrompt: `당신은 업무 분류 전문가입니다. 주어진 업무 제목을 분석하여 아래 카테고리 목록 중 가장 적합한 카테고리의 ID만 반환하세요. 반드시 목록에 있는 ID 중 하나만 반환하고 다른 텍스트는 절대 포함하지 마세요.\n\n카테고리 목록:\n${categoryList}`,
+        userPrompt: `업무 제목: "${title}"`,
+        maxTokens: 30,
+        temperature: 0.1,
+      },
+    );
+
+    const rawId = result.output_text.trim().toLowerCase().replace(/[^a-z_]/g, '');
+    const matched = CATEGORIES.find((c) => c.id === rawId) ?? CATEGORIES[CATEGORIES.length - 1];
+
+    return { category_id: matched.id, category_label: matched.label };
   }
 
   // ─────────────────────────────────────────

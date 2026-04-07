@@ -103,6 +103,25 @@ export class User {
   @Column({ name: 'custom_work_end', type: 'time', nullable: true })
   customWorkEnd: string | null;
 
+  /**
+   * 개인 법정 휴게시간(분). null이면 법정 최소 자동 계산
+   * 4h이상: 30분 / 8h이상: 60분 (근로기준법 제54조)
+   */
+  @Column({ name: 'break_minutes', type: 'smallint', nullable: true })
+  breakMinutes: number | null;
+
+  /**
+   * 개인 지각 판정 허용 시간(분). null이면 회사 설정(lateThresholdMin) 사용
+   */
+  @Column({ name: 'late_threshold_min_override', type: 'smallint', nullable: true })
+  lateThresholdMinOverride: number | null;
+
+  /**
+   * 근무 스케줄 변경 메모 (최근 변경 사유)
+   */
+  @Column({ name: 'schedule_note', type: 'text', nullable: true })
+  scheduleNote: string | null;
+
   @Column({
     type: 'varchar',
     length: 20,
@@ -124,17 +143,11 @@ export class User {
   managedDepartments: string[] | null;
 
   /**
-   * 세부 권한 플래그 (manager 전용)
-   * canInvite: 초대 가능, canManagePayroll: 급여 조회/관리,
-   * canManageContracts: 계약 관리, canManageEvaluations: 인사평가 관리
+   * 세부 권한 플래그 (manager/employee 전용 — JSONB)
+   * UserPermissions 타입과 동기화 필요 (jwt-payload.type.ts 참고)
    */
   @Column({ type: 'jsonb', nullable: true })
-  permissions: {
-    canInvite?: boolean;
-    canManagePayroll?: boolean;
-    canManageContracts?: boolean;
-    canManageEvaluations?: boolean;
-  } | null;
+  permissions: import('../../common/types/jwt-payload.type').UserPermissions | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

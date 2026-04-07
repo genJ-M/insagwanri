@@ -7,8 +7,10 @@ import {
   Calendar, MessageSquare, Sparkles, LogOut,
   Users, Settings, Banknote, Umbrella, FilePen, FileSignature, Award,
   ClipboardCheck, BarChart2, GraduationCap, ChevronRight, ShieldCheck,
+  Pencil,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth.store';
 import { useUiStore } from '@/store/ui.store';
 import api from '@/lib/api';
@@ -187,11 +189,15 @@ function NavGroupBlock({
   pathname,
   userRole,
   onClose,
+  isOpen,
+  onToggle,
 }: {
   group: NavGroup;
   pathname: string;
   userRole: string;
   onClose: () => void;
+  isOpen: boolean;
+  onToggle: (id: string) => void;
 }) {
   // 그룹 역할 제한
   if (group.roles && !group.roles.includes(userRole)) return null;
@@ -202,15 +208,8 @@ function NavGroupBlock({
   );
   if (visibleItems.length === 0) return null;
 
-  // 자식 중 하나라도 활성이면 그룹도 자동 오픈
+  // 자식 중 하나라도 활성이면 그룹 헤더 강조
   const hasActiveChild = visibleItems.some((item) => isPathActive(item, pathname));
-
-  const [open, setOpen] = useState(hasActiveChild);
-
-  // 라우트 바뀔 때 활성 자식 생기면 자동 오픈
-  useEffect(() => {
-    if (hasActiveChild) setOpen(true);
-  }, [hasActiveChild]);
 
   const Icon = group.icon;
 
@@ -218,7 +217,7 @@ function NavGroupBlock({
     <div>
       {/* 그룹 헤더 */}
       <button
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() => onToggle(group.id)}
         className={clsx(
           'flex items-center gap-2.5 w-full px-3 py-[7px] rounded-lg text-[13px] font-medium transition-all duration-150 group',
           hasActiveChild
@@ -236,14 +235,14 @@ function NavGroupBlock({
         <ChevronRight
           className={clsx(
             'w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200',
-            open ? 'rotate-90' : 'rotate-0',
+            isOpen ? 'rotate-90' : 'rotate-0',
             hasActiveChild ? 'text-primary-400' : 'text-text-muted',
           )}
         />
       </button>
 
       {/* 자식 아이템 (그리드 애니메이션) */}
-      <div className={clsx('nav-group-wrap', open && 'open')}>
+      <div className={clsx('nav-group-wrap', isOpen && 'open')}>
         <div className="nav-group-inner">
           {/* 왼쪽 세로선 + 아이템들 */}
           <div className="relative ml-[22px] mt-0.5 mb-1">
@@ -304,6 +303,82 @@ function NavSingleItem({
   );
 }
 
+/* ── 회사 로고 영역 ──────────────────────────────────────── */
+function CompanyLogo({ userRole }: { userRole: string }) {
+  const canEdit = userRole === 'owner' || userRole === 'manager';
+
+  const { data: workspace } = useQuery({
+    queryKey: ['workspace-logo'],
+    queryFn: async () => {
+      const { data } = await api.get('/workspace/settings');
+      return data.data ?? data;
+    },
+    staleTime: 5 * 60_000, // 5분 캐시
+  });
+
+  const logoUrl: string | null = workspace?.logoUrl ?? null;
+  const companyName: string = workspace?.name ?? '관리왕';
+
+  const inner = (
+    <div className="flex items-center gap-3 group">
+      {/* 로고 이미지 or 기본 아이콘 */}
+      <div className="relative w-8 h-8 flex-shrink-0">
+        {logoUrl ? (
+          <img
+            src={logoUrl}
+            alt={companyName}
+            className="w-8 h-8 rounded-[10px] object-cover shadow-sm"
+          />
+        ) : (
+          <div className="w-8 h-8 rounded-[10px] bg-primary-500 flex items-center justify-center shadow-sm">
+            <span className="text-white text-[13px] font-bold tracking-tight">
+              {companyName.charAt(0)}
+            </span>
+          </div>
+        )}
+        {/* 편집 아이콘 (owner/manager만, hover 시 표시) */}
+        {canEdit && (
+          <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-white border border-zinc-200 shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <Pencil className="w-2.5 h-2.5 text-text-secondary" />
+          </div>
+        )}
+      </div>
+
+      {/* 회사명 */}
+      <div className="flex flex-col leading-none min-w-0">
+        <span className="text-[15px] font-bold text-text-primary tracking-tight truncate">
+          {companyName}
+        </span>
+        {canEdit && (
+          <span className="text-[10px] text-text-muted mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            로고 편집
+          </span>
+        )}
+      </div>
+    </div>
+  );
+
+  // owner/manager: 클릭 시 설정 > 브랜딩으로 이동
+  // employee: 클릭 불가, 표시만
+  if (canEdit) {
+    return (
+      <Link
+        href="/settings?tab=branding"
+        className="flex items-center gap-0 px-5 h-[60px] flex-shrink-0 cursor-pointer rounded-none hover:bg-zinc-50 transition-colors"
+        title="로고 및 브랜딩 편집"
+      >
+        {inner}
+      </Link>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-0 px-5 h-[60px] flex-shrink-0">
+      {inner}
+    </div>
+  );
+}
+
 /* ── 메인 Sidebar ───────────────────────────────────────── */
 export default function Sidebar() {
   const pathname = usePathname();
@@ -313,6 +388,29 @@ export default function Sidebar() {
   const userRole = user?.role ?? 'employee';
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), [setSidebarOpen]);
+
+  // 현재 경로의 활성 그룹을 초기값으로 설정
+  const initialOpenId = NAV.find(
+    (entry): entry is NavGroup =>
+      entry.type === 'group' &&
+      entry.items.some((item) => isPathActive(item, pathname)),
+  )?.id ?? null;
+
+  const [openGroupId, setOpenGroupId] = useState<string | null>(initialOpenId);
+
+  // 라우트 변경 시 활성 그룹이 있으면 자동으로 열기
+  useEffect(() => {
+    const activeGroup = NAV.find(
+      (entry): entry is NavGroup =>
+        entry.type === 'group' &&
+        entry.items.some((item) => isPathActive(item, pathname)),
+    );
+    if (activeGroup) setOpenGroupId(activeGroup.id);
+  }, [pathname]);
+
+  const handleGroupToggle = useCallback((id: string) => {
+    setOpenGroupId((prev) => (prev === id ? null : id));
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -344,18 +442,8 @@ export default function Sidebar() {
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
         )}
       >
-        {/* ── 로고 ──────────────────────────────────────── */}
-        <div className="flex items-center gap-3 px-5 h-[60px] flex-shrink-0">
-          <div className="w-8 h-8 rounded-[10px] bg-primary-500 flex items-center justify-center shadow-sm flex-shrink-0">
-            <span className="text-white text-[13px] font-bold tracking-tight">관</span>
-          </div>
-          <div className="flex flex-col leading-none">
-            <span className="text-[15px] font-bold text-text-primary tracking-tight">관리왕</span>
-            <span className="text-[10px] text-text-muted mt-0.5 tracking-wide">
-              {user?.name ? `${user.name}님` : '직원 관리 플랫폼'}
-            </span>
-          </div>
-        </div>
+        {/* ── 로고 (회사 이미지 / owner·manager는 편집 가능) ── */}
+        <CompanyLogo userRole={userRole} />
 
         {/* ── 메인 네비 ─────────────────────────────────── */}
         <nav className="flex-1 px-3 py-2 overflow-y-auto sidebar-scroll space-y-0.5">
@@ -375,6 +463,8 @@ export default function Sidebar() {
                 pathname={pathname}
                 userRole={userRole}
                 onClose={closeSidebar}
+                isOpen={openGroupId === entry.id}
+                onToggle={handleGroupToggle}
               />
             ),
           )}

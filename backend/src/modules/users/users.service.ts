@@ -12,14 +12,17 @@ import { Company } from '../../database/entities/company.entity';
 import { UserCareer } from '../../database/entities/user-career.entity';
 import { UserEducation } from '../../database/entities/user-education.entity';
 import { UserDocument } from '../../database/entities/user-document.entity';
-import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
+import { ApprovalDocument, ApprovalDocStatus, ApprovalDocType } from '../../database/entities/approval-document.entity';
+import { ApprovalStep, StepStatus } from '../../database/entities/approval-step.entity';
+import { AuthenticatedUser, UserRole, UserPermissions } from '../../common/types/jwt-payload.type';
 import { EmailService } from '../notifications/email.service';
 import { SmsService } from '../../common/sms/sms.service';
 import { ConfigService } from '@nestjs/config';
 import {
   InviteUserDto, InviteByPhoneDto, CreateShareableLinkDto,
   AcceptInviteDto, UpdateUserDto,
-  UpdateRoleDto, ChangePasswordDto, UserQueryDto,
+  UpdateRoleDto, UpdatePermissionsDto, ChangePasswordDto, UserQueryDto,
+  RequestPermissionChangeDto, UpdateWorkScheduleDto, RequestWorkScheduleChangeDto,
 } from './dto/users.dto';
 
 const BCRYPT_ROUNDS = 12;
@@ -44,6 +47,12 @@ export class UsersService {
 
     @InjectRepository(UserDocument)
     private documentRepo: Repository<UserDocument>,
+
+    @InjectRepository(ApprovalDocument)
+    private approvalDocRepo: Repository<ApprovalDocument>,
+
+    @InjectRepository(ApprovalStep)
+    private approvalStepRepo: Repository<ApprovalStep>,
 
     private readonly emailService: EmailService,
     private readonly smsService: SmsService,
@@ -198,28 +207,185 @@ export class UsersService {
   }
 
   // ─────────────────────────────────────────
-  // 권한 설정 (owner만, manager 대상)
+  // 권한 직접 설정
+  // - OWNER: 모든 권한 직접 설정 가능
+  // - canGrantHrAccess 위임자: HR 관련 권한만 직접 설정 가능
+  // - canGrantSalaryAccess 위임자: 급여 관련 권한만 직접 설정 가능
+  // - 그 외: requestPermissionChange()를 통한 결재 기안 필요
   // ─────────────────────────────────────────
   async updatePermissions(
     currentUser: AuthenticatedUser,
     targetId: string,
-    dto: { managedDepartments?: string[] | null; permissions?: Record<string, boolean> | null },
+    dto: UpdatePermissionsDto,
   ) {
-    if (currentUser.role !== UserRole.OWNER) {
-      throw new ForbiddenException('권한 설정은 owner만 가능합니다.');
+    const isOwner = currentUser.role === UserRole.OWNER;
+    const myPerms = currentUser.permissions ?? {};
+    const canGrantHr     = isOwner || myPerms.canGrantHrAccess;
+    const canGrantSalary = isOwner || myPerms.canGrantSalaryAccess;
+
+    // 변경 요청 항목 분류
+    const reqPerms = dto.permissions ?? {};
+    const hasHrPerms = [
+      'canViewHrNotes', 'canManageHrNotes', 'hrNoteScope',
+    ].some(k => k in reqPerms);
+    const hasSalaryPerms = [
+      'canViewSalary', 'canManageSalary', 'salaryScope', 'canManagePayroll',
+    ].some(k => k in reqPerms);
+    const hasAdminPerms = [
+      'canGrantHrAccess', 'canGrantSalaryAccess',
+      'canInvite', 'canManageContracts', 'canManageEvaluations',
+    ].some(k => k in reqPerms);
+    const hasDeptChange = dto.managedDepartments !== undefined;
+
+    // 위임 권한 부여/회수는 OWNER만 가능
+    if (hasAdminPerms && !isOwner) {
+      throw new ForbiddenException('위임 권한(canGrantHrAccess, canGrantSalaryAccess)은 소유자(owner)만 설정할 수 있습니다.');
     }
-    const target = await this.findOne(currentUser, targetId);
-    if (target.role !== UserRole.MANAGER) {
-      throw new BadRequestException('manager에게만 세부 권한을 설정할 수 있습니다.');
+    // HR 권한: OWNER 또는 HR 위임자만
+    if (hasHrPerms && !canGrantHr) {
+      throw new ForbiddenException(
+        'HR 접근 권한 변경은 소유자 또는 HR 권한 위임자만 직접 설정할 수 있습니다. ' +
+        'PATCH /users/:id/permissions/request 를 통해 결재 기안을 요청하세요.',
+      );
     }
+    // 급여 권한: OWNER 또는 급여 위임자만
+    if (hasSalaryPerms && !canGrantSalary) {
+      throw new ForbiddenException(
+        '급여 접근 권한 변경은 소유자 또는 급여 권한 위임자만 직접 설정할 수 있습니다. ' +
+        'PATCH /users/:id/permissions/request 를 통해 결재 기안을 요청하세요.',
+      );
+    }
+    // 담당 부서 변경: OWNER 또는 두 위임자 중 하나라도 있으면 허용
+    if (hasDeptChange && !isOwner && !canGrantHr && !canGrantSalary) {
+      throw new ForbiddenException('담당 부서 변경은 소유자 또는 권한 위임자만 직접 설정할 수 있습니다.');
+    }
+
+    const target = await this.userRepo.findOne({
+      where: { id: targetId, companyId: currentUser.companyId },
+    });
+    if (!target) throw new NotFoundException('직원을 찾을 수 없습니다.');
+
+    // 현재 권한과 병합 (기존 권한 유지, 변경 항목만 덮어쓰기)
+    const mergedPermissions: UserPermissions = {
+      ...(target.permissions ?? {}),
+      ...reqPerms,
+    };
+
     await this.userRepo.update(
       { id: targetId, companyId: currentUser.companyId },
       {
         ...(dto.managedDepartments !== undefined && { managedDepartments: dto.managedDepartments }),
-        ...(dto.permissions !== undefined && { permissions: dto.permissions }),
+        permissions: dto.permissions !== undefined ? mergedPermissions : target.permissions,
       },
     );
     return this.findOne(currentUser, targetId);
+  }
+
+  // ─────────────────────────────────────────
+  // 권한 변경 결재 기안
+  // 결재가 최종 승인되면 approvals.service에서 자동으로 권한을 적용합니다.
+  // ─────────────────────────────────────────
+  async requestPermissionChange(
+    currentUser: AuthenticatedUser,
+    targetId: string,
+    dto: RequestPermissionChangeDto,
+  ) {
+    if (currentUser.role === UserRole.EMPLOYEE) {
+      throw new ForbiddenException('직원은 권한 변경 기안을 올릴 수 없습니다.');
+    }
+    if (currentUser.id === targetId) {
+      throw new BadRequestException('자신의 권한 변경은 기안할 수 없습니다.');
+    }
+
+    const target = await this.userRepo.findOne({
+      where: { id: targetId, companyId: currentUser.companyId },
+    });
+    if (!target) throw new NotFoundException('직원을 찾을 수 없습니다.');
+
+    // 결재자 존재 확인
+    for (const approverId of dto.approver_ids) {
+      const approver = await this.userRepo.findOne({
+        where: { id: approverId, companyId: currentUser.companyId },
+      });
+      if (!approver) throw new BadRequestException(`결재자를 찾을 수 없습니다: ${approverId}`);
+      if (approver.role === UserRole.EMPLOYEE) {
+        throw new BadRequestException(`결재자는 관리자(manager) 이상이어야 합니다: ${approver.name}`);
+      }
+    }
+
+    // 기안 내용 구성 (JSON 직렬화)
+    const contentPayload = {
+      targetUserId: targetId,
+      targetName: target.name,
+      targetDepartment: target.department,
+      permissions: dto.permissions ?? null,
+      managedDepartments: dto.managedDepartments,
+      reason: dto.reason,
+    };
+
+    const doc = this.approvalDocRepo.create({
+      companyId: currentUser.companyId,
+      authorId: currentUser.id,
+      type: ApprovalDocType.PERMISSION_CHANGE,
+      title: `[권한변경] ${target.name} (${target.department ?? '부서미지정'}) 접근 권한 변경 요청`,
+      content: JSON.stringify(contentPayload),
+      status: ApprovalDocStatus.IN_PROGRESS,
+      currentStep: 1,
+      submittedAt: new Date(),
+    });
+    const saved = await this.approvalDocRepo.save(doc);
+
+    // 결재선 생성
+    const steps = dto.approver_ids.map((approverId, idx) =>
+      this.approvalStepRepo.create({
+        documentId: saved.id,
+        approverId,
+        step: idx + 1,
+        status: StepStatus.PENDING,
+      }),
+    );
+    await this.approvalStepRepo.save(steps);
+
+    return {
+      success: true,
+      message: '권한 변경 기안이 제출되었습니다. 결재 완료 후 자동으로 적용됩니다.',
+      approvalDocumentId: saved.id,
+    };
+  }
+
+  // ─────────────────────────────────────────
+  // 권한 변경 결재 기안 템플릿 반환
+  // ─────────────────────────────────────────
+  getPermissionChangeTemplate() {
+    return {
+      description: '권한 변경 기안 작성 가이드',
+      template: {
+        target_user_id: '(필수) 권한을 변경할 직원 UUID',
+        permissions: {
+          '-- HR 노트 권한 --': null,
+          canViewHrNotes:   'true: HR 노트 열람 허용 / false: 열람 차단',
+          canManageHrNotes: 'true: HR 노트 생성·수정·삭제 허용 / false: 차단',
+          hrNoteScope:      '"all": 전체 직원 / "managed_departments": 담당 부서만',
+          '-- 급여 권한 --': null,
+          canViewSalary:    'true: 타인 급여 열람 허용 / false: 본인 급여만',
+          canManageSalary:  'true: 급여 등록·수정·확정·지급 허용 / false: 차단',
+          salaryScope:      '"all": 전체 직원 / "managed_departments": 담당 부서만',
+          '-- 기타 권한 --': null,
+          canInvite:              'true: 직원 초대 허용',
+          canManageContracts:     'true: 계약 관리 허용',
+          canManageEvaluations:   'true: 인사평가 관리 허용',
+        },
+        managedDepartments: '["재무팀", "인사팀"] — 담당 부서 범위 (null = 전체)',
+        reason:             '(필수, 10자 이상) 권한 변경이 필요한 사유',
+        approver_ids:       '["UUID1", "UUID2"] — 결재자 목록 (순서대로 결재)',
+      },
+      notice: [
+        '소유자(owner) 또는 권한 위임자는 이 기안 없이 직접 PATCH /users/:id/permissions 로 변경 가능합니다.',
+        '결재가 최종 승인되면 권한이 자동으로 적용됩니다.',
+        '반려 시 기존 권한은 그대로 유지됩니다.',
+        '위임 권한(canGrantHrAccess, canGrantSalaryAccess) 부여는 소유자만 직접 설정 가능하며 기안으로 요청할 수 없습니다.',
+      ],
+    };
   }
 
   // ─────────────────────────────────────────
@@ -797,5 +963,154 @@ export class UsersService {
       byPosition,
       monthlyJoin,
     };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 개인 근무 스케줄 조회
+  // ─────────────────────────────────────────────────────────────────────────────
+  async getWorkSchedule(currentUser: AuthenticatedUser, targetId: string) {
+    const isSelf = currentUser.id === targetId;
+    if (!isSelf && currentUser.role === UserRole.EMPLOYEE) {
+      throw new ForbiddenException('본인 또는 관리자만 조회할 수 있습니다.');
+    }
+
+    const [user, company] = await Promise.all([
+      this.userRepo.findOne({
+        where: { id: targetId, companyId: currentUser.companyId },
+        select: [
+          'id', 'name', 'department', 'position',
+          'customWorkStart', 'customWorkEnd',
+          'breakMinutes', 'lateThresholdMinOverride', 'scheduleNote',
+        ] as any,
+      }),
+      this.companyRepo.findOne({
+        where: { id: currentUser.companyId },
+        select: ['workStartTime', 'workEndTime', 'lateThresholdMin'] as any,
+      }),
+    ]);
+
+    if (!user) throw new NotFoundException('직원을 찾을 수 없습니다.');
+
+    return {
+      userId: user.id,
+      name: user.name,
+      department: user.department,
+      position: user.position,
+      // 개인 스케줄 (null이면 회사 기본값 사용)
+      custom: {
+        workStartTime: user.customWorkStart ?? null,
+        workEndTime:   user.customWorkEnd   ?? null,
+        breakMinutes:  (user as any).breakMinutes ?? null,
+        lateThresholdMin: (user as any).lateThresholdMinOverride ?? null,
+        note: (user as any).scheduleNote ?? null,
+      },
+      // 실제 적용되는 스케줄 (개인 우선, 없으면 회사 기본값)
+      effective: {
+        workStartTime: user.customWorkStart    ?? company?.workStartTime    ?? '09:00',
+        workEndTime:   user.customWorkEnd      ?? company?.workEndTime      ?? '18:00',
+        breakMinutes:  (user as any).breakMinutes ?? null, // null = 법정 최소 자동
+        lateThresholdMin: (user as any).lateThresholdMinOverride ?? company?.lateThresholdMin ?? 10,
+      },
+      // 회사 기본값 (참고용)
+      companyDefault: {
+        workStartTime: company?.workStartTime ?? '09:00',
+        workEndTime:   company?.workEndTime   ?? '18:00',
+        lateThresholdMin: company?.lateThresholdMin ?? 10,
+      },
+      legalBreakNote: '근로기준법 제54조: 4시간 이상 30분 / 8시간 이상 60분 휴게시간 보장',
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 개인 근무 스케줄 직접 변경 (owner / 위임자)
+  // ─────────────────────────────────────────────────────────────────────────────
+  async updateWorkSchedule(
+    currentUser: AuthenticatedUser,
+    targetId: string,
+    dto: UpdateWorkScheduleDto,
+  ) {
+    const canDirect = currentUser.role === UserRole.OWNER
+      || currentUser.permissions?.canManageContracts;
+
+    if (!canDirect) {
+      throw new ForbiddenException(
+        'owner 또는 계약 관리 권한이 있는 경우에만 직접 변경할 수 있습니다. 결재 기안을 사용하세요.',
+      );
+    }
+
+    const target = await this.userRepo.findOne({
+      where: { id: targetId, companyId: currentUser.companyId },
+    });
+    if (!target) throw new NotFoundException('직원을 찾을 수 없습니다.');
+
+    // breakMinutes 법정 최소 검증
+    if (dto.breakMinutes != null) {
+      const minBreak = dto.breakMinutes; // 저장은 그대로, 실제 적용 시 법정 최소와 비교
+      if (minBreak < 0) throw new BadRequestException('휴게시간은 0분 이상이어야 합니다.');
+    }
+
+    await this.userRepo.update(targetId, {
+      customWorkStart: dto.workStartTime !== undefined ? (dto.workStartTime ?? null) : target.customWorkStart,
+      customWorkEnd:   dto.workEndTime   !== undefined ? (dto.workEndTime   ?? null) : target.customWorkEnd,
+      ...(dto.breakMinutes      !== undefined && { breakMinutes:            dto.breakMinutes }),
+      ...(dto.lateThresholdMin  !== undefined && { lateThresholdMinOverride: dto.lateThresholdMin }),
+      ...(dto.note              !== undefined && { scheduleNote: dto.note }),
+    } as any);
+
+    return this.getWorkSchedule(currentUser, targetId);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 근무 스케줄 변경 결재 기안 (manager 이하)
+  // ─────────────────────────────────────────────────────────────────────────────
+  async requestWorkScheduleChange(
+    currentUser: AuthenticatedUser,
+    dto: RequestWorkScheduleChangeDto,
+  ) {
+    const target = await this.userRepo.findOne({
+      where: { id: dto.targetUserId, companyId: currentUser.companyId },
+    });
+    if (!target) throw new NotFoundException('대상 직원을 찾을 수 없습니다.');
+
+    // 결재선 검증
+    const approvers: User[] = [];
+    for (const aid of dto.approver_ids) {
+      const u = await this.userRepo.findOne({ where: { id: aid, companyId: currentUser.companyId } });
+      if (!u) throw new BadRequestException(`결재자를 찾을 수 없습니다: ${aid}`);
+      if (u.role === UserRole.EMPLOYEE) throw new BadRequestException('결재자는 관리자 이상이어야 합니다.');
+      approvers.push(u);
+    }
+    if (approvers.length === 0) throw new BadRequestException('최소 1명의 결재자가 필요합니다.');
+
+    const payload = {
+      targetUserId: dto.targetUserId,
+      workStartTime: dto.workStartTime,
+      workEndTime:   dto.workEndTime,
+      breakMinutes:  dto.breakMinutes,
+      lateThresholdMin: dto.lateThresholdMin,
+    };
+
+    const doc = this.approvalDocRepo.create({
+      companyId: currentUser.companyId,
+      authorId:  currentUser.id,
+      type:      ApprovalDocType.WORK_SCHEDULE_CHANGE,
+      title:     `근무 스케줄 변경 기안 — ${target.name}`,
+      content:   JSON.stringify(payload),
+      status:    ApprovalDocStatus.IN_PROGRESS,
+      currentStep: 1,
+    });
+    await this.approvalDocRepo.save(doc);
+
+    const steps = approvers.map((u, i) =>
+      this.approvalStepRepo.create({
+        documentId: doc.id,
+        approverId: u.id,
+        step: i + 1,
+        status: StepStatus.PENDING,
+      }),
+    );
+    await this.approvalStepRepo.save(steps);
+
+    return { docId: doc.id, status: doc.status, message: '결재 기안이 생성되었습니다.' };
   }
 }

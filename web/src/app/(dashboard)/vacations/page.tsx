@@ -435,17 +435,17 @@ export default function VacationsPage() {
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-gray-50">
       {/* 헤더 */}
-      <div className="bg-white border-b border-gray-100 px-6 py-4">
-        <div className="flex items-center justify-between">
+      <div className="bg-white border-b border-gray-100 px-4 md:px-6 py-4">
+        <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-[20px] font-bold text-gray-900">휴가 관리</h1>
             <p className="text-[13px] text-gray-500 mt-0.5">연차/반차 신청 및 승인을 관리합니다.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {isAdmin && (
               <button
                 onClick={() => setShowBalanceModal(true)}
-                className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50"
+                className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 whitespace-nowrap"
               >
                 <Settings className="w-4 h-4" />
                 휴가 설정
@@ -453,7 +453,7 @@ export default function VacationsPage() {
             )}
             <button
               onClick={() => setShowForm(true)}
-              className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white bg-primary-500 rounded-xl hover:bg-primary-600"
+              className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white bg-primary-500 rounded-xl hover:bg-primary-600 whitespace-nowrap"
             >
               <Plus className="w-4 h-4" />
               휴가 신청
@@ -520,7 +520,8 @@ export default function VacationsPage() {
             <div className="px-5 py-4 border-b border-gray-100">
               <h3 className="text-[14px] font-bold text-gray-900">{year}년 팀 휴가 현황</h3>
             </div>
-            <table className="w-full text-[13px]">
+            <div className="overflow-x-auto">
+            <table className="w-full text-[13px] min-w-[560px]">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="px-5 py-3 text-left text-[12px] font-semibold text-gray-500">직원</th>
@@ -576,6 +577,7 @@ export default function VacationsPage() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 

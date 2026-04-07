@@ -208,6 +208,20 @@ export class AiController {
   }
 
   /**
+   * POST /api/v1/ai/classify-task
+   * 업무 제목으로 카테고리 분류 (템플릿 추천용)
+   */
+  @Post('classify-task')
+  @HttpCode(HttpStatus.OK)
+  async classifyTask(
+    @GetUser() user: AuthenticatedUser,
+    @Body('title') title: string,
+  ) {
+    const data = await this.aiService.classifyTask(user, title ?? '');
+    return { success: true, data };
+  }
+
+  /**
    * GET /api/v1/ai/usage
    * AI 사용량 조회 (owner, manager)
    *

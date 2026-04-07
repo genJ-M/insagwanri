@@ -489,7 +489,7 @@ export default function TaxDocumentsPage() {
         </div>
 
         {/* 탭 콘텐츠 */}
-        <div className="bg-white rounded-xl border border-border shadow-card p-6">
+        <div className="bg-white rounded-xl border border-border shadow-card p-4 md:p-6">
           {activeTab === '할 일 목록'  && <TodoTab />}
           {activeTab === '원천징수'    && <WithholdingTab />}
           {activeTab === '4대보험'     && <InsuranceTab />}

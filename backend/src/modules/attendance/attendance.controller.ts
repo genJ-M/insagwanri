@@ -17,6 +17,27 @@ export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
   /**
+   * GET /api/v1/attendance/methods
+   * 회사의 출퇴근 방식 설정 조회 (전 직원)
+   */
+  @Get('methods')
+  async getMethods(@GetUser() user: AuthenticatedUser) {
+    const data = await this.attendanceService.getAttendanceMethods(user);
+    return { success: true, data };
+  }
+
+  /**
+   * GET /api/v1/attendance/qr-token
+   * QR 코드 토큰 발급 (관리자 전용 — 화면에 띄울 값)
+   */
+  @Roles(UserRole.OWNER, UserRole.MANAGER)
+  @Get('qr-token')
+  async getQrToken(@GetUser() user: AuthenticatedUser) {
+    const data = await this.attendanceService.getQrToken(user);
+    return { success: true, data };
+  }
+
+  /**
    * POST /api/v1/attendance/clock-in
    * 출근 등록
    *

@@ -3,7 +3,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft, ChevronRight, Plus, X, Building2, Users, User as UserIcon,
-  Pencil, Trash2, CalendarDays, Table2,
+  Pencil, Trash2, CalendarDays, Table2, Share2, Lock, Bell,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format, getDaysInMonth, startOfMonth, getDay, addMonths, subMonths } from 'date-fns';
@@ -16,6 +16,16 @@ import { getHolidayMap } from '@/lib/korean-holidays';
 // ─── 타입 ────────────────────────────────────────────
 type EventScope = 'company' | 'team' | 'personal';
 
+interface EventShare {
+  id: string;
+  recipientType: 'user' | 'department';
+  recipientUserId: string | null;
+  recipientUserName: string | null;
+  recipientDepartment: string | null;
+  sharedAt: string;
+  revokedAt: string | null;
+}
+
 interface CalendarEvent {
   id: string;
   scope: EventScope;
@@ -26,7 +36,20 @@ interface CalendarEvent {
   endDate: string;
   color: string | null;
   isMine: boolean;
+  isSharedToMe: boolean;
+  shares: EventShare[];
   creator: { id: string; name: string } | null;
+}
+
+interface ShareRequest {
+  id: string;
+  eventId: string;
+  targetDepartment: string;
+  status: 'pending' | 'approved' | 'rejected';
+  note: string | null;
+  createdAt: string;
+  requester: { id: string; name: string };
+  event: { id: string; title: string; targetDepartment: string | null };
 }
 
 interface AttendanceCell {
@@ -55,6 +78,247 @@ const ATT_STATUS_STYLE: Record<string, { bg: string; label: string }> = {
 };
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+
+// ─── 공유 모달 ───────────────────────────────────────
+function ShareModal({
+  event, departments, isAdmin, onClose, onSuccess,
+}: {
+  event: CalendarEvent;
+  departments: string[];
+  isAdmin: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [recipientType, setRecipientType] = useState<'user' | 'department'>(
+    event.scope === 'personal' ? 'user' : 'department',
+  );
+  const [recipientUserId, setRecipientUserId] = useState('');
+  const [recipientDept, setRecipientDept] = useState('');
+  const [note, setNote] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const { data: shares = [], refetch: refetchShares } = useQuery<EventShare[]>({
+    queryKey: ['event-shares', event.id],
+    queryFn: () => api.get(`/calendar/events/${event.id}/shares`).then(r => r.data.data),
+  });
+
+  const activeShares = shares.filter(s => !s.revokedAt);
+
+  const handleShare = async () => {
+    if (recipientType === 'user' && !recipientUserId.trim()) {
+      toast.error('사용자 ID를 입력하세요.'); return;
+    }
+    if (recipientType === 'department' && !recipientDept) {
+      toast.error('부서를 선택하세요.'); return;
+    }
+    setLoading(true);
+    try {
+      const res = await api.post(`/calendar/events/${event.id}/share`, {
+        recipient_type: recipientType,
+        recipient_user_id: recipientType === 'user' ? recipientUserId : undefined,
+        recipient_department: recipientType === 'department' ? recipientDept : undefined,
+        note: note || undefined,
+      });
+      const isRequest = res.data.data?.type === 'request';
+      toast.success(isRequest ? '팀장에게 공유 승인 요청을 보냈습니다.' : '공유되었습니다.');
+      refetchShares();
+      onSuccess();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? '공유 실패');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRevoke = async (shareId: string) => {
+    try {
+      await api.delete(`/calendar/events/${event.id}/shares/${shareId}`);
+      toast.success('공유가 철회되었습니다.');
+      refetchShares();
+      onSuccess();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? '공유 철회 실패');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-[15px] font-bold text-gray-900">일정 공유</h2>
+            <p className="text-[11px] text-gray-400 mt-0.5">{event.title}</p>
+          </div>
+          <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
+        </div>
+
+        <div className="px-6 py-4 space-y-4">
+          {/* 현재 공유 목록 */}
+          {activeShares.length > 0 && (
+            <div>
+              <p className="text-[11px] font-semibold text-gray-500 mb-2">현재 공유 중</p>
+              <div className="space-y-1.5">
+                {activeShares.map(s => (
+                  <div key={s.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
+                    <span className="text-[12px] text-gray-700">
+                      {s.recipientType === 'user'
+                        ? (s.recipientUserName ?? s.recipientUserId)
+                        : `${s.recipientDepartment} 부서`}
+                    </span>
+                    <button
+                      onClick={() => handleRevoke(s.id)}
+                      className="text-[11px] text-red-400 hover:text-red-600 font-semibold"
+                    >
+                      철회
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-[11px] font-semibold text-gray-500 mb-2">새로 공유하기</p>
+
+            {/* 공유 타입 */}
+            {event.scope !== 'personal' && (
+              <div className="flex gap-2 mb-3">
+                {(['user', 'department'] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setRecipientType(t)}
+                    className={clsx(
+                      'flex-1 py-2 rounded-xl text-[12px] font-semibold border transition-all',
+                      recipientType === t
+                        ? 'border-primary-400 bg-primary-50 text-primary-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300',
+                    )}
+                  >
+                    {t === 'user' ? '특정 사용자' : '다른 부서'}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {recipientType === 'user' ? (
+              <input
+                value={recipientUserId}
+                onChange={e => setRecipientUserId(e.target.value)}
+                placeholder="사용자 ID (UUID)"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-primary-400"
+              />
+            ) : (
+              <select
+                value={recipientDept}
+                onChange={e => setRecipientDept(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-primary-400"
+              >
+                <option value="">부서 선택</option>
+                {departments
+                  .filter(d => d !== event.targetDepartment)
+                  .map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            )}
+
+            {/* 요청 메모 (팀원이 팀 일정 공유 요청 시) */}
+            {event.scope === 'team' && !isAdmin && (
+              <textarea
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                placeholder="공유 이유 (선택) — 팀장에게 전달됩니다"
+                rows={2}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-primary-400 resize-none mt-2"
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-2 px-6 pb-5">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50">
+            닫기
+          </button>
+          <button onClick={handleShare} disabled={loading}
+            className="flex-1 py-2.5 rounded-xl bg-primary-500 text-white text-[13px] font-semibold hover:bg-primary-600 disabled:opacity-50">
+            {loading ? '처리 중...' : (event.scope === 'team' && !isAdmin ? '공유 요청' : '공유하기')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── 공유 요청 처리 패널 (팀장용) ────────────────────
+function ShareRequestsPanel({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const { data: requests = [] } = useQuery<ShareRequest[]>({
+    queryKey: ['share-requests-pending'],
+    queryFn: () => api.get('/calendar/share-requests/pending').then(r => r.data.data),
+  });
+
+  const decide = async (requestId: string, approve: boolean) => {
+    try {
+      await api.patch(`/calendar/share-requests/${requestId}/decide`, { approve });
+      toast.success(approve ? '공유 요청을 승인했습니다.' : '공유 요청을 거절했습니다.');
+      qc.invalidateQueries({ queryKey: ['share-requests-pending'] });
+      qc.invalidateQueries({ queryKey: ['calendar'] });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? '처리 실패');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
+          <h2 className="text-[15px] font-bold text-gray-900">공유 승인 요청 ({requests.length}건)</h2>
+          <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
+        </div>
+        <div className="px-6 py-4 max-h-96 overflow-y-auto">
+          {requests.length === 0 ? (
+            <p className="text-center text-[13px] text-gray-400 py-8">대기 중인 요청이 없습니다.</p>
+          ) : (
+            <div className="space-y-3">
+              {requests.map(r => (
+                <div key={r.id} className="border border-gray-100 rounded-xl p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-[13px] font-semibold text-gray-800">{r.event?.title}</p>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        {r.requester.name}님이 <span className="font-semibold text-primary-600">{r.targetDepartment}</span> 부서와 공유 요청
+                      </p>
+                      {r.note && (
+                        <p className="text-[11px] text-gray-400 mt-1 italic">"{r.note}"</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => decide(r.id, false)}
+                      className="flex-1 py-1.5 rounded-lg border border-gray-200 text-[12px] font-semibold text-gray-600 hover:bg-gray-50"
+                    >
+                      거절
+                    </button>
+                    <button
+                      onClick={() => decide(r.id, true)}
+                      className="flex-1 py-1.5 rounded-lg bg-primary-500 text-white text-[12px] font-semibold hover:bg-primary-600"
+                    >
+                      승인
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="px-6 pb-5">
+          <button onClick={onClose} className="w-full py-2.5 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50">
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── 이벤트 생성/수정 모달 ───────────────────────────
 function EventModal({
@@ -243,6 +507,8 @@ export default function CalendarPage() {
   const [showModal, setShowModal] = useState(false);
   const [editEvent, setEditEvent] = useState<CalendarEvent | undefined>();
   const [clickedDate, setClickedDate] = useState<string | undefined>();
+  const [shareEvent, setShareEvent] = useState<CalendarEvent | undefined>();
+  const [showShareRequests, setShowShareRequests] = useState(false);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['calendar'] });
 
@@ -266,6 +532,13 @@ export default function CalendarPage() {
     queryFn: () =>
       api.get(`/calendar/attendance?year=${year}&month=${month}${deptFilter ? `&department=${deptFilter}` : ''}`).then(r => r.data.data),
     enabled: isAdmin && view === 'attendance',
+  });
+
+  // 대기 중인 공유 요청 수 (팀장용)
+  const { data: pendingRequests = [] } = useQuery<ShareRequest[]>({
+    queryKey: ['share-requests-pending'],
+    queryFn: () => api.get('/calendar/share-requests/pending').then(r => r.data.data),
+    enabled: isAdmin,
   });
 
   const deleteMutation = useMutation({
@@ -363,6 +636,20 @@ export default function CalendarPage() {
               </div>
             )}
 
+            {/* 공유 요청 알림 (팀장) */}
+            {isAdmin && pendingRequests.length > 0 && (
+              <button
+                onClick={() => setShowShareRequests(true)}
+                className="relative p-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100"
+                title="공유 승인 요청"
+              >
+                <Bell className="w-4 h-4" />
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                  {pendingRequests.length}
+                </span>
+              </button>
+            )}
+
             <button
               onClick={() => { setEditEvent(undefined); setClickedDate(undefined); setShowModal(true); }}
               className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-semibold text-white bg-primary-500 rounded-xl hover:bg-primary-600"
@@ -384,6 +671,10 @@ export default function CalendarPage() {
           <div className="flex items-center gap-1">
             <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
             <span className="text-[11px] text-gray-500">공휴일</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Lock className="w-3 h-3 text-gray-400" />
+            <span className="text-[11px] text-gray-400">팀/개인 일정은 기본 비공개 · 명시적 공유만 허용</span>
           </div>
         </div>
       </div>
@@ -456,14 +747,15 @@ export default function CalendarPage() {
                               <div
                                 key={ev.id}
                                 className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold text-white truncate cursor-pointer hover:opacity-90"
-                                style={{ backgroundColor: scopeColor }}
+                                style={{ backgroundColor: ev.isSharedToMe ? '#9ca3af' : scopeColor, borderLeft: ev.isSharedToMe ? '2px solid #14b8a6' : undefined }}
                                 onClick={e => {
                                   e.stopPropagation();
                                   setEditEvent(ev);
                                   setShowModal(true);
                                 }}
-                                title={ev.title}
+                                title={ev.isSharedToMe ? `[공유] ${ev.title}` : ev.title}
                               >
+                                {ev.isSharedToMe && <Share2 className="w-2 h-2 flex-shrink-0" />}
                                 <span className="truncate">{ev.title}</span>
                               </div>
                             );
@@ -631,22 +923,44 @@ export default function CalendarPage() {
                         {ev.description && ` · ${ev.description}`}
                       </p>
                     </div>
-                    {canEdit && (
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {ev.isSharedToMe && (
+                        <span className="text-[9px] font-bold text-teal-600 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded-full">공유받음</span>
+                      )}
+                      {ev.shares?.filter(s => !s.revokedAt).length > 0 && ev.isMine && (
+                        <span title={`${ev.shares.filter(s=>!s.revokedAt).length}명에게 공유 중`}>
+                          <Lock className="w-3 h-3 text-gray-300" />
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {/* 공유 버튼 (본인 이벤트 or 관리자, company 제외) */}
+                      {(ev.isMine || isAdmin) && ev.scope !== 'company' && (
                         <button
-                          onClick={() => { setEditEvent(ev); setShowModal(true); }}
-                          className="p-1 rounded text-gray-400 hover:text-gray-600"
+                          onClick={() => setShareEvent(ev)}
+                          className="p-1 rounded text-gray-300 hover:text-primary-500"
+                          title="공유 설정"
                         >
-                          <Pencil className="w-3.5 h-3.5" />
+                          <Share2 className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          onClick={() => { if (window.confirm('삭제할까요?')) deleteMutation.mutate(ev.id); }}
-                          className="p-1 rounded text-gray-300 hover:text-red-400"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
+                      )}
+                      {canEdit && (
+                        <>
+                          <button
+                            onClick={() => { setEditEvent(ev); setShowModal(true); }}
+                            className="p-1 rounded text-gray-400 hover:text-gray-600"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => { if (window.confirm('삭제할까요?')) deleteMutation.mutate(ev.id); }}
+                            className="p-1 rounded text-gray-300 hover:text-red-400"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -664,6 +978,20 @@ export default function CalendarPage() {
           onClose={() => { setShowModal(false); setEditEvent(undefined); setClickedDate(undefined); }}
           onSuccess={invalidate}
         />
+      )}
+
+      {shareEvent && (
+        <ShareModal
+          event={shareEvent}
+          departments={departments}
+          isAdmin={isAdmin}
+          onClose={() => setShareEvent(undefined)}
+          onSuccess={invalidate}
+        />
+      )}
+
+      {showShareRequests && (
+        <ShareRequestsPanel onClose={() => setShowShareRequests(false)} />
       )}
     </div>
   );

@@ -274,9 +274,9 @@ export default function AiPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <main className="p-8 max-w-3xl space-y-5">
+      <main className="p-4 md:p-8 max-w-3xl space-y-5">
         {/* 헤더 */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-purple-600 flex items-center justify-center">
               <Sparkles className="h-5 w-5 text-white" />

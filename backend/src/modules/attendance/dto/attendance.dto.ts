@@ -4,16 +4,43 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+/** 지원하는 출퇴근 연동 방식 */
+export type AttendanceMethod = 'manual' | 'gps' | 'wifi' | 'qr' | 'face';
+export const ATTENDANCE_METHODS: AttendanceMethod[] = ['manual', 'gps', 'wifi', 'qr', 'face'];
+
 export class ClockInDto {
   @IsOptional() @IsNumber() latitude?: number;
   @IsOptional() @IsNumber() longitude?: number;
-  @IsOptional() @IsNumber() accuracyM?: number;  // GPS 정확도 (미터)
+  @IsOptional() @IsNumber() accuracyM?: number;
+
+  /** 사용한 출퇴근 방식 (미입력 시 'manual') */
+  @IsOptional()
+  @IsIn(ATTENDANCE_METHODS)
+  method?: AttendanceMethod;
+
+  /** QR 방식: 스캔한 QR 토큰 문자열 */
+  @IsOptional() @IsString()
+  qrToken?: string;
+
+  /** WiFi 방식: 현재 연결된 WiFi SSID */
+  @IsOptional() @IsString()
+  wifiSsid?: string;
 }
 
 export class ClockOutDto {
   @IsOptional() @IsNumber() latitude?: number;
   @IsOptional() @IsNumber() longitude?: number;
   @IsOptional() @IsNumber() accuracyM?: number;
+
+  @IsOptional()
+  @IsIn(ATTENDANCE_METHODS)
+  method?: AttendanceMethod;
+
+  @IsOptional() @IsString()
+  qrToken?: string;
+
+  @IsOptional() @IsString()
+  wifiSsid?: string;
 }
 
 export class UpdateAttendanceDto {

@@ -29,6 +29,14 @@ export class CreateApprovalDto {
   @ValidateNested({ each: true })
   @Type(() => ApproverStepDto)
   approvers: ApproverStepDto[];
+
+  @IsOptional()
+  @IsArray()
+  related_task_ids?: string[];
+
+  @IsOptional()
+  @IsString()
+  template_id?: string;
 }
 
 export class UpdateApprovalDto {
@@ -45,6 +53,10 @@ export class UpdateApprovalDto {
   @ValidateNested({ each: true })
   @Type(() => ApproverStepDto)
   approvers?: ApproverStepDto[];
+
+  @IsOptional()
+  @IsArray()
+  related_task_ids?: string[];
 }
 
 export class ActApprovalDto {

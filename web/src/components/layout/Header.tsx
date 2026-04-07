@@ -1,8 +1,12 @@
 'use client';
-import { Menu, Bell, Search, Sparkles } from 'lucide-react';
-import { usePathname } from 'next/navigation';
+import { useRef, useState, useEffect } from 'react';
+import { Menu, Bell, Search, Sparkles, User, Settings, MessageSquare, LogOut, ChevronDown } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { clsx } from 'clsx';
 import { useUiStore } from '@/store/ui.store';
 import { useAuthStore } from '@/store/auth.store';
+import api from '@/lib/api';
 
 /* ── 경로 → 타이틀 매핑 ─────────────────────────────────── */
 const ROUTE_TITLES: { pattern: RegExp; label: string }[] = [
@@ -45,8 +49,135 @@ const ROLE_META: Record<string, { label: string; cls: string }> = {
   employee: { label: '직원',   cls: 'bg-zinc-100   text-zinc-600    border-zinc-200'    },
 };
 
+/* ── 아바타 이니셜 ───────────────────────────────────────── */
+function UserAvatar({ name, imageUrl, size = 'sm' }: { name?: string; imageUrl?: string | null; size?: 'sm' | 'md' }) {
+  const dim = size === 'md' ? 'h-10 w-10 text-base' : 'h-8 w-8 text-[13px]';
+  if (imageUrl) {
+    return (
+      <img
+        src={imageUrl}
+        alt={name ?? ''}
+        className={clsx(dim, 'rounded-full object-cover ring-2 ring-primary-100 flex-shrink-0')}
+      />
+    );
+  }
+  return (
+    <div className={clsx(dim, 'rounded-full bg-primary-500 flex items-center justify-center font-bold text-white ring-2 ring-primary-100 flex-shrink-0')}>
+      {name?.charAt(0) ?? '?'}
+    </div>
+  );
+}
+
+/* ── 유저 드롭다운 ──────────────────────────────────────── */
+function UserDropdown({ user }: { user: any }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const { clearAuth } = useAuthStore();
+  const roleMeta = ROLE_META[user?.role ?? ''] ?? { label: user?.role ?? '', cls: 'bg-zinc-100 text-zinc-600 border-zinc-200' };
+
+  // 외부 클릭 닫기
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  // 라우트 이동 시 닫기
+  const go = (href: string) => { setOpen(false); router.push(href); };
+
+  const handleLogout = async () => {
+    setOpen(false);
+    try {
+      await api.post('/auth/logout', { refresh_token: localStorage.getItem('refresh_token') });
+    } finally {
+      clearAuth();
+      window.location.href = '/login';
+    }
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      {/* 트리거 버튼 */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label="내 메뉴"
+        className={clsx(
+          'flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl transition-all duration-150',
+          open ? 'bg-zinc-100' : 'hover:bg-zinc-50',
+        )}
+      >
+        <UserAvatar name={user?.name} imageUrl={user?.profileImageUrl} size="sm" />
+        <ChevronDown className={clsx('h-3.5 w-3.5 text-text-muted transition-transform duration-200', open && 'rotate-180')} />
+      </button>
+
+      {/* 드롭다운 패널 */}
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-60 bg-white rounded-2xl shadow-lg border border-zinc-100 overflow-hidden z-50 animate-fade-in">
+          {/* 프로필 헤더 */}
+          <div className="px-4 py-3.5 border-b border-zinc-100 flex items-center gap-3">
+            <UserAvatar name={user?.name} imageUrl={user?.profileImageUrl} size="md" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-text-primary truncate leading-tight">{user?.name}</p>
+              <p className="text-xs text-text-muted truncate mt-0.5">{user?.email}</p>
+              <span className={clsx('inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border', roleMeta.cls)}>
+                {roleMeta.label}
+              </span>
+            </div>
+          </div>
+
+          {/* 메뉴 아이템 */}
+          <div className="py-1.5">
+            <DropItem icon={User} label="내 프로필" desc="정보 수정 · 비밀번호" onClick={() => go('/settings')} />
+            <DropItem icon={MessageSquare} label="메시지" desc="채팅 · 알림" onClick={() => go('/messages')} />
+            <DropItem icon={Settings} label="환경설정" desc="알림 · 테마 · 보안" onClick={() => go('/settings')} />
+          </div>
+
+          <div className="border-t border-zinc-100 py-1.5">
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <LogOut className="h-4 w-4 flex-shrink-0" />
+              <span className="font-medium">로그아웃</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DropItem({
+  icon: Icon, label, desc, onClick,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  desc: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-zinc-50 transition-colors text-left"
+    >
+      <div className="w-7 h-7 rounded-lg bg-zinc-100 flex items-center justify-center flex-shrink-0">
+        <Icon className="h-3.5 w-3.5 text-text-secondary" />
+      </div>
+      <div>
+        <p className="text-sm font-medium text-text-primary leading-tight">{label}</p>
+        <p className="text-xs text-text-muted mt-0.5">{desc}</p>
+      </div>
+    </button>
+  );
+}
+
+/* ── 메인 Header ─────────────────────────────────────────── */
 interface HeaderProps {
-  title?: string;   // 생략 시 pathname으로 자동 감지
+  title?: string;
 }
 
 export default function Header({ title }: HeaderProps) {
@@ -56,7 +187,6 @@ export default function Header({ title }: HeaderProps) {
   const user = useAuthStore((s) => s.user);
 
   const pageTitle = getTitle(pathname, title);
-  const roleMeta = ROLE_META[user?.role ?? ''] ?? { label: user?.role ?? '', cls: 'bg-zinc-100 text-zinc-600 border-zinc-200' };
 
   return (
     <header className="h-14 bg-white shadow-header flex items-center px-4 md:px-6 gap-3 flex-shrink-0 sticky top-0 z-30">
@@ -110,22 +240,8 @@ export default function Header({ title }: HeaderProps) {
         {/* 구분선 */}
         <div className="w-px h-5 bg-border mx-1" />
 
-        {/* 역할 배지 + 아바타 */}
-        {user && (
-          <div className="flex items-center gap-2.5">
-            <span
-              className={`hidden md:inline-block text-[11px] font-semibold px-2 py-0.5 rounded-md border ${roleMeta.cls}`}
-            >
-              {roleMeta.label}
-            </span>
-            <div
-              title={user.name}
-              className="h-8 w-8 rounded-full bg-primary-500 flex items-center justify-center text-[13px] font-bold text-white ring-2 ring-primary-100 flex-shrink-0 cursor-default"
-            >
-              {user.name?.charAt(0) ?? '?'}
-            </div>
-          </div>
-        )}
+        {/* 유저 드롭다운 */}
+        {user && <UserDropdown user={user} />}
       </div>
     </header>
   );

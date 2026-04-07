@@ -11,6 +11,7 @@ export enum AiFeature {
   ANNOUNCEMENT       = 'announcement',       // 공지 메시지 생성
   SCHEDULE_SUMMARY   = 'schedule_summary',   // 일정 정리
   REFINE             = 'refine',             // 문장 다듬기 (범용)
+  CLASSIFY_TASK      = 'classify_task',      // 업무 카테고리 분류
 }
 
 export enum AiRequestStatus {

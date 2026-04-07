@@ -85,6 +85,46 @@ export function autoCalcDeductions(dto: AutoCalculateDto) {
   };
 }
 
+// ── 재무/회계 부서 키워드 ────────────────────────────────────
+const FINANCE_DEPT_KEYWORDS = ['재무', '회계', 'finance', '경리', '급여'];
+
+/** 사용자가 재무/회계 부서 소속인지 확인 (대소문자 무관) */
+function isFinanceDepartment(dept?: string | null): boolean {
+  if (!dept) return false;
+  const lower = dept.toLowerCase();
+  return FINANCE_DEPT_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+/**
+ * 타인의 급여를 열람할 수 있는지 확인
+ * - OWNER: 항상 허용
+ * - 재무팀 MANAGER: 허용
+ * - canManageSalary or canManagePayroll = true: 허용
+ * - canViewSalary = true: 허용 (읽기 전용)
+ */
+function canViewOthersSalary(user: AuthenticatedUser): boolean {
+  if (user.role === UserRole.OWNER) return true;
+  const perms = user.permissions ?? {};
+  if (perms.canManageSalary || perms.canManagePayroll) return true;
+  if (perms.canViewSalary) return true;
+  if (user.role === UserRole.MANAGER && isFinanceDepartment(user.department)) return true;
+  return false;
+}
+
+/**
+ * 급여를 생성·수정·확정·지급할 수 있는지 확인
+ * - OWNER: 항상 허용
+ * - 재무팀 MANAGER: 허용
+ * - canManageSalary or canManagePayroll = true: 허용
+ */
+function canManageOthersSalary(user: AuthenticatedUser): boolean {
+  if (user.role === UserRole.OWNER) return true;
+  const perms = user.permissions ?? {};
+  if (perms.canManageSalary || perms.canManagePayroll) return true;
+  if (user.role === UserRole.MANAGER && isFinanceDepartment(user.department)) return true;
+  return false;
+}
+
 @Injectable()
 export class SalaryService {
   constructor(
@@ -105,9 +145,19 @@ export class SalaryService {
     if (query.user_id) qb.andWhere('s.user_id = :uid', { uid: query.user_id });
     if (query.status)  qb.andWhere('s.status = :status', { status: query.status });
 
-    // 직원은 본인 것만
     if (currentUser.role === UserRole.EMPLOYEE) {
+      // 직원은 본인 것만 (열람 권한 없음)
       qb.andWhere('s.user_id = :selfId', { selfId: currentUser.id });
+    } else if (!canViewOthersSalary(currentUser)) {
+      // 관리자급이라도 급여 열람 권한이 없으면 본인 것만
+      qb.andWhere('s.user_id = :selfId', { selfId: currentUser.id });
+    } else {
+      // 열람 범위 제한 (managed_departments 스코프)
+      const perms = currentUser.permissions ?? {};
+      const depts = currentUser.managedDepartments;
+      if (perms.salaryScope === 'managed_departments' && depts && depts.length > 0) {
+        qb.andWhere('u.department IN (:...depts)', { depts });
+      }
     }
 
     qb.orderBy('s.year', 'DESC').addOrderBy('s.month', 'DESC').addOrderBy('u.name', 'ASC');
@@ -128,16 +178,17 @@ export class SalaryService {
       relations: ['user'],
     });
     if (!salary) throw new NotFoundException('급여 기록을 찾을 수 없습니다.');
-    if (currentUser.role === UserRole.EMPLOYEE && salary.userId !== currentUser.id) {
-      throw new ForbiddenException('접근 권한이 없습니다.');
+    // 본인 급여는 누구나 조회 가능, 타인 급여는 열람 권한 필요
+    if (salary.userId !== currentUser.id && !canViewOthersSalary(currentUser)) {
+      throw new ForbiddenException('급여 열람 권한이 없습니다. 재무팀 관리자 또는 권한 보유자만 접근할 수 있습니다.');
     }
     return this.toResponse(salary);
   }
 
   // ─── 생성 ────────────────────────────────────────────
   async create(currentUser: AuthenticatedUser, dto: CreateSalaryDto) {
-    if (currentUser.role === UserRole.EMPLOYEE) {
-      throw new ForbiddenException('급여 등록 권한이 없습니다.');
+    if (!canManageOthersSalary(currentUser)) {
+      throw new ForbiddenException('급여 등록 권한이 없습니다. 재무팀 관리자 또는 급여 관리 권한 보유자만 등록할 수 있습니다.');
     }
 
     const target = await this.userRepo.findOne({
@@ -180,7 +231,7 @@ export class SalaryService {
 
   // ─── 수정 ────────────────────────────────────────────
   async update(currentUser: AuthenticatedUser, id: string, dto: UpdateSalaryDto) {
-    if (currentUser.role === UserRole.EMPLOYEE) {
+    if (!canManageOthersSalary(currentUser)) {
       throw new ForbiddenException('급여 수정 권한이 없습니다.');
     }
     const salary = await this.salaryRepo.findOne({
@@ -213,7 +264,7 @@ export class SalaryService {
 
   // ─── 확정 / 지급완료 상태 전환 ──────────────────────
   async confirm(currentUser: AuthenticatedUser, id: string) {
-    if (currentUser.role === UserRole.EMPLOYEE) throw new ForbiddenException();
+    if (!canManageOthersSalary(currentUser)) throw new ForbiddenException('급여 확정 권한이 없습니다.');
     const salary = await this.salaryRepo.findOne({ where: { id, companyId: currentUser.companyId } });
     if (!salary) throw new NotFoundException('급여 기록을 찾을 수 없습니다.');
     if (salary.status !== SalaryStatus.DRAFT) throw new BadRequestException('초안 상태에서만 확정할 수 있습니다.');
@@ -223,7 +274,7 @@ export class SalaryService {
   }
 
   async markPaid(currentUser: AuthenticatedUser, id: string) {
-    if (currentUser.role === UserRole.EMPLOYEE) throw new ForbiddenException();
+    if (!canManageOthersSalary(currentUser)) throw new ForbiddenException('급여 지급 처리 권한이 없습니다.');
     const salary = await this.salaryRepo.findOne({ where: { id, companyId: currentUser.companyId } });
     if (!salary) throw new NotFoundException('급여 기록을 찾을 수 없습니다.');
     if (salary.status !== SalaryStatus.CONFIRMED) throw new BadRequestException('확정 상태에서만 지급 처리할 수 있습니다.');
@@ -249,7 +300,7 @@ export class SalaryService {
 
   // ─── 월별 요약 ───────────────────────────────────────
   async monthlySummary(currentUser: AuthenticatedUser, year: number, month: number) {
-    if (currentUser.role === UserRole.EMPLOYEE) throw new ForbiddenException();
+    if (!canViewOthersSalary(currentUser)) throw new ForbiddenException('급여 요약 열람 권한이 없습니다.');
 
     const salaries = await this.salaryRepo.find({
       where: { companyId: currentUser.companyId, year, month },
