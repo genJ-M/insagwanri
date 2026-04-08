@@ -5,6 +5,7 @@ import {
   ImageBackground,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/auth.store';
 import { useLocation } from '@/hooks/useLocation';
 import api from '@/lib/api';
@@ -46,6 +47,7 @@ function SectionHeader({ title }: { title: string }) {
 export default function HomeScreen() {
   const user = useAuthStore((s) => s.user);
   const qc = useQueryClient();
+  const router = useRouter();
   const { locating, getCoords } = useLocation();
   const [clock, setClock] = useState(new Date());
 
@@ -98,6 +100,15 @@ export default function HomeScreen() {
       api.get('/tasks?status=pending&limit=1')
         .then(r => (r.data.data?.total ?? 0) as number)
         .catch(() => 0),
+  });
+
+  const { data: unconfirmedData } = useQuery({
+    queryKey: ['unconfirmed-announcements'],
+    queryFn: () =>
+      api.get('/channels/unconfirmed-count')
+        .then(r => r.data.data as { count: number; previews: { id: string; content: string; channelName: string }[] })
+        .catch(() => null),
+    refetchInterval: 60000,
   });
 
   // 이번 달 입사기념일 계산
@@ -241,6 +252,28 @@ export default function HomeScreen() {
         )}
       </View>{/* /relative inner */}
       </View>{/* /greetingCard */}
+
+      {/* ── 미확인 공지 카드 ── */}
+      {unconfirmedData && unconfirmedData.count > 0 && (
+        <TouchableOpacity
+          style={styles.announcementCard}
+          onPress={() => router.push('/(tabs)/messages')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.announcementLeft}>
+            <Text style={styles.announcementIcon}>📢</Text>
+            <View>
+              <Text style={styles.announcementTitle}>미확인 공지 {unconfirmedData.count}건</Text>
+              {unconfirmedData.previews?.[0] && (
+                <Text style={styles.announcementPreview} numberOfLines={1}>
+                  {unconfirmedData.previews[0].channelName}: {unconfirmedData.previews[0].content}
+                </Text>
+              )}
+            </View>
+          </View>
+          <Text style={styles.announcementArrow}>›</Text>
+        </TouchableOpacity>
+      )}
 
       {/* ── 요약 카드 그리드 ── */}
       <View style={styles.cardGrid}>
@@ -396,6 +429,23 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   gpsFlagText: { fontSize: 12, color: '#FEF3C7' },
+
+  // 미확인 공지 카드
+  announcementCard: {
+    backgroundColor: '#FFF7ED',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  announcementLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  announcementIcon: { fontSize: 22 },
+  announcementTitle: { fontSize: 14, fontWeight: '700', color: '#C2410C' },
+  announcementPreview: { fontSize: 12, color: '#9A3412', marginTop: 2, maxWidth: 220 },
+  announcementArrow: { fontSize: 22, color: '#F97316', fontWeight: '600' },
 
   // 카드 그리드
   cardGrid: { flexDirection: 'row', gap: 12 },

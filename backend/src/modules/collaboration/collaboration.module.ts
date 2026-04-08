@@ -6,10 +6,12 @@ import { SocketModule } from '../socket/socket.module';
 import { Channel } from '../../database/entities/channel.entity';
 import { ChannelMember } from '../../database/entities/channel-member.entity';
 import { Message } from '../../database/entities/message.entity';
+import { MessageRead } from '../../database/entities/message-read.entity';
+import { User } from '../../database/entities/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Channel, ChannelMember, Message]),
+    TypeOrmModule.forFeature([Channel, ChannelMember, Message, MessageRead, User]),
     SocketModule,
   ],
   controllers: [CollaborationController],

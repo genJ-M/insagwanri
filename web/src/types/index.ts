@@ -147,6 +147,16 @@ export interface Message {
   deletedAt: string | null;
   user: { id: string; name: string; profileImageUrl: string | null };
   createdAt: string;
+  confirmedCount?: number;
+  totalCount?: number;
+  confirmedByMe?: boolean;
+}
+
+export interface MessageRead {
+  messageId: string;
+  userId: string;
+  readAt: string;
+  user?: { id: string; name: string; department: string | null; position: string | null };
 }
 
 // ─────────────────────────────────────────

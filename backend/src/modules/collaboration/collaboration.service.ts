@@ -7,6 +7,8 @@ import { Repository, DataSource, LessThan, MoreThan, IsNull } from 'typeorm';
 import { Channel, ChannelType } from '../../database/entities/channel.entity';
 import { ChannelMember } from '../../database/entities/channel-member.entity';
 import { Message, ContentType } from '../../database/entities/message.entity';
+import { MessageRead } from '../../database/entities/message-read.entity';
+import { User } from '../../database/entities/user.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import {
   CreateChannelDto, SendMessageDto, EditMessageDto,
@@ -25,6 +27,12 @@ export class CollaborationService {
 
     @InjectRepository(Message)
     private messageRepo: Repository<Message>,
+
+    @InjectRepository(MessageRead)
+    private readRepo: Repository<MessageRead>,
+
+    @InjectRepository(User)
+    private userRepo: Repository<User>,
 
     private dataSource: DataSource,
     private socketService: SocketService,
@@ -364,6 +372,143 @@ export class CollaborationService {
       channel_id:   channelId,
       last_read_at: member.lastReadAt,
       unread_count: unreadCount,
+    };
+  }
+
+  // ─────────────────────────────────────────
+  // 공지 메세지 개별 확인 (직원 "확인했습니다")
+  // ─────────────────────────────────────────
+  async confirmMessage(
+    channelId: string,
+    messageId: string,
+    currentUser: AuthenticatedUser,
+  ) {
+    await this.assertChannelMember(channelId, currentUser);
+
+    const channel = await this.channelRepo.findOne({ where: { id: channelId } });
+    if (channel?.type !== ChannelType.ANNOUNCEMENT) {
+      throw new BadRequestException('공지 채널의 메세지만 개별 확인할 수 있습니다.');
+    }
+
+    const message = await this.messageRepo.findOne({
+      where: { id: messageId, channelId },
+    });
+    if (!message || message.deletedAt) throw new NotFoundException('메세지를 찾을 수 없습니다.');
+
+    // 이미 확인한 경우 멱등 처리
+    const existing = await this.readRepo.findOne({
+      where: { messageId, userId: currentUser.id },
+    });
+    if (existing) return { message_id: messageId, already_confirmed: true, read_at: existing.readAt };
+
+    const read = this.readRepo.create({ messageId, userId: currentUser.id });
+    await this.readRepo.save(read);
+
+    // 소켓으로 관리자에게 실시간 전달률 업데이트
+    const total = await this.memberRepo.count({ where: { channelId } });
+    const confirmed = await this.readRepo.count({ where: { messageId } });
+    this.socketService.emitToChannel(channelId, 'message:confirmed', {
+      messageId,
+      userId: currentUser.id,
+      confirmed,
+      total,
+    });
+
+    return { message_id: messageId, already_confirmed: false, read_at: read.readAt };
+  }
+
+  // ─────────────────────────────────────────
+  // 공지 메세지 읽은 사람 목록 (관리자용)
+  // ─────────────────────────────────────────
+  async getMessageReads(
+    channelId: string,
+    messageId: string,
+    currentUser: AuthenticatedUser,
+  ) {
+    if (currentUser.role === UserRole.EMPLOYEE) {
+      throw new ForbiddenException('관리자만 조회할 수 있습니다.');
+    }
+    await this.assertChannelMember(channelId, currentUser);
+
+    const channel = await this.channelRepo.findOne({ where: { id: channelId } });
+    if (channel?.type !== ChannelType.ANNOUNCEMENT) {
+      throw new BadRequestException('공지 채널만 조회할 수 있습니다.');
+    }
+
+    // 채널 전체 멤버
+    const members = await this.memberRepo
+      .createQueryBuilder('m')
+      .innerJoinAndSelect('m.user', 'u')
+      .where('m.channel_id = :channelId', { channelId })
+      .getMany();
+
+    // 확인한 멤버 ID 셋
+    const reads = await this.readRepo.find({ where: { messageId } });
+    const readMap = new Map(reads.map((r) => [r.userId, r.readAt]));
+
+    const confirmed   = members.filter((m) => readMap.has(m.userId)).map((m) => ({
+      user: { id: m.user.id, name: m.user.name, department: m.user.department },
+      read_at: readMap.get(m.userId),
+    }));
+    const unconfirmed = members.filter((m) => !readMap.has(m.userId)).map((m) => ({
+      user: { id: m.user.id, name: m.user.name, department: m.user.department },
+    }));
+
+    return {
+      message_id:        messageId,
+      total_members:     members.length,
+      confirmed_count:   confirmed.length,
+      unconfirmed_count: unconfirmed.length,
+      confirmed,
+      unconfirmed,
+    };
+  }
+
+  // ─────────────────────────────────────────
+  // 내 미확인 공지 수 (모바일 홈 배지용)
+  // ─────────────────────────────────────────
+  async getMyUnconfirmedCount(currentUser: AuthenticatedUser) {
+    // 참여 중인 announcement 채널 찾기
+    const memberships = await this.memberRepo
+      .createQueryBuilder('m')
+      .innerJoin('m.channel', 'c')
+      .where('m.user_id = :uid', { uid: currentUser.id })
+      .andWhere('c.company_id = :cid', { cid: currentUser.companyId })
+      .andWhere('c.type = :type', { type: ChannelType.ANNOUNCEMENT })
+      .andWhere('c.deleted_at IS NULL')
+      .select(['m.channelId'])
+      .getMany();
+
+    if (!memberships.length) return { count: 0, announcements: [] };
+
+    const channelIds = memberships.map((m) => m.channelId);
+
+    // 각 채널의 전체 공지 메세지 중 내가 아직 확인 안 한 것
+    const unconfirmed = await this.messageRepo
+      .createQueryBuilder('msg')
+      .leftJoin(
+        'message_reads', 'mr',
+        'mr.message_id = msg.id AND mr.user_id = :uid',
+        { uid: currentUser.id },
+      )
+      .leftJoin('msg.user', 'u')
+      .addSelect(['u.id', 'u.name'])
+      .where('msg.channel_id IN (:...channelIds)', { channelIds })
+      .andWhere('msg.deleted_at IS NULL')
+      .andWhere('mr.message_id IS NULL')  // 미확인 = reads 레코드 없음
+      .orderBy('msg.created_at', 'DESC')
+      .limit(10)
+      .getMany();
+
+    return {
+      count:         unconfirmed.length,
+      announcements: unconfirmed.map((m) => ({
+        id:         m.id,
+        channelId:  m.channelId,
+        content:    m.content.substring(0, 100),
+        createdAt:  m.createdAt,
+        senderName: (m as any).user?.name ?? '',
+      })),
     };
   }
 

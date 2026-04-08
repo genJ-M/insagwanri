@@ -20,6 +20,7 @@ import {
   ActApprovalDto, ApprovalQueryDto,
 } from './dto/approval.dto';
 import { APPROVAL_TEMPLATES, TEMPLATE_CATEGORIES } from './approval-templates.constant';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ApprovalsService {
@@ -27,6 +28,7 @@ export class ApprovalsService {
     @InjectRepository(ApprovalDocument) private docRepo: Repository<ApprovalDocument>,
     @InjectRepository(ApprovalStep)     private stepRepo: Repository<ApprovalStep>,
     @InjectRepository(User)             private userRepo: Repository<User>,
+    private notificationsService: NotificationsService,
   ) {}
 
   // ─── 템플릿 목록 ──────────────────────────────────
@@ -149,6 +151,21 @@ export class ApprovalsService {
     doc.submittedAt = new Date();
     await this.docRepo.save(doc);
 
+    // 첫 번째 결재자에게 알림
+    const firstStep = [...doc.steps].sort((a, b) => a.step - b.step)[0];
+    if (firstStep) {
+      const author = await this.userRepo.findOne({ where: { id: currentUser.id }, select: ['name'] });
+      this.notificationsService.dispatch({
+        userId:    firstStep.approverId,
+        companyId: currentUser.companyId,
+        type:      'task_assigned',
+        title:     '결재 요청이 도착했습니다',
+        body:      `${author?.name ?? ''}님이 "${doc.title}" 결재를 요청했습니다.`,
+        refType:   'task',
+        refId:     doc.id,
+      }).catch(() => {});
+    }
+
     return this.toResponse(await this.loadDoc(id, currentUser.companyId), currentUser.id);
   }
 
@@ -187,6 +204,31 @@ export class ApprovalsService {
       await this.applyWorkScheduleChange(doc);
     }
 
+    // 최종 승인 시 기안자에게 알림
+    if (doc.status === ApprovalDocStatus.APPROVED) {
+      this.notificationsService.dispatch({
+        userId:    doc.authorId,
+        companyId: doc.companyId,
+        type:      'task_completed',
+        title:     '결재가 승인되었습니다 ✅',
+        body:      `"${doc.title}" 결재가 최종 승인되었습니다.`,
+        refType:   'task',
+        refId:     doc.id,
+      }).catch(() => {});
+    }
+    // 다음 결재자에게 알림 (중간 단계 승인)
+    if (nextStep) {
+      this.notificationsService.dispatch({
+        userId:    nextStep.approverId,
+        companyId: doc.companyId,
+        type:      'task_assigned',
+        title:     '결재 차례가 되었습니다',
+        body:      `"${doc.title}" 결재를 검토해주세요.`,
+        refType:   'task',
+        refId:     doc.id,
+      }).catch(() => {});
+    }
+
     return this.toResponse(await this.loadDoc(id, currentUser.companyId), currentUser.id);
   }
 
@@ -206,6 +248,17 @@ export class ApprovalsService {
     doc.status = ApprovalDocStatus.REJECTED;
     doc.completedAt = new Date();
     await this.docRepo.save(doc);
+
+    // 반려 시 기안자에게 알림
+    this.notificationsService.dispatch({
+      userId:    doc.authorId,
+      companyId: doc.companyId,
+      type:      'task_urgent',
+      title:     '결재가 반려되었습니다 ❌',
+      body:      `"${doc.title}" 결재가 반려되었습니다.${step.comment ? ` 사유: ${step.comment}` : ''}`,
+      refType:   'task',
+      refId:     doc.id,
+    }).catch(() => {});
 
     return this.toResponse(await this.loadDoc(id, currentUser.companyId), currentUser.id);
   }

@@ -143,9 +143,6 @@ export class CollaborationController {
   /**
    * POST /api/v1/channels/:channelId/read
    * 읽음 처리
-   *
-   * Example Request:
-   * { "last_read_message_id": "uuid-msg-010" }
    */
   @Post('channels/:channelId/read')
   @HttpCode(HttpStatus.OK)
@@ -155,6 +152,45 @@ export class CollaborationController {
     @Body() dto: ReadMessageDto,
   ) {
     const data = await this.collaborationService.markAsRead(channelId, user, dto);
+    return { success: true, data };
+  }
+
+  /**
+   * POST /api/v1/channels/:channelId/messages/:messageId/confirm
+   * 공지 메세지 개별 확인 ("확인했습니다" 버튼)
+   */
+  @Post('channels/:channelId/messages/:messageId/confirm')
+  @HttpCode(HttpStatus.OK)
+  async confirmMessage(
+    @Param('channelId') channelId: string,
+    @Param('messageId') messageId: string,
+    @GetUser() user: AuthenticatedUser,
+  ) {
+    const data = await this.collaborationService.confirmMessage(channelId, messageId, user);
+    return { success: true, data };
+  }
+
+  /**
+   * GET /api/v1/channels/:channelId/messages/:messageId/reads
+   * 공지 메세지 읽은/안 읽은 사람 목록 (관리자 전용)
+   */
+  @Get('channels/:channelId/messages/:messageId/reads')
+  async getMessageReads(
+    @Param('channelId') channelId: string,
+    @Param('messageId') messageId: string,
+    @GetUser() user: AuthenticatedUser,
+  ) {
+    const data = await this.collaborationService.getMessageReads(channelId, messageId, user);
+    return { success: true, data };
+  }
+
+  /**
+   * GET /api/v1/channels/unconfirmed-count
+   * 내 미확인 공지 수 + 목록 (모바일 홈 배지)
+   */
+  @Get('channels/unconfirmed-count')
+  async getMyUnconfirmedCount(@GetUser() user: AuthenticatedUser) {
+    const data = await this.collaborationService.getMyUnconfirmedCount(user);
     return { success: true, data };
   }
 }

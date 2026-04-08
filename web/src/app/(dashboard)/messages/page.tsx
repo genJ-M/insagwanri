@@ -3,14 +3,14 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { Send, Hash, Megaphone, MessageSquare, Plus, Pencil, Trash2, Check, X, ChevronLeft } from 'lucide-react';
+import { Send, Hash, Megaphone, MessageSquare, Plus, Pencil, Trash2, Check, X, ChevronLeft, CheckCheck, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import api from '@/lib/api';
 import { getSocket, disconnectSocket } from '@/lib/socket';
 import { useAuthStore } from '@/store/auth.store';
-import { Channel, Message } from '@/types';
+import { Channel, Message, MessageRead } from '@/types';
 import { clsx } from 'clsx';
 
 const CHANNEL_ICONS: Record<string, any> = {
@@ -107,19 +107,91 @@ function ChannelItem({ channel, isActive, onClick }: {
   );
 }
 
+// ─── 읽음 멤버 팝오버 ─────────────────────────────────────────────────────────
+function ReadsPopover({ channelId, messageId, confirmed, total }: {
+  channelId: string; messageId: string; confirmed: number; total: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const { data } = useQuery({
+    queryKey: ['message-reads', channelId, messageId],
+    queryFn: async () => {
+      const { data } = await api.get(`/channels/${channelId}/messages/${messageId}/reads`);
+      return data.data as { confirmed: MessageRead[]; unconfirmed: MessageRead[] };
+    },
+    enabled: open,
+  });
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 text-xs text-text-muted hover:text-primary-500 transition-colors"
+      >
+        <Users className="h-3 w-3" />
+        <span>{confirmed}/{total}명 확인</span>
+      </button>
+      {open && (
+        <div className="absolute bottom-6 right-0 z-50 w-64 bg-white rounded-xl shadow-lg border border-border p-3">
+          <div className="flex justify-between items-center mb-2">
+            <p className="text-xs font-semibold text-text-primary">확인 현황</p>
+            <button onClick={() => setOpen(false)} className="text-text-muted hover:text-text-primary">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {data ? (
+            <>
+              <div className="mb-2">
+                <p className="text-xs text-green-600 font-medium mb-1">확인 ({data.confirmed.length}명)</p>
+                <div className="space-y-1 max-h-28 overflow-y-auto">
+                  {data.confirmed.map((r) => (
+                    <p key={r.userId} className="text-xs text-text-secondary">{r.user?.name}</p>
+                  ))}
+                  {data.confirmed.length === 0 && <p className="text-xs text-text-muted">아직 없음</p>}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-red-500 font-medium mb-1">미확인 ({data.unconfirmed.length}명)</p>
+                <div className="space-y-1 max-h-28 overflow-y-auto">
+                  {data.unconfirmed.map((r) => (
+                    <p key={r.userId} className="text-xs text-text-secondary">{r.user?.name}</p>
+                  ))}
+                  {data.unconfirmed.length === 0 && <p className="text-xs text-text-muted">전원 확인 완료</p>}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-text-muted">불러오는 중...</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── 메시지 버블 ──────────────────────────────────────────────────────────────
 function MessageBubble({
-  message, isMine, channelId, onDeleted,
+  message, isMine, channelId, onDeleted, isAnnouncement, isAdmin,
 }: {
   message: Message;
   isMine: boolean;
   channelId: string;
   onDeleted: (id: string) => void;
+  isAnnouncement?: boolean;
+  isAdmin?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [hovered, setHovered] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
+
+  const confirmMutation = useMutation({
+    mutationFn: () => api.post(`/channels/${channelId}/messages/${message.id}/confirm`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages', channelId] });
+      toast.success('확인했습니다.');
+    },
+    onError: () => { toast.error('확인에 실패했습니다.'); },
+  });
 
   const editMutation = useMutation({
     mutationFn: (content: string) =>
@@ -236,9 +308,39 @@ function MessageBubble({
           </div>
         )}
 
-        <p className={clsx('text-xs text-text-muted mt-1', isMine ? 'text-right' : 'ml-1')}>
-          {format(new Date(message.createdAt), 'HH:mm')}
-        </p>
+        <div className={clsx('flex items-center gap-2 mt-1', isMine ? 'justify-end' : 'ml-1')}>
+          <p className="text-xs text-text-muted">
+            {format(new Date(message.createdAt), 'HH:mm')}
+          </p>
+          {/* 공지 채널 확인 UI */}
+          {isAnnouncement && !message.deletedAt && (
+            <>
+              {isAdmin && message.confirmedCount !== undefined && (
+                <ReadsPopover
+                  channelId={channelId}
+                  messageId={message.id}
+                  confirmed={message.confirmedCount}
+                  total={message.totalCount ?? 0}
+                />
+              )}
+              {!isMine && !message.confirmedByMe && (
+                <button
+                  onClick={() => confirmMutation.mutate()}
+                  disabled={confirmMutation.isPending}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 border border-green-200 text-green-700 text-xs hover:bg-green-100 transition-colors disabled:opacity-40"
+                >
+                  <CheckCheck className="h-3 w-3" />
+                  확인
+                </button>
+              )}
+              {!isMine && message.confirmedByMe && (
+                <span className="flex items-center gap-1 text-xs text-green-500">
+                  <CheckCheck className="h-3 w-3" /> 확인됨
+                </span>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -321,10 +423,25 @@ export default function MessagesPage() {
       });
     });
 
+    socket.on('message:confirmed', (payload: { messageId: string; channelId: string; confirmedCount: number; totalCount: number }) => {
+      queryClient.setQueryData(['messages', payload.channelId], (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          messages: old.messages?.map((m: Message) =>
+            m.id === payload.messageId
+              ? { ...m, confirmedCount: payload.confirmedCount, totalCount: payload.totalCount }
+              : m,
+          ),
+        };
+      });
+    });
+
     return () => {
       socket.off('message:new');
       socket.off('message:update');
       socket.off('message:delete');
+      socket.off('message:confirmed');
     };
   }, [queryClient]);
 
@@ -376,6 +493,8 @@ export default function MessagesPage() {
   };
 
   const activeChannel = channels.find((c) => c.id === activeChannelId);
+  const isAnnouncement = activeChannel?.type === 'announcement';
+  const isAdmin = user?.role === 'owner' || user?.role === 'manager';
 
   // 모바일: 채널 목록 / 채팅 전환 (activeChannelId 있으면 채팅 표시)
   const [showChannelList, setShowChannelList] = useState(false);
@@ -470,6 +589,8 @@ export default function MessagesPage() {
                   isMine={msg.user.id === user?.id}
                   channelId={activeChannelId!}
                   onDeleted={() => queryClient.invalidateQueries({ queryKey: ['messages', activeChannelId] })}
+                  isAnnouncement={isAnnouncement}
+                  isAdmin={isAdmin}
                 />
               ))}
               {!messages.length && (

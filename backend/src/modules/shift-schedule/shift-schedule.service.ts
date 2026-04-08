@@ -8,13 +8,13 @@ import {
   ShiftSchedule, ShiftScheduleStatus, ShiftAssignment, ShiftType,
 } from '../../database/entities/shift-schedule.entity';
 import { EmployeeAvailability } from '../../database/entities/employee-availability.entity';
-import { Notification } from '../../database/entities/notification.entity';
 import { User } from '../../database/entities/user.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import {
   CreateShiftScheduleDto, UpdateShiftScheduleDto, ShiftScheduleQueryDto,
   BulkUpsertAssignmentsDto, UpsertAvailabilityDto, AvailabilityQueryDto,
 } from './dto/shift-schedule.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ShiftScheduleService {
@@ -22,8 +22,8 @@ export class ShiftScheduleService {
     @InjectRepository(ShiftSchedule)       private schedRepo: Repository<ShiftSchedule>,
     @InjectRepository(ShiftAssignment)     private assignRepo: Repository<ShiftAssignment>,
     @InjectRepository(EmployeeAvailability) private availRepo:  Repository<EmployeeAvailability>,
-    @InjectRepository(Notification)        private notifRepo:  Repository<Notification>,
     @InjectRepository(User)                private userRepo:   Repository<User>,
+    private notificationsService: NotificationsService,
   ) {}
 
   private managerOrAbove(role: UserRole) {
@@ -137,19 +137,20 @@ export class ShiftScheduleService {
     // 배정된 직원 고유 목록
     const userIds = [...new Set(assignments.map((a) => a.userId))];
 
-    // 알림 일괄 생성
-    const notifs = userIds.map((uid) =>
-      this.notifRepo.create({
-        companyId: user.companyId,
-        userId:    uid,
-        type:      'schedule_published' as any,
-        title:     '근무표가 공유되었습니다',
-        body:      `${sched.title} (${sched.weekStart} 주) 근무표가 발행되었습니다.`,
-        refId:     sched.id,
-        refType:   'shift_schedule' as any,
-      } as any),
+    // 알림 일괄 발송 (푸시 포함)
+    await Promise.all(
+      userIds.map((uid) =>
+        this.notificationsService.dispatch({
+          companyId: user.companyId,
+          userId:    uid,
+          type:      'schedule_published' as any,
+          title:     '근무표가 공유되었습니다',
+          body:      `${sched.title} (${sched.weekStart} 주) 근무표가 발행되었습니다.`,
+          refId:     sched.id,
+          refType:   'shift_schedule' as any,
+        }).catch(() => {}),
+      ),
     );
-    for (const n of notifs) await this.notifRepo.save(n);
 
     return { success: true, data: { id, notifiedCount: userIds.length } };
   }

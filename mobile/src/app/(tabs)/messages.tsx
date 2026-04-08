@@ -3,33 +3,36 @@ import {
   View, Text, FlatList, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { getSocket, disconnectSocket } from '@/lib/socket';
 import { useAuthStore } from '@/store/auth.store';
-import type { Socket } from 'socket.io-client';
 
 interface Channel {
   id: string;
   name: string;
-  is_private: boolean;
-  unread_count: number;
+  type: 'general' | 'announcement' | 'group' | 'direct';
+  unreadCount: number;
 }
 
 interface Message {
   id: string;
   content: string;
-  sender_id: string;
-  sender_name: string;
-  created_at: string;
+  deletedAt: string | null;
+  isEdited: boolean;
+  user: { id: string; name: string };
+  createdAt: string;
+  confirmedByMe?: boolean;
+  confirmedCount?: number;
+  totalCount?: number;
 }
 
-// 채널 목록 화면
+// ─── 채널 목록 ────────────────────────────────────────────────────────────────
 function ChannelList({ onSelect }: { onSelect: (ch: Channel) => void }) {
   const { data, isLoading } = useQuery({
     queryKey: ['channels'],
     queryFn: async () => {
-      const res = await api.get('/collaboration/channels');
+      const res = await api.get('/channels');
       return res.data.data as Channel[];
     },
   });
@@ -44,15 +47,18 @@ function ChannelList({ onSelect }: { onSelect: (ch: Channel) => void }) {
       ListEmptyComponent={<Text style={styles.emptyText}>참여 중인 채널이 없습니다.</Text>}
       renderItem={({ item }) => (
         <TouchableOpacity style={styles.channelItem} onPress={() => onSelect(item)}>
-          <View style={styles.channelIcon}>
-            <Text style={styles.channelIconText}>{item.is_private ? '🔒' : '#'}</Text>
+          <View style={[styles.channelIcon, item.type === 'announcement' && styles.channelIconAnnounce]}>
+            <Text style={styles.channelIconText}>{item.type === 'announcement' ? '📢' : '#'}</Text>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.channelName}>{item.name}</Text>
+            {item.type === 'announcement' && (
+              <Text style={styles.channelTypeBadge}>공지</Text>
+            )}
           </View>
-          {item.unread_count > 0 && (
+          {item.unreadCount > 0 && (
             <View style={styles.unreadBadge}>
-              <Text style={styles.unreadText}>{item.unread_count}</Text>
+              <Text style={styles.unreadText}>{item.unreadCount > 9 ? '9+' : item.unreadCount}</Text>
             </View>
           )}
         </TouchableOpacity>
@@ -61,72 +67,132 @@ function ChannelList({ onSelect }: { onSelect: (ch: Channel) => void }) {
   );
 }
 
-// 채팅방 화면
+// ─── 채팅방 ───────────────────────────────────────────────────────────────────
 function ChatRoom({ channel, onBack }: { channel: Channel; onBack: () => void }) {
   const user = useAuthStore((s) => s.user);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const qc = useQueryClient();
   const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(true);
-  const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<FlatList>(null);
 
+  const isAnnouncement = channel.type === 'announcement';
+
+  const { data: messagesData, isLoading } = useQuery({
+    queryKey: ['messages', channel.id],
+    queryFn: async () => {
+      const res = await api.get(`/channels/${channel.id}/messages`, { params: { limit: 50 } });
+      return res.data as { messages: Message[] };
+    },
+  });
+
+  const messages: Message[] = messagesData?.messages ?? [];
+
+  // 소켓 실시간
   useEffect(() => {
-    let mounted = true;
+    const token = typeof window !== 'undefined' ? localStorage?.getItem?.('access_token') : null;
+    if (!token) return;
 
-    // 과거 메시지 로드
-    api.get(`/collaboration/channels/${channel.id}/messages?limit=50`)
-      .then((res) => {
-        if (mounted) {
-          setMessages((res.data.data as Message[]).reverse());
-          setLoading(false);
-        }
-      })
-      .catch(() => setLoading(false));
+    let socket: any;
+    getSocket(token).then?.((sock: any) => {
+      socket = sock;
+      sock.emit('channel:join', { channelId: channel.id });
 
-    // 소켓 연결 및 채널 입장
-    getSocket().then((sock) => {
-      if (!mounted) return;
-      socketRef.current = sock;
-      sock.emit('join_channel', { channelId: channel.id });
-
-      sock.on('new_message', (msg: Message) => {
-        if (mounted) setMessages((prev) => [...prev, msg]);
+      sock.on('message:new', (msg: Message) => {
+        qc.setQueryData(['messages', channel.id], (old: any) => {
+          if (!old) return old;
+          const exists = old.messages?.some((m: Message) => m.id === msg.id);
+          if (exists) return old;
+          return { ...old, messages: [...(old.messages ?? []), msg] };
+        });
       });
-    });
+
+      sock.on('message:confirmed', (payload: any) => {
+        qc.setQueryData(['messages', channel.id], (old: any) => {
+          if (!old) return old;
+          return {
+            ...old,
+            messages: old.messages?.map((m: Message) =>
+              m.id === payload.messageId
+                ? { ...m, confirmedCount: payload.confirmedCount, totalCount: payload.totalCount }
+                : m,
+            ),
+          };
+        });
+      });
+    }).catch?.(() => {});
 
     return () => {
-      mounted = false;
-      socketRef.current?.emit('leave_channel', { channelId: channel.id });
-      socketRef.current?.off('new_message');
+      socket?.emit('channel:leave', { channelId: channel.id });
+      socket?.off('message:new');
+      socket?.off('message:confirmed');
     };
   }, [channel.id]);
 
-  const sendMessage = () => {
-    const text = input.trim();
-    if (!text || !socketRef.current) return;
+  // 읽음 처리
+  useEffect(() => {
+    if (messages.length) {
+      api.post(`/channels/${channel.id}/read`, {
+        last_read_message_id: messages[messages.length - 1].id,
+      }).catch(() => {});
+    }
+  }, [messages.length]);
 
-    socketRef.current.emit('send_message', {
-      channelId: channel.id,
-      content: text,
-    });
-    setInput('');
-  };
+  const sendMut = useMutation({
+    mutationFn: (content: string) =>
+      api.post(`/channels/${channel.id}/messages`, { content }),
+    onSuccess: () => {
+      setInput('');
+      qc.invalidateQueries({ queryKey: ['messages', channel.id] });
+    },
+  });
+
+  const confirmMut = useMutation({
+    mutationFn: (messageId: string) =>
+      api.post(`/channels/${channel.id}/messages/${messageId}/confirm`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['messages', channel.id] });
+      qc.invalidateQueries({ queryKey: ['unconfirmed-announcements'] });
+    },
+  });
 
   const renderMessage = ({ item }: { item: Message }) => {
-    const isMe = item.sender_id === user?.id;
+    const isMe = item.user.id === user?.id;
     return (
       <View style={[styles.msgRow, isMe && styles.msgRowMe]}>
         {!isMe && (
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{item.sender_name[0]}</Text>
+            <Text style={styles.avatarText}>{item.user.name[0]}</Text>
           </View>
         )}
-        <View style={[styles.msgBubble, isMe && styles.msgBubbleMe]}>
-          {!isMe && <Text style={styles.msgSender}>{item.sender_name}</Text>}
-          <Text style={[styles.msgContent, isMe && styles.msgContentMe]}>{item.content}</Text>
-          <Text style={[styles.msgTime, isMe && styles.msgTimeMe]}>
-            {new Date(item.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-          </Text>
+        <View style={{ maxWidth: '75%', alignItems: isMe ? 'flex-end' : 'flex-start' }}>
+          {!isMe && <Text style={styles.msgSender}>{item.user.name}</Text>}
+          <View style={[styles.msgBubble, isMe && styles.msgBubbleMe]}>
+            <Text style={[styles.msgContent, isMe && styles.msgContentMe]}>
+              {item.deletedAt ? '삭제된 메시지입니다.' : item.content}
+            </Text>
+          </View>
+          <View style={[styles.msgMeta, isMe && styles.msgMetaMe]}>
+            <Text style={styles.msgTime}>
+              {new Date(item.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+            {/* 공지 확인 버튼 */}
+            {isAnnouncement && !item.deletedAt && !isMe && !item.confirmedByMe && (
+              <TouchableOpacity
+                style={styles.confirmBtn}
+                onPress={() => confirmMut.mutate(item.id)}
+                disabled={confirmMut.isPending}
+              >
+                <Text style={styles.confirmBtnText}>✅ 확인</Text>
+              </TouchableOpacity>
+            )}
+            {isAnnouncement && !item.deletedAt && !isMe && item.confirmedByMe && (
+              <Text style={styles.confirmedText}>✅ 확인됨</Text>
+            )}
+            {isAnnouncement && !item.deletedAt && isMe && item.confirmedCount !== undefined && (
+              <Text style={styles.readCountText}>
+                {item.confirmedCount}/{item.totalCount}명 확인
+              </Text>
+            )}
+          </View>
         </View>
       </View>
     );
@@ -138,15 +204,16 @@ function ChatRoom({ channel, onBack }: { channel: Channel; onBack: () => void })
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={90}
     >
-      {/* 헤더 */}
       <View style={styles.chatHeader}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>← 채널</Text>
+          <Text style={styles.backBtnText}>‹ 채널</Text>
         </TouchableOpacity>
-        <Text style={styles.chatTitle}># {channel.name}</Text>
+        <Text style={styles.chatTitle}>
+          {isAnnouncement ? '📢 ' : '# '}{channel.name}
+        </Text>
       </View>
 
-      {loading ? (
+      {isLoading ? (
         <ActivityIndicator color="#2563EB" style={{ marginTop: 40 }} />
       ) : (
         <FlatList
@@ -156,39 +223,45 @@ function ChatRoom({ channel, onBack }: { channel: Channel; onBack: () => void })
           renderItem={renderMessage}
           contentContainerStyle={styles.msgList}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+          ListEmptyComponent={<Text style={styles.emptyText}>첫 메시지를 보내보세요.</Text>}
         />
       )}
 
-      {/* 입력창 */}
-      <View style={styles.inputRow}>
-        <TextInput
-          style={styles.chatInput}
-          value={input}
-          onChangeText={setInput}
-          placeholder="메시지 입력..."
-          placeholderTextColor="#9CA3AF"
-          multiline
-          maxLength={2000}
-        />
-        <TouchableOpacity
-          style={[styles.sendBtn, !input.trim() && styles.sendBtnDisabled]}
-          onPress={sendMessage}
-          disabled={!input.trim()}
-        >
-          <Text style={styles.sendBtnText}>전송</Text>
-        </TouchableOpacity>
-      </View>
+      {/* 공지 채널: 일반직원 읽기 전용 표시 */}
+      {isAnnouncement && user?.role === 'employee' ? (
+        <View style={styles.readOnlyBar}>
+          <Text style={styles.readOnlyText}>📢 공지 채널은 읽기 전용입니다.</Text>
+        </View>
+      ) : (
+        <View style={styles.inputRow}>
+          <TextInput
+            style={styles.chatInput}
+            value={input}
+            onChangeText={setInput}
+            placeholder="메시지 입력..."
+            placeholderTextColor="#9CA3AF"
+            multiline
+            maxLength={2000}
+          />
+          <TouchableOpacity
+            style={[styles.sendBtn, !input.trim() && styles.sendBtnDisabled]}
+            onPress={() => { if (input.trim()) sendMut.mutate(input.trim()); }}
+            disabled={!input.trim() || sendMut.isPending}
+          >
+            <Text style={styles.sendBtnText}>전송</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
 
+// ─── 메인 ────────────────────────────────────────────────────────────────────
 export default function MessagesScreen() {
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
 
   useEffect(() => {
-    return () => {
-      disconnectSocket(); // 메시지 탭 이탈 시 소켓 정리
-    };
+    return () => { disconnectSocket(); };
   }, []);
 
   if (selectedChannel) {
@@ -207,7 +280,11 @@ export default function MessagesScreen() {
   );
 }
 
+// ─── 스타일 ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  emptyText: { textAlign: 'center', color: '#9CA3AF', marginTop: 40 },
+
+  // 채널 목록
   channelItem: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -219,99 +296,111 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   channelIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 36, height: 36, borderRadius: 10,
     backgroundColor: '#EFF6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
+  channelIconAnnounce: { backgroundColor: '#FFF7ED' },
   channelIconText: { fontSize: 16 },
-  channelName: { fontSize: 15, fontWeight: '600', color: '#111827' },
+  channelName: { fontSize: 14, fontWeight: '600', color: '#111827' },
+  channelTypeBadge: { fontSize: 11, color: '#C2410C', marginTop: 1 },
   unreadBadge: {
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    minWidth: 22,
-    height: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
+    minWidth: 20, height: 20, borderRadius: 10,
+    backgroundColor: '#EF4444',
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
   },
-  unreadText: { fontSize: 11, fontWeight: '700', color: '#fff' },
-  emptyText: { textAlign: 'center', color: '#9CA3AF', paddingVertical: 40, fontSize: 14 },
+  unreadText: { fontSize: 11, color: '#fff', fontWeight: '700' },
+
+  // 채팅 헤더
   chatHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    height: 52,
     backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
-    gap: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    gap: 8,
   },
-  backBtn: { padding: 4 },
-  backBtnText: { fontSize: 14, color: '#2563EB', fontWeight: '600' },
-  chatTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },
+  backBtn: { padding: 6 },
+  backBtnText: { fontSize: 15, color: '#2563EB', fontWeight: '600' },
+  chatTitle: { fontSize: 15, fontWeight: '700', color: '#111827', flex: 1 },
+
+  // 메시지 목록
   msgList: { padding: 12, gap: 8 },
-  msgRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginBottom: 4 },
+  msgRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   msgRowMe: { flexDirection: 'row-reverse' },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#DBEAFE',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: '#2563EB',
+    alignItems: 'center', justifyContent: 'center',
   },
-  avatarText: { fontSize: 14, fontWeight: '700', color: '#2563EB' },
+  avatarText: { fontSize: 13, color: '#fff', fontWeight: '700' },
+  msgSender: { fontSize: 11, color: '#6B7280', marginBottom: 2, marginLeft: 2 },
   msgBubble: {
-    maxWidth: '75%',
     backgroundColor: '#fff',
-    borderRadius: 16,
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    padding: 10,
-    gap: 2,
+    borderWidth: 1, borderColor: '#E5E7EB',
+    borderRadius: 16, borderBottomLeftRadius: 4,
+    paddingHorizontal: 12, paddingVertical: 8,
   },
   msgBubbleMe: {
     backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 4,
-    borderColor: '#2563EB',
   },
-  msgSender: { fontSize: 11, fontWeight: '600', color: '#6B7280' },
   msgContent: { fontSize: 14, color: '#111827', lineHeight: 20 },
   msgContentMe: { color: '#fff' },
-  msgTime: { fontSize: 10, color: '#9CA3AF', alignSelf: 'flex-end' },
-  msgTimeMe: { color: '#BFDBFE' },
+  msgMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3, marginLeft: 2 },
+  msgMetaMe: { justifyContent: 'flex-end', marginLeft: 0, marginRight: 2 },
+  msgTime: { fontSize: 11, color: '#9CA3AF' },
+  confirmBtn: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1, borderColor: '#6EE7B7',
+    borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2,
+  },
+  confirmBtnText: { fontSize: 11, color: '#065F46', fontWeight: '600' },
+  confirmedText: { fontSize: 11, color: '#10B981' },
+  readCountText: { fontSize: 11, color: '#93C5FD' },
+
+  // 입력창
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 12,
+    gap: 8,
+    padding: 10,
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
-    gap: 8,
   },
   chatInput: {
     flex: 1,
     backgroundColor: '#F9FAFB',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#D1D5DB',
     borderRadius: 20,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 8,
     fontSize: 14,
     color: '#111827',
     maxHeight: 100,
   },
   sendBtn: {
     backgroundColor: '#2563EB',
-    borderRadius: 20,
+    borderRadius: 18,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 9,
   },
   sendBtnDisabled: { backgroundColor: '#BFDBFE' },
-  sendBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  sendBtnText: { fontSize: 13, color: '#fff', fontWeight: '700' },
+
+  // 읽기 전용 바
+  readOnlyBar: {
+    padding: 12,
+    backgroundColor: '#FFF7ED',
+    borderTopWidth: 1,
+    borderTopColor: '#FED7AA',
+    alignItems: 'center',
+  },
+  readOnlyText: { fontSize: 13, color: '#C2410C' },
 });

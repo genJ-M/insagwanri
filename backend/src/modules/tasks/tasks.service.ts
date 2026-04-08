@@ -11,6 +11,7 @@ import {
   RequestTimeAdjustDto, RespondTimeAdjustDto,
 } from './dto/tasks.dto';
 import { TASK_TEMPLATES, TASK_CATEGORIES } from './task-templates.constant';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class TasksService {
@@ -20,6 +21,8 @@ export class TasksService {
 
     @InjectRepository(TaskReport)
     private reportRepo: Repository<TaskReport>,
+
+    private notificationsService: NotificationsService,
   ) {}
 
   // ─────────────────────────────────────────
@@ -411,8 +414,18 @@ export class TasksService {
       timeAdjustRespondedAt: null,
     });
 
-    // TODO: 알림 발송 (task_time_adjust_request) — 지시자(creatorId)에게
-    // await this.notificationsService.push(task.creatorId, 'task_time_adjust_request', { taskId: id });
+    // 지시자(creator)에게 기한 조정 요청 알림
+    if (task.creatorId) {
+      this.notificationsService.dispatch({
+        userId:    task.creatorId,
+        companyId: currentUser.companyId,
+        type:      'task_time_adjust_request',
+        title:     '기한 조정 요청이 도착했습니다',
+        body:      `"${task.title}" 업무의 기한 조정 요청이 접수되었습니다.`,
+        refType:   'task',
+        refId:     id,
+      }).catch(() => {});
+    }
 
     return this.taskRepo.findOne({ where: { id } });
   }
@@ -448,9 +461,24 @@ export class TasksService {
 
     await this.taskRepo.update(id, updateData);
 
-    // TODO: 알림 발송 — 담당자(assigneeId)에게
-    // const notifType = dto.action === 'approved' ? 'task_time_adjust_approved' : 'task_time_adjust_rejected';
-    // await this.notificationsService.push(task.assigneeId, notifType, { taskId: id });
+    // 담당자에게 기한 조정 결과 알림
+    if (task.assigneeId) {
+      const notifType = dto.action === 'approved'
+        ? 'task_time_adjust_approved' as const
+        : 'task_time_adjust_rejected' as const;
+      const notifTitle = dto.action === 'approved'
+        ? '기한 조정이 승인되었습니다 ✅'
+        : '기한 조정이 반려되었습니다 ❌';
+      this.notificationsService.dispatch({
+        userId:    task.assigneeId,
+        companyId: currentUser.companyId,
+        type:      notifType,
+        title:     notifTitle,
+        body:      `"${task.title}" 업무의 기한 조정 요청이 ${dto.action === 'approved' ? '승인' : '반려'}되었습니다.`,
+        refType:   'task',
+        refId:     id,
+      }).catch(() => {});
+    }
 
     return this.taskRepo.findOne({ where: { id } });
   }

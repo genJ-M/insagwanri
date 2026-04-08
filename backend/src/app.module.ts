@@ -52,6 +52,7 @@ import { Schedule } from './database/entities/schedule.entity';
 import { Channel } from './database/entities/channel.entity';
 import { ChannelMember } from './database/entities/channel-member.entity';
 import { Message } from './database/entities/message.entity';
+import { MessageRead } from './database/entities/message-read.entity';
 import { AiRequest } from './database/entities/ai-request.entity';
 import { InviteToken } from './database/entities/invite-token.entity';
 import { EmailVerification } from './database/entities/email-verification.entity';
@@ -136,7 +137,7 @@ import { CustomTemplatesModule } from './modules/custom-templates/custom-templat
             AttendanceRecord,
             Task, TaskReport,
             Schedule,
-            Channel, ChannelMember, Message,
+            Channel, ChannelMember, Message, MessageRead,
             AiRequest,
             InviteToken,
             EmailVerification, PasswordResetToken,
