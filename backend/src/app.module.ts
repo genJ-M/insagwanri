@@ -90,6 +90,7 @@ import { EmployeeAvailability } from './database/entities/employee-availability.
 import { ShiftSchedule, ShiftAssignment } from './database/entities/shift-schedule.entity';
 import { ShiftScheduleModule } from './modules/shift-schedule/shift-schedule.module';
 import { CustomTemplatesModule } from './modules/custom-templates/custom-templates.module';
+import { InvitationsModule } from './modules/invitations/invitations.module';
 
 @Module({
   imports: [
@@ -227,6 +228,7 @@ import { CustomTemplatesModule } from './modules/custom-templates/custom-templat
     CreditModule,
     ShiftScheduleModule,
     CustomTemplatesModule,
+    InvitationsModule,
 
     // 활동 로그 (통신비밀보호법, 전역)
     ActivityLogModule,

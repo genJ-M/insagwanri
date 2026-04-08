@@ -50,6 +50,15 @@ export class EmailService {
     this.logger.log(`초대 이메일 발송: ${opts.to}`);
   }
 
+  async sendRaw(opts: { to: string; subject: string; html: string }) {
+    await this.emailQueue.add('send-email', {
+      templateName: 'raw',
+      to: opts.to,
+      subject: opts.subject,
+      html: opts.html,
+    });
+  }
+
   async sendPasswordReset(opts: {
     to: string;
     name: string;

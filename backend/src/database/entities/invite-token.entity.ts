@@ -82,6 +82,23 @@ export class InviteToken {
   @Column({ name: 'created_user_id', type: 'uuid', nullable: true })
   createdUserId: string | null;
 
+  // ─── 링크 종류 (link 타입 전용) ───────────────────────────────────────────
+  /** 'personal' = 1:1 개인 링크 (먼저 이메일 인증한 1명만 사용), 'group' = 다수 */
+  @Column({ name: 'link_kind', type: 'varchar', length: 10, default: 'group' })
+  linkKind: string;
+
+  /** 미리 지정할 부서 (선택) */
+  @Column({ type: 'varchar', length: 100, nullable: true, default: null })
+  department: string | null;
+
+  /** 미리 지정할 직책 (선택) */
+  @Column({ type: 'varchar', length: 100, nullable: true, default: null })
+  position: string | null;
+
+  /** 관리자용 내부 메모 */
+  @Column({ type: 'varchar', length: 500, nullable: true, default: null })
+  note: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

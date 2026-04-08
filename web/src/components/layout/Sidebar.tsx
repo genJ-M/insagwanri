@@ -7,7 +7,7 @@ import {
   Calendar, MessageSquare, Sparkles, LogOut,
   Users, Settings, Banknote, Umbrella, FilePen, FileSignature, Award,
   ClipboardCheck, BarChart2, GraduationCap, ChevronRight, ShieldCheck,
-  Pencil, CalendarDays, SlidersHorizontal,
+  Pencil, CalendarDays, SlidersHorizontal, Link2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useQuery } from '@tanstack/react-query';
@@ -97,7 +97,8 @@ const NAV: NavEntry[] = [
       { href: '/team/notes', icon: FileText,       label: '인사 노트', pageKey: '/team/notes', roles: ['owner', 'manager'] },
       { href: '/team/stats', icon: BarChart2,      label: '조직 통계', pageKey: '/team/stats', roles: ['owner', 'manager'] },
       { href: '/salary',     icon: Banknote,       label: '급여 관리', pageKey: '/salary',     roles: ['owner', 'manager'] },
-      { href: '/contracts',  icon: FileSignature,  label: '계약 관리', pageKey: '/contracts',  roles: ['owner', 'manager'] },
+      { href: '/contracts',    icon: FileSignature, label: '계약 관리',   pageKey: '/contracts',    roles: ['owner', 'manager'] },
+      { href: '/invitations',  icon: Link2,         label: '초대 링크',   pageKey: '/invitations',  roles: ['owner', 'manager'] },
     ],
   },
   {
