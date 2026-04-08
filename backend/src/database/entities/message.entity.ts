@@ -56,6 +56,22 @@ export class Message {
   @Column({ name: 'deleted_at', type: 'timestamptz', nullable: true })
   deletedAt: Date | null;
 
+  // ─── 공지 대상 설정 (announcement 채널 전용) ─────────────────────────────
+  @Column({ name: 'target_type', type: 'varchar', length: 20, default: 'all' })
+  targetType: string; // 'all' | 'department' | 'custom'
+
+  @Column({ name: 'target_department', type: 'varchar', length: 100, nullable: true })
+  targetDepartment: string | null;
+
+  @Column({ name: 'target_user_ids', type: 'jsonb', nullable: true })
+  targetUserIds: string[] | null;
+
+  @Column({ name: 'is_private_recipients', default: false })
+  isPrivateRecipients: boolean; // BCC 모드 (수신자 목록 비공개)
+
+  @Column({ name: 'linked_schedule_id', type: 'uuid', nullable: true })
+  linkedScheduleId: string | null;
+
   @ManyToOne(() => Company) @JoinColumn({ name: 'company_id' }) company: Company;
   @ManyToOne(() => Channel) @JoinColumn({ name: 'channel_id' }) channel: Channel;
   @ManyToOne(() => User)    @JoinColumn({ name: 'user_id' })    user: User;

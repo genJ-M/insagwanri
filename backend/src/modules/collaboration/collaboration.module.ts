@@ -8,10 +8,11 @@ import { ChannelMember } from '../../database/entities/channel-member.entity';
 import { Message } from '../../database/entities/message.entity';
 import { MessageRead } from '../../database/entities/message-read.entity';
 import { User } from '../../database/entities/user.entity';
+import { Schedule } from '../../database/entities/schedule.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Channel, ChannelMember, Message, MessageRead, User]),
+    TypeOrmModule.forFeature([Channel, ChannelMember, Message, MessageRead, User, Schedule]),
     SocketModule,
   ],
   controllers: [CollaborationController],

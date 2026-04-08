@@ -9,6 +9,7 @@ import { ChannelMember } from '../../database/entities/channel-member.entity';
 import { Message, ContentType } from '../../database/entities/message.entity';
 import { MessageRead } from '../../database/entities/message-read.entity';
 import { User } from '../../database/entities/user.entity';
+import { Schedule, ScheduleType } from '../../database/entities/schedule.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import {
   CreateChannelDto, SendMessageDto, EditMessageDto,
@@ -33,6 +34,9 @@ export class CollaborationService {
 
     @InjectRepository(User)
     private userRepo: Repository<User>,
+
+    @InjectRepository(Schedule)
+    private scheduleRepo: Repository<Schedule>,
 
     private dataSource: DataSource,
     private socketService: SocketService,
@@ -148,7 +152,7 @@ export class CollaborationService {
   }
 
   // ─────────────────────────────────────────
-  // 메시지 목록 (cursor 기반 페이지네이션)
+  // 메시지 목록 (cursor 기반 페이지네이션 + 대상 필터)
   // ─────────────────────────────────────────
   async getMessages(
     channelId: string,
@@ -156,6 +160,16 @@ export class CollaborationService {
     query: MessageQueryDto,
   ) {
     await this.assertChannelMember(channelId, currentUser);
+
+    const channel = await this.channelRepo.findOne({ where: { id: channelId } });
+    const isAnnouncement = channel?.type === ChannelType.ANNOUNCEMENT;
+
+    // 현재 사용자 부서 조회 (대상 필터링용)
+    let myDepartment: string | null = null;
+    if (isAnnouncement) {
+      const me = await this.userRepo.findOne({ where: { id: currentUser.id }, select: ['department'] });
+      myDepartment = me?.department ?? null;
+    }
 
     const { before, after, limit } = query;
     const take = Math.min(limit ?? 50, 100);
@@ -166,6 +180,18 @@ export class CollaborationService {
       .addSelect(['u.id', 'u.name', 'u.profileImageUrl'])
       .where('m.channel_id = :channelId', { channelId })
       .andWhere('m.deleted_at IS NULL');
+
+    // 공지 채널 대상 필터: 본인 발신 메세지는 항상 보임
+    if (isAnnouncement) {
+      qb.andWhere(
+        `(m.user_id = :me
+          OR m.target_type = 'all'
+          OR (m.target_type = 'department' AND m.target_department = :dept)
+          OR (m.target_type = 'custom' AND m.target_user_ids @> :uid::jsonb)
+        )`,
+        { me: currentUser.id, dept: myDepartment ?? '', uid: JSON.stringify([currentUser.id]) },
+      );
+    }
 
     if (before) {
       const pivot = await this.messageRepo.findOne({ where: { id: before } });
@@ -179,21 +205,55 @@ export class CollaborationService {
       qb.orderBy('m.created_at', 'DESC');
     }
 
-    qb.take(take + 1);   // +1로 다음 페이지 존재 여부 확인
-
+    qb.take(take + 1);
     const messages = await qb.getMany();
     const hasMore  = messages.length > take;
     if (hasMore) messages.pop();
-
-    // 최신순 정렬 통일
     messages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+    // 공지 채널: confirmedByMe + 전달률 부착
+    if (isAnnouncement && messages.length) {
+      const msgIds = messages.map((m) => m.id);
+
+      // 내가 확인한 메세지 ID 셋
+      const myReads = await this.readRepo
+        .createQueryBuilder('r')
+        .where('r.message_id IN (:...ids)', { ids: msgIds })
+        .andWhere('r.user_id = :uid', { uid: currentUser.id })
+        .getMany();
+      const myReadSet = new Set(myReads.map((r) => r.messageId));
+
+      // 메세지별 확인 수 (관리자만 의미 있음)
+      const counts = await this.readRepo
+        .createQueryBuilder('r')
+        .select('r.message_id', 'messageId')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('r.message_id IN (:...ids)', { ids: msgIds })
+        .groupBy('r.message_id')
+        .getRawMany() as { messageId: string; cnt: string }[];
+      const countMap = new Map(counts.map((c) => [c.messageId, parseInt(c.cnt, 10)]));
+
+      // 채널 멤버 수 (전달률 분모)
+      const totalMembers = await this.memberRepo.count({ where: { channelId } });
+
+      const isAdmin = currentUser.role !== UserRole.EMPLOYEE;
+
+      return {
+        messages: messages.map((m) => ({
+          ...m,
+          // BCC 모드이고 발신자가 아닌 경우 수신자 목록 숨김
+          targetUserIds: (m.isPrivateRecipients && m.userId !== currentUser.id) ? undefined : m.targetUserIds,
+          confirmedByMe:  myReadSet.has(m.id),
+          confirmedCount: isAdmin ? (countMap.get(m.id) ?? 0) : undefined,
+          totalCount:     isAdmin ? totalMembers : undefined,
+        })),
+        meta: { has_more: hasMore, next_cursor: hasMore ? messages[0]?.id : null },
+      };
+    }
 
     return {
       messages,
-      meta: {
-        has_more: hasMore,
-        next_cursor: hasMore ? messages[0]?.id : null,
-      },
+      meta: { has_more: hasMore, next_cursor: hasMore ? messages[0]?.id : null },
     };
   }
 
@@ -224,16 +284,41 @@ export class CollaborationService {
       if (!parent) throw new NotFoundException('원본 메시지를 찾을 수 없습니다.');
     }
 
+    // 캘린더 이벤트 먼저 생성 (ID가 필요하므로)
+    let linkedScheduleId: string | null = null;
+    if (dto.schedule_event && channel?.type === ChannelType.ANNOUNCEMENT) {
+      const ev = dto.schedule_event;
+      const sched = this.scheduleRepo.create({
+        companyId:    currentUser.companyId,
+        creatorId:    currentUser.id,
+        title:        ev.title,
+        description:  dto.content.substring(0, 500),
+        location:     ev.location ?? null,
+        startAt:      new Date(ev.start_at),
+        endAt:        new Date(ev.end_at),
+        isAllDay:     ev.is_all_day ?? false,
+        type:         ScheduleType.GENERAL,
+        targetUserId: null, // 공지 대상 범위에 따라 전체 공개
+      });
+      const savedSched = await this.scheduleRepo.save(sched);
+      linkedScheduleId = savedSched.id;
+    }
+
     const message = this.messageRepo.create({
-      companyId:       currentUser.companyId,
+      companyId:            currentUser.companyId,
       channelId,
-      userId:          currentUser.id,
-      content:         dto.content,
-      contentType:     (dto.content_type as ContentType) ?? ContentType.TEXT,
-      parentMessageId: dto.parent_message_id ?? null,
-      attachmentUrl:   dto.attachment_url ?? null,
-      attachmentName:  dto.attachment_name ?? null,
-      attachmentSize:  dto.attachment_size ?? null,
+      userId:               currentUser.id,
+      content:              dto.content,
+      contentType:          (dto.content_type as ContentType) ?? ContentType.TEXT,
+      parentMessageId:      dto.parent_message_id ?? null,
+      attachmentUrl:        dto.attachment_url ?? null,
+      attachmentName:       dto.attachment_name ?? null,
+      attachmentSize:       dto.attachment_size ?? null,
+      targetType:           dto.target_type ?? 'all',
+      targetDepartment:     dto.target_department ?? null,
+      targetUserIds:        dto.target_user_ids ?? null,
+      isPrivateRecipients:  dto.is_private_recipients ?? false,
+      linkedScheduleId,
     });
 
     const saved = await this.messageRepo.save(message) as Message;
@@ -245,21 +330,25 @@ export class CollaborationService {
 
     // DB 저장 성공 후 소켓 이벤트 발행
     this.socketService.emitToChannel(channelId, 'message:new', {
-      id:               full!.id,
-      channelId:        full!.channelId,
+      id:                   full!.id,
+      channelId:            full!.channelId,
       user: {
-        id:             full!.user?.id,
-        name:           full!.user?.name,
-        profileImageUrl: full!.user?.profileImageUrl,
+        id:                 full!.user?.id,
+        name:               full!.user?.name,
+        profileImageUrl:    full!.user?.profileImageUrl,
       },
-      content:          full!.content,
-      contentType:      full!.contentType,
-      attachmentUrl:    full!.attachmentUrl,
-      attachmentName:   full!.attachmentName,
-      attachmentSize:   full!.attachmentSize,
-      parentMessageId:  full!.parentMessageId,
-      isEdited:         full!.isEdited,
-      createdAt:        full!.createdAt,
+      content:              full!.content,
+      contentType:          full!.contentType,
+      attachmentUrl:        full!.attachmentUrl,
+      attachmentName:       full!.attachmentName,
+      attachmentSize:       full!.attachmentSize,
+      parentMessageId:      full!.parentMessageId,
+      isEdited:             full!.isEdited,
+      targetType:           full!.targetType,
+      targetDepartment:     full!.targetDepartment,
+      isPrivateRecipients:  full!.isPrivateRecipients,
+      linkedScheduleId:     full!.linkedScheduleId,
+      createdAt:            full!.createdAt,
     });
 
     return full;

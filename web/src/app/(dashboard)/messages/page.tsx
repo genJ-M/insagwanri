@@ -3,7 +3,7 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { Send, Hash, Megaphone, MessageSquare, Plus, Pencil, Trash2, Check, X, ChevronLeft, CheckCheck, Users } from 'lucide-react';
+import { Send, Hash, Megaphone, MessageSquare, Plus, Pencil, Trash2, Check, X, ChevronLeft, CheckCheck, Users, Sparkles, Loader2, Calendar, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
@@ -12,6 +12,373 @@ import { getSocket, disconnectSocket } from '@/lib/socket';
 import { useAuthStore } from '@/store/auth.store';
 import { Channel, Message, MessageRead } from '@/types';
 import { clsx } from 'clsx';
+
+// ─── 공지 템플릿 ──────────────────────────────────────────────────────────────
+const ANNOUNCE_TEMPLATES = [
+  { id: 'meeting',     icon: '📅', name: '회의/일정',   aiType: 'meeting',     placeholder: '예: 3월 16일 월요일 오전 10시, 2층 회의실, 전체 주간 회의' },
+  { id: 'policy',      icon: '📋', name: '정책/지침',   aiType: 'policy',      placeholder: '예: 4월부터 재택근무 신청 방식 변경, 월 2회 → 주 1회 한도' },
+  { id: 'event',       icon: '🎉', name: '행사/이벤트', aiType: 'event',       placeholder: '예: 4월 20일 창립기념일 행사, 점심 식사 제공, 오후 반차' },
+  { id: 'urgent',      icon: '🚨', name: '긴급 공지',   aiType: 'urgent',      placeholder: '예: 오늘 오후 3시 이후 전기 공사, 사무실 전기 차단' },
+  { id: 'maintenance', icon: '🔧', name: '시설/공사',   aiType: 'maintenance', placeholder: '예: 화요일 오전 9~11시 엘리베이터 점검, 계단 이용 요망' },
+  { id: 'reminder',    icon: '🔔', name: '업무 리마인더', aiType: 'reminder',  placeholder: '예: 이번 주 금요일까지 경비처리 완료 요청' },
+  { id: 'general',     icon: '✏️', name: '자유 작성',   aiType: 'general',     placeholder: '공지 내용을 직접 작성하거나, 핵심 내용을 입력하고 AI 초안을 받아보세요.' },
+];
+
+// ─── 공지 작성 모달 ───────────────────────────────────────────────────────────
+function AnnouncementComposerModal({
+  open, onClose, channelId,
+}: {
+  open: boolean; onClose: () => void; channelId: string;
+}) {
+  const queryClient = useQueryClient();
+  const [step, setStep] = useState<'content' | 'target' | 'calendar'>('content');
+  const [template, setTemplate]       = useState(ANNOUNCE_TEMPLATES[0]);
+  const [keyPoints, setKeyPoints]     = useState('');
+  const [content, setContent]         = useState('');
+  const [aiLoading, setAiLoading]     = useState(false);
+  const [targetType, setTargetType]   = useState<'all' | 'department' | 'custom'>('all');
+  const [targetDept, setTargetDept]   = useState('');
+  const [targetUsers, setTargetUsers] = useState<string[]>([]);
+  const [isPrivate, setIsPrivate]     = useState(false);
+  const [withCalendar, setWithCalendar] = useState(false);
+  const [calTitle, setCalTitle]       = useState('');
+  const [calStart, setCalStart]       = useState('');
+  const [calEnd, setCalEnd]           = useState('');
+  const [calAllDay, setCalAllDay]     = useState(false);
+
+  // 직원 목록 (직접 선택용)
+  const { data: users = [] } = useQuery({
+    queryKey: ['users-for-announce'],
+    queryFn: () => api.get('/users').then(r => r.data.data as any[]),
+    enabled: open,
+  });
+
+  const departments = [...new Set(users.map((u: any) => u.department).filter(Boolean))] as string[];
+
+  const sendMut = useMutation({
+    mutationFn: () => {
+      const body: any = {
+        content,
+        target_type: targetType,
+        is_private_recipients: isPrivate && targetType !== 'all',
+      };
+      if (targetType === 'department') body.target_department = targetDept;
+      if (targetType === 'custom') body.target_user_ids = targetUsers;
+      if (withCalendar && calStart && calEnd) {
+        body.schedule_event = {
+          title: calTitle || content.substring(0, 50),
+          start_at: calStart,
+          end_at: calEnd,
+          is_all_day: calAllDay,
+        };
+      }
+      return api.post(`/channels/${channelId}/messages`, body);
+    },
+    onSuccess: () => {
+      toast.success('공지가 발송되었습니다.');
+      queryClient.invalidateQueries({ queryKey: ['messages', channelId] });
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+      handleClose();
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? '발송에 실패했습니다.'),
+  });
+
+  const handleAiDraft = async () => {
+    if (!keyPoints.trim()) { toast.error('핵심 내용을 먼저 입력해주세요.'); return; }
+    setAiLoading(true);
+    try {
+      const { data } = await api.post('/ai/announcement', {
+        input_text: keyPoints,
+        tone: 'formal',
+        announcement_type: template.aiType,
+      });
+      setContent(data.data.output_text);
+      toast.success('AI 초안이 생성되었습니다.');
+    } catch {
+      toast.error('AI 초안 생성에 실패했습니다.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleClose = () => {
+    setStep('content'); setKeyPoints(''); setContent('');
+    setTargetType('all'); setTargetDept(''); setTargetUsers([]);
+    setIsPrivate(false); setWithCalendar(false);
+    setCalTitle(''); setCalStart(''); setCalEnd(''); setCalAllDay(false);
+    onClose();
+  };
+
+  const toggleUser = (id: string) =>
+    setTargetUsers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const canSend = content.trim().length > 0 &&
+    (targetType !== 'department' || targetDept) &&
+    (targetType !== 'custom' || targetUsers.length > 0);
+
+  const STEPS = ['content', 'target', 'calendar'] as const;
+  const stepIdx = STEPS.indexOf(step);
+
+  return (
+    <Modal open={open} onClose={handleClose} title="📢 공지 작성" size="lg">
+      {/* 스텝 인디케이터 */}
+      <div className="flex gap-1 mb-5">
+        {(['내용 작성', '발송 대상', '캘린더 연동'] as const).map((label, i) => (
+          <button
+            key={i}
+            onClick={() => setStep(STEPS[i])}
+            className={clsx(
+              'flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors',
+              i === stepIdx
+                ? 'bg-primary-500 text-white'
+                : i < stepIdx
+                  ? 'bg-primary-100 text-primary-600'
+                  : 'bg-background text-text-muted',
+            )}
+          >
+            {i + 1}. {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── STEP 1: 내용 ─────────────────────────────────────────────────── */}
+      {step === 'content' && (
+        <div className="space-y-4">
+          {/* 템플릿 선택 */}
+          <div>
+            <label className="label mb-1.5">템플릿</label>
+            <div className="flex gap-2 flex-wrap">
+              {ANNOUNCE_TEMPLATES.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTemplate(t)}
+                  className={clsx(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
+                    template.id === t.id
+                      ? 'bg-primary-500 border-primary-500 text-white'
+                      : 'bg-white border-border text-text-secondary hover:border-primary-300',
+                  )}
+                >
+                  <span>{t.icon}</span> {t.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 핵심 내용 입력 + AI 초안 */}
+          <div>
+            <label className="label mb-1.5">핵심 내용 (AI 초안용)</label>
+            <div className="flex gap-2">
+              <textarea
+                value={keyPoints}
+                onChange={(e) => setKeyPoints(e.target.value)}
+                placeholder={template.placeholder}
+                rows={2}
+                className="input flex-1 resize-none text-sm"
+              />
+              <button
+                onClick={handleAiDraft}
+                disabled={aiLoading || !keyPoints.trim()}
+                className="flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-xl border border-primary-300 bg-primary-50 text-primary-600 hover:bg-primary-100 disabled:opacity-40 transition-colors text-xs font-medium flex-shrink-0 w-20"
+              >
+                {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                AI 초안
+              </button>
+            </div>
+          </div>
+
+          {/* 공지 내용 */}
+          <div>
+            <label className="label mb-1.5">공지 내용 *</label>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="공지 내용을 직접 입력하거나 위의 AI 초안 기능을 사용하세요."
+              rows={7}
+              className="input w-full resize-none text-sm"
+            />
+            <p className="text-xs text-text-muted mt-1 text-right">{content.length}자</p>
+          </div>
+
+          <div className="flex justify-end">
+            <Button onClick={() => setStep('target')} disabled={!content.trim()}>
+              다음: 발송 대상 →
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── STEP 2: 발송 대상 ──────────────────────────────────────────────── */}
+      {step === 'target' && (
+        <div className="space-y-4">
+          <div>
+            <label className="label mb-2">발송 대상</label>
+            <div className="flex gap-3">
+              {(['all', 'department', 'custom'] as const).map((t) => (
+                <label key={t} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    checked={targetType === t}
+                    onChange={() => { setTargetType(t); setIsPrivate(false); }}
+                    className="accent-primary-500"
+                  />
+                  <span className="text-sm text-text-primary">
+                    {t === 'all' ? '전체 직원' : t === 'department' ? '부서별' : '직접 선택'}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* 부서 선택 */}
+          {targetType === 'department' && (
+            <div>
+              <label className="label mb-1.5">부서 선택 *</label>
+              <select value={targetDept} onChange={(e) => setTargetDept(e.target.value)} className="input">
+                <option value="">부서 선택...</option>
+                {departments.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* 직접 선택 */}
+          {targetType === 'custom' && (
+            <div>
+              <label className="label mb-1.5">수신자 선택 * ({targetUsers.length}명 선택됨)</label>
+              <div className="border border-border rounded-xl overflow-hidden max-h-52 overflow-y-auto">
+                {users.map((u: any) => (
+                  <label
+                    key={u.id}
+                    className="flex items-center gap-3 px-3 py-2 hover:bg-background cursor-pointer border-b border-border last:border-0"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={targetUsers.includes(u.id)}
+                      onChange={() => toggleUser(u.id)}
+                      className="accent-primary-500"
+                    />
+                    <div className="h-7 w-7 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                      {u.name?.[0]}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-text-primary">{u.name}</p>
+                      <p className="text-xs text-text-muted">{u.department} · {u.position}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* BCC 모드 (전체 아닌 경우에만) */}
+          {targetType !== 'all' && (
+            <label className="flex items-center gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isPrivate}
+                onChange={(e) => setIsPrivate(e.target.checked)}
+                className="accent-amber-500"
+              />
+              <div>
+                <p className="text-sm font-medium text-amber-800">비공개 발송 (BCC 모드)</p>
+                <p className="text-xs text-amber-600">수신자가 다른 수신자를 볼 수 없습니다. 개별 발송처럼 보입니다.</p>
+              </div>
+            </label>
+          )}
+
+          <div className="flex justify-between">
+            <Button variant="secondary" onClick={() => setStep('content')}>← 이전</Button>
+            <Button onClick={() => setStep('calendar')} disabled={
+              (targetType === 'department' && !targetDept) ||
+              (targetType === 'custom' && targetUsers.length === 0)
+            }>
+              다음: 캘린더 연동 →
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── STEP 3: 캘린더 연동 ────────────────────────────────────────────── */}
+      {step === 'calendar' && (
+        <div className="space-y-4">
+          <label className="flex items-center gap-3 p-3 rounded-xl bg-background border border-border cursor-pointer">
+            <input
+              type="checkbox"
+              checked={withCalendar}
+              onChange={(e) => setWithCalendar(e.target.checked)}
+              className="accent-primary-500 h-4 w-4"
+            />
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-primary-500" />
+              <div>
+                <p className="text-sm font-medium text-text-primary">캘린더에 일정 등록</p>
+                <p className="text-xs text-text-muted">공지와 함께 팀 캘린더에 자동 추가됩니다.</p>
+              </div>
+            </div>
+          </label>
+
+          {withCalendar && (
+            <div className="space-y-3 p-3 rounded-xl border border-border bg-background">
+              <div>
+                <label className="label mb-1">일정 제목</label>
+                <input
+                  value={calTitle}
+                  onChange={(e) => setCalTitle(e.target.value)}
+                  placeholder={content.substring(0, 40) || '일정 제목'}
+                  className="input text-sm"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={calAllDay} onChange={(e) => setCalAllDay(e.target.checked)} className="accent-primary-500" />
+                종일
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label mb-1">시작 *</label>
+                  <input
+                    type={calAllDay ? 'date' : 'datetime-local'}
+                    value={calStart}
+                    onChange={(e) => setCalStart(e.target.value)}
+                    className="input text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="label mb-1">종료 *</label>
+                  <input
+                    type={calAllDay ? 'date' : 'datetime-local'}
+                    value={calEnd}
+                    onChange={(e) => setCalEnd(e.target.value)}
+                    className="input text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 발송 요약 */}
+          <div className="p-3 rounded-xl bg-primary-50 border border-primary-100 text-xs text-primary-700 space-y-1">
+            <p className="font-semibold text-primary-800">발송 요약</p>
+            <p>대상: {targetType === 'all' ? '전체 직원' : targetType === 'department' ? `${targetDept} 부서` : `${targetUsers.length}명`}
+              {isPrivate && targetType !== 'all' && ' · 비공개 발송'}
+            </p>
+            {withCalendar && calStart && <p>캘린더: {calTitle || content.substring(0, 30)} ({calStart})</p>}
+          </div>
+
+          <div className="flex justify-between">
+            <Button variant="secondary" onClick={() => setStep('target')}>← 이전</Button>
+            <Button
+              loading={sendMut.isPending}
+              disabled={!canSend || (withCalendar && (!calStart || !calEnd))}
+              onClick={() => sendMut.mutate()}
+            >
+              공지 발송
+            </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
 
 const CHANNEL_ICONS: Record<string, any> = {
   announcement: Megaphone,
@@ -312,7 +679,20 @@ function MessageBubble({
           <p className="text-xs text-text-muted">
             {format(new Date(message.createdAt), 'HH:mm')}
           </p>
-          {/* 공지 채널 확인 UI */}
+          {/* 공지 대상 배지 (발신자 뷰 전용) */}
+          {isAnnouncement && isMine && message.targetType && message.targetType !== 'all' && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+              {message.isPrivateRecipients ? '🔒 비공개 ' : ''}
+              {message.targetType === 'department' ? `${message.targetDepartment} 부서` : `${message.targetUserIds?.length ?? 0}명`}
+            </span>
+          )}
+          {/* 캘린더 연동 배지 */}
+          {isAnnouncement && message.linkedScheduleId && (
+            <span className="text-xs text-primary-500 flex items-center gap-0.5">
+              <Calendar className="h-3 w-3" /> 일정 등록됨
+            </span>
+          )}
+        {/* 공지 채널 확인 UI */}
           {isAnnouncement && !message.deletedAt && (
             <>
               {isAdmin && message.confirmedCount !== undefined && (
@@ -495,6 +875,7 @@ export default function MessagesPage() {
   const activeChannel = channels.find((c) => c.id === activeChannelId);
   const isAnnouncement = activeChannel?.type === 'announcement';
   const isAdmin = user?.role === 'owner' || user?.role === 'manager';
+  const [showComposer, setShowComposer] = useState(false);
 
   // 모바일: 채널 목록 / 채팅 전환 (activeChannelId 있으면 채팅 표시)
   const [showChannelList, setShowChannelList] = useState(false);
@@ -576,7 +957,17 @@ export default function MessagesPage() {
                   const Icon = CHANNEL_ICONS[activeChannel.type] ?? Hash;
                   return <Icon className="h-5 w-5 text-text-muted" />;
                 })()}
-                <span className="font-semibold text-text-primary">{activeChannel.name}</span>
+                <span className="font-semibold text-text-primary flex-1">{activeChannel.name}</span>
+                {/* 공지 채널: 관리자 전용 작성 버튼 */}
+                {isAnnouncement && isAdmin && (
+                  <button
+                    onClick={() => setShowComposer(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-500 text-white text-xs font-medium hover:bg-primary-600 transition-colors"
+                  >
+                    <Megaphone className="h-3.5 w-3.5" />
+                    공지 작성
+                  </button>
+                )}
               </div>
             )}
 
@@ -626,6 +1017,14 @@ export default function MessagesPage() {
       </div>
 
       <CreateChannelModal open={showCreateChannel} onClose={() => setShowCreateChannel(false)} />
+
+      {activeChannelId && (
+        <AnnouncementComposerModal
+          open={showComposer}
+          onClose={() => setShowComposer(false)}
+          channelId={activeChannelId}
+        />
+      )}
     </div>
   );
 }

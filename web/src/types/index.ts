@@ -147,9 +147,16 @@ export interface Message {
   deletedAt: string | null;
   user: { id: string; name: string; profileImageUrl: string | null };
   createdAt: string;
+  // 공지 확인
   confirmedCount?: number;
   totalCount?: number;
   confirmedByMe?: boolean;
+  // 공지 대상
+  targetType?: 'all' | 'department' | 'custom';
+  targetDepartment?: string | null;
+  targetUserIds?: string[] | null;
+  isPrivateRecipients?: boolean;
+  linkedScheduleId?: string | null;
 }
 
 export interface MessageRead {
