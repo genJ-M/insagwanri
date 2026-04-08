@@ -7,7 +7,7 @@ import {
   Calendar, MessageSquare, Sparkles, LogOut,
   Users, Settings, Banknote, Umbrella, FilePen, FileSignature, Award,
   ClipboardCheck, BarChart2, GraduationCap, ChevronRight, ShieldCheck,
-  Pencil, CalendarDays,
+  Pencil, CalendarDays, SlidersHorizontal,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useQuery } from '@tanstack/react-query';
@@ -21,8 +21,9 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   exact?: boolean;
-  matchPattern?: RegExp;   // 커스텀 활성 매칭 (siblings 충돌 방지용)
+  matchPattern?: RegExp;
   roles?: string[] | null;
+  pageKey?: string; // 가시성 설정 키 (없으면 항상 표시)
 }
 
 interface NavGroup {
@@ -41,6 +42,7 @@ interface NavSingle {
   icon: React.ComponentType<{ className?: string }>;
   exact?: boolean;
   roles?: string[] | null;
+  pageKey?: string;
 }
 
 type NavEntry = NavGroup | NavSingle;
@@ -60,9 +62,9 @@ const NAV: NavEntry[] = [
     label: '근태 관리',
     icon: Clock,
     items: [
-      { href: '/attendance', icon: Clock,     label: '출퇴근' },
-      { href: '/vacations',  icon: Umbrella,  label: '휴가 관리' },
-      { href: '/calendar',   icon: Calendar,  label: '캘린더' },
+      { href: '/attendance', icon: Clock,     label: '출퇴근',   pageKey: '/attendance' },
+      { href: '/vacations',  icon: Umbrella,  label: '휴가 관리', pageKey: '/vacations' },
+      { href: '/calendar',   icon: Calendar,  label: '캘린더',   pageKey: '/calendar' },
     ],
   },
   {
@@ -71,11 +73,10 @@ const NAV: NavEntry[] = [
     label: '업무',
     icon: ClipboardList,
     items: [
-      // /tasks/reports 와 충돌하지 않도록 — reports를 제외한 하위 경로(상세 페이지)만 매칭
-      { href: '/tasks', icon: ClipboardList, label: '업무 관리', matchPattern: /^\/tasks(\/(?!reports)[^/]+)?$/ },
-      { href: '/tasks/reports', icon: FileText, label: '업무 보고' },
-      { href: '/schedule',        icon: Calendar,     label: '스케줄' },
-      { href: '/shift-schedule',  icon: CalendarDays, label: '팀 근무표' },
+      { href: '/tasks', icon: ClipboardList, label: '업무 관리', pageKey: '/tasks', matchPattern: /^\/tasks(\/(?!reports)[^/]+)?$/ },
+      { href: '/tasks/reports', icon: FileText,     label: '업무 보고',  pageKey: '/tasks/reports' },
+      { href: '/schedule',       icon: Calendar,     label: '스케줄',     pageKey: '/schedule' },
+      { href: '/shift-schedule', icon: CalendarDays, label: '팀 근무표',  pageKey: '/shift-schedule' },
     ],
   },
   {
@@ -83,6 +84,7 @@ const NAV: NavEntry[] = [
     href: '/messages',
     icon: MessageSquare,
     label: '메시지',
+    pageKey: '/messages',
   },
   {
     type: 'group',
@@ -91,12 +93,11 @@ const NAV: NavEntry[] = [
     icon: Users,
     roles: ['owner', 'manager'],
     items: [
-      // /team/notes, /team/stats 와 충돌하지 않도록 — notes·stats를 제외한 하위 경로(직원 상세)만 매칭
-      { href: '/team', icon: Users, label: '직원 관리', roles: ['owner', 'manager'], matchPattern: /^\/team(\/(?!notes|stats)[^/]+)?$/ },
-      { href: '/team/notes', icon: FileText,        label: '인사 노트',  roles: ['owner', 'manager'] },
-      { href: '/team/stats', icon: BarChart2,       label: '조직 통계',  roles: ['owner', 'manager'] },
-      { href: '/salary',     icon: Banknote,        label: '급여 관리',  roles: ['owner', 'manager'] },
-      { href: '/contracts',  icon: FileSignature,   label: '계약 관리',  roles: ['owner', 'manager'] },
+      { href: '/team',       icon: Users,         label: '직원 관리', pageKey: '/team',       roles: ['owner', 'manager'], matchPattern: /^\/team(\/(?!notes|stats)[^/]+)?$/ },
+      { href: '/team/notes', icon: FileText,       label: '인사 노트', pageKey: '/team/notes', roles: ['owner', 'manager'] },
+      { href: '/team/stats', icon: BarChart2,      label: '조직 통계', pageKey: '/team/stats', roles: ['owner', 'manager'] },
+      { href: '/salary',     icon: Banknote,       label: '급여 관리', pageKey: '/salary',     roles: ['owner', 'manager'] },
+      { href: '/contracts',  icon: FileSignature,  label: '계약 관리', pageKey: '/contracts',  roles: ['owner', 'manager'] },
     ],
   },
   {
@@ -105,10 +106,10 @@ const NAV: NavEntry[] = [
     label: '결재 · 평가',
     icon: FilePen,
     items: [
-      { href: '/approvals',    icon: FilePen,        label: '전자결재' },
-      { href: '/certificates', icon: Award,          label: '증명서 발급' },
-      { href: '/evaluations',  icon: ClipboardCheck, label: '인사평가' },
-      { href: '/training',     icon: GraduationCap,  label: '교육 관리' },
+      { href: '/approvals',    icon: FilePen,        label: '전자결재',   pageKey: '/approvals' },
+      { href: '/certificates', icon: Award,          label: '증명서 발급', pageKey: '/certificates' },
+      { href: '/evaluations',  icon: ClipboardCheck, label: '인사평가',   pageKey: '/evaluations' },
+      { href: '/training',     icon: GraduationCap,  label: '교육 관리',  pageKey: '/training' },
     ],
   },
   {
@@ -118,7 +119,8 @@ const NAV: NavEntry[] = [
     icon: ShieldCheck,
     roles: ['owner', 'manager'],
     items: [
-      { href: '/tax-documents', icon: ShieldCheck, label: '세무·노무 서류', roles: ['owner', 'manager'] },
+      { href: '/tax-documents',    icon: ShieldCheck,        label: '세무·노무 서류', pageKey: '/tax-documents',    roles: ['owner', 'manager'] },
+      { href: '/calendar-settings', icon: SlidersHorizontal, label: '캘린더 설정',    pageKey: '/calendar-settings', roles: ['owner', 'manager'] },
     ],
   },
   {
@@ -126,6 +128,7 @@ const NAV: NavEntry[] = [
     href: '/ai',
     icon: Sparkles,
     label: 'AI 도구',
+    pageKey: '/ai',
   },
 ];
 
@@ -152,13 +155,16 @@ function NavChild({
   pathname,
   userRole,
   onClose,
+  isPageVisible,
 }: {
   item: NavItem;
   pathname: string;
   userRole: string;
   onClose: () => void;
+  isPageVisible: (key: string | undefined) => boolean;
 }) {
   if (item.roles && !item.roles.includes(userRole)) return null;
+  if (!isPageVisible(item.pageKey)) return null;
   const active = isPathActive(item, pathname);
   const Icon = item.icon;
 
@@ -192,6 +198,7 @@ function NavGroupBlock({
   onClose,
   isOpen,
   onToggle,
+  isPageVisible,
 }: {
   group: NavGroup;
   pathname: string;
@@ -199,13 +206,14 @@ function NavGroupBlock({
   onClose: () => void;
   isOpen: boolean;
   onToggle: (id: string) => void;
+  isPageVisible: (key: string | undefined) => boolean;
 }) {
   // 그룹 역할 제한
   if (group.roles && !group.roles.includes(userRole)) return null;
 
   // 보여줄 아이템이 하나도 없으면 숨김
   const visibleItems = group.items.filter(
-    (item) => !item.roles || item.roles.includes(userRole),
+    (item) => (!item.roles || item.roles.includes(userRole)) && isPageVisible(item.pageKey),
   );
   if (visibleItems.length === 0) return null;
 
@@ -256,6 +264,7 @@ function NavGroupBlock({
                   pathname={pathname}
                   userRole={userRole}
                   onClose={onClose}
+                  isPageVisible={isPageVisible}
                 />
               ))}
             </div>
@@ -388,6 +397,20 @@ export default function Sidebar() {
 
   const userRole = user?.role ?? 'employee';
 
+  // 팀별 페이지 가시성 설정
+  const { data: visibilityMap } = useQuery<Record<string, boolean>>({
+    queryKey: ['page-visibility', user?.id],
+    queryFn: () =>
+      api.get('/calendar-settings/visibility/my').then(r => r.data.data as Record<string, boolean>),
+    staleTime: 5 * 60_000,
+    enabled: !!user,
+  });
+
+  const isPageVisible = (pageKey: string | undefined) => {
+    if (!pageKey || !visibilityMap) return true; // 설정 없으면 기본 표시
+    return visibilityMap[pageKey] !== false;
+  };
+
   const closeSidebar = useCallback(() => setSidebarOpen(false), [setSidebarOpen]);
 
   // 현재 경로의 활성 그룹을 초기값으로 설정
@@ -450,13 +473,15 @@ export default function Sidebar() {
         <nav className="flex-1 px-3 py-2 overflow-y-auto sidebar-scroll space-y-0.5">
           {NAV.map((entry) =>
             entry.type === 'single' ? (
-              <NavSingleItem
-                key={entry.href}
-                item={entry}
-                pathname={pathname}
-                userRole={userRole}
-                onClose={closeSidebar}
-              />
+              isPageVisible((entry as any).pageKey) ? (
+                <NavSingleItem
+                  key={entry.href}
+                  item={entry}
+                  pathname={pathname}
+                  userRole={userRole}
+                  onClose={closeSidebar}
+                />
+              ) : null
             ) : (
               <NavGroupBlock
                 key={entry.id}
@@ -466,6 +491,7 @@ export default function Sidebar() {
                 onClose={closeSidebar}
                 isOpen={openGroupId === entry.id}
                 onToggle={handleGroupToggle}
+                isPageVisible={isPageVisible}
               />
             ),
           )}

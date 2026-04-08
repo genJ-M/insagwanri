@@ -27,6 +27,9 @@ import { CalendarModule } from './modules/calendar/calendar.module';
 import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { TrainingModule } from './modules/training/training.module';
 import { TaxDocumentsModule } from './modules/tax-documents/tax-documents.module';
+import { CalendarSettingsModule } from './modules/calendar-settings/calendar-settings.module';
+import { RecurringCalendarEvent } from './database/entities/recurring-calendar-event.entity';
+import { DepartmentPageVisibility } from './database/entities/department-page-visibility.entity';
 import { SearchModule } from './modules/search/search.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { CreditModule } from './modules/credits/credit.module';
@@ -138,6 +141,7 @@ import { CustomTemplatesModule } from './modules/custom-templates/custom-templat
             Task, TaskReport,
             Schedule,
             Channel, ChannelMember, Message, MessageRead,
+            RecurringCalendarEvent, DepartmentPageVisibility,
             AiRequest,
             InviteToken,
             EmailVerification, PasswordResetToken,
@@ -217,6 +221,7 @@ import { CustomTemplatesModule } from './modules/custom-templates/custom-templat
     EvaluationsModule,
     TrainingModule,
     TaxDocumentsModule,
+    CalendarSettingsModule,
     SearchModule,
     FeedbackModule,
     CreditModule,
