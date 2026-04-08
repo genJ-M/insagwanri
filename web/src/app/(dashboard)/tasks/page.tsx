@@ -18,6 +18,7 @@ import Avatar from '@/components/ui/Avatar';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { SkeletonTableRows } from '@/components/ui/Skeleton';
+import { TemplateManager } from '@/components/templates/TemplateManager';
 import { Task, TaskStatus } from '@/types';
 import {
   TASK_CATEGORIES, getCategoryById, CATEGORY_GROUPS,
@@ -420,15 +421,36 @@ function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () => void
     <>
       <Modal open={open} onClose={onClose} title="업무 생성" size="md">
         <div className="space-y-4">
-          {/* 복제 버튼 */}
-          <button
-            type="button"
-            onClick={() => setShowDuplicate(true)}
-            className="flex items-center gap-2 w-full px-4 py-2.5 rounded-xl border border-dashed border-zinc-300 hover:border-primary-300 hover:bg-primary-50 text-sm text-text-muted hover:text-primary-600 transition-all"
-          >
-            <Copy className="h-4 w-4" />
-            기존 업무에서 복제하기
-          </button>
+          {/* 복제 버튼 + 커스텀 템플릿 */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setShowDuplicate(true)}
+              className="flex items-center gap-2 flex-1 min-w-[180px] px-4 py-2.5 rounded-xl border border-dashed border-zinc-300 hover:border-primary-300 hover:bg-primary-50 text-sm text-text-muted hover:text-primary-600 transition-all"
+            >
+              <Copy className="h-4 w-4" />
+              기존 업무에서 복제하기
+            </button>
+            <TemplateManager
+              type="task"
+              currentFields={{
+                title: form.title, description: form.description,
+                category: form.category, priority: form.priority, scope: form.scope,
+              }}
+              onLoad={(fields) => {
+                const f = fields as any;
+                setForm({
+                  title:       f.title       ?? '',
+                  description: f.description ?? '',
+                  scope:       f.scope       ?? '',
+                  priority:    f.priority    ?? 'normal',
+                  due_date:    '',
+                  assignee_id: '',
+                  category:    f.category    ?? '',
+                });
+              }}
+            />
+          </div>
 
           {/* 제목 + AI 추천 버튼 */}
           <div>

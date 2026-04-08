@@ -15,6 +15,7 @@ import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import api from '@/lib/api';
 import { Schedule } from '@/types';
+import { TemplateManager } from '@/components/templates/TemplateManager';
 
 const SCHEDULE_COLORS: Record<string, string> = {
   general: '#6B7280', meeting: '#3B82F6', vacation: '#10B981',
@@ -169,6 +170,28 @@ function CreateScheduleModal({ open, onClose }: { open: boolean; onClose: () => 
 
   return (
     <Modal open={open} onClose={onClose} title="일정 추가">
+      <div className="mb-3">
+        <TemplateManager
+          type="schedule"
+          currentFields={{
+            title: form.title, type: form.type,
+            location: form.location, description: form.description, color: form.color,
+            is_all_day: form.is_all_day,
+          }}
+          onLoad={(fields) => {
+            const f = fields as any;
+            setForm({
+              ...form,
+              title:       f.title       ?? form.title,
+              type:        f.type        ?? form.type,
+              location:    f.location    ?? form.location,
+              description: f.description ?? form.description,
+              color:       f.color       ?? form.color,
+              is_all_day:  f.is_all_day  ?? form.is_all_day,
+            });
+          }}
+        />
+      </div>
       <ScheduleFormFields form={form} setForm={setForm} />
       {error && <p className="text-sm text-red-500 mt-2">{error}</p>}
       <div className="flex justify-end gap-2 pt-3">

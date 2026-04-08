@@ -187,3 +187,79 @@ export interface ApiResponse<T> {
     total: number;
   };
 }
+
+// ─────────────────────────────────────────
+// Custom Templates
+// ─────────────────────────────────────────
+export type CustomTemplateType = 'task' | 'schedule' | 'shift';
+
+export interface CustomTemplate {
+  id: string;
+  type: CustomTemplateType;
+  name: string;
+  description: string | null;
+  category: string | null;
+  fields: Record<string, unknown>;
+  isCompanyWide: boolean;
+  useCount: number;
+  creator: { id: string; name: string };
+  createdAt: string;
+}
+
+// ─────────────────────────────────────────
+// Shift Schedule (팀 근무표)
+// ─────────────────────────────────────────
+export type ShiftScheduleStatus = 'draft' | 'published';
+export type ShiftType = 'office' | 'field_work' | 'remote' | 'overtime' | 'off';
+
+export interface ShiftAssignment {
+  id: string;
+  userId: string;
+  date: string;
+  startTime: string | null;
+  endTime: string | null;
+  shiftType: ShiftType;
+  location: string | null;
+  note: string | null;
+  isConfirmed: boolean;
+  confirmedAt: string | null;
+  user: { id: string; name: string; department: string | null; position: string | null };
+}
+
+export interface ShiftSchedule {
+  id: string;
+  title: string;
+  department: string | null;
+  weekStart: string;
+  status: ShiftScheduleStatus;
+  note: string | null;
+  publishedAt: string | null;
+  creator: { id: string; name: string };
+  assignments?: ShiftAssignment[];
+  createdAt: string;
+}
+
+export interface EmployeeAvailability {
+  id: string;
+  userId: string;
+  dayOfWeek: number | null;
+  specificDate: string | null;
+  startTime: string;
+  endTime: string;
+  isAvailable: boolean;
+  note: string | null;
+  effectiveFrom: string | null;
+  effectiveUntil: string | null;
+}
+
+export interface TeamAvailabilitySlot {
+  startTime: string;
+  endTime: string;
+  isAvailable: boolean;
+  note: string | null;
+}
+
+export interface TeamMemberAvailability {
+  user: { id: string; name: string; department: string | null; position: string | null };
+  availability: Record<string, TeamAvailabilitySlot[]>;
+}

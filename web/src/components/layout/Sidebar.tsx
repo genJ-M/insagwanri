@@ -7,7 +7,7 @@ import {
   Calendar, MessageSquare, Sparkles, LogOut,
   Users, Settings, Banknote, Umbrella, FilePen, FileSignature, Award,
   ClipboardCheck, BarChart2, GraduationCap, ChevronRight, ShieldCheck,
-  Pencil,
+  Pencil, CalendarDays,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useQuery } from '@tanstack/react-query';
@@ -74,7 +74,8 @@ const NAV: NavEntry[] = [
       // /tasks/reports 와 충돌하지 않도록 — reports를 제외한 하위 경로(상세 페이지)만 매칭
       { href: '/tasks', icon: ClipboardList, label: '업무 관리', matchPattern: /^\/tasks(\/(?!reports)[^/]+)?$/ },
       { href: '/tasks/reports', icon: FileText, label: '업무 보고' },
-      { href: '/schedule',      icon: Calendar,      label: '스케줄' },
+      { href: '/schedule',        icon: Calendar,     label: '스케줄' },
+      { href: '/shift-schedule',  icon: CalendarDays, label: '팀 근무표' },
     ],
   },
   {

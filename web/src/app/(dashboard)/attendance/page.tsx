@@ -9,7 +9,7 @@ import {
 import { ko } from 'date-fns/locale';
 import {
   LogIn, LogOut, MapPin, ChevronLeft, ChevronRight,
-  Users, Clock, AlertTriangle, TrendingDown, QrCode, RefreshCw,
+  Users, Clock, AlertTriangle, TrendingDown, QrCode, RefreshCw, Zap,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { clsx } from 'clsx';
@@ -23,6 +23,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { AttendanceRecord } from '@/types';
+import { OvertimeRequestModal } from '@/components/templates/OvertimeRequestModal';
 
 const STATUS_KO: Record<string, string> = {
   pending: '대기', normal: '정상', late: '지각',
@@ -540,6 +541,7 @@ export default function AttendancePage() {
 
   type TabKey = 'me' | 'today' | 'stats' | 'grid';
   const [tab, setTab] = useState<TabKey>('me');
+  const [showOvertimeModal, setShowOvertimeModal] = useState(false);
 
   const TABS: { key: TabKey; label: string; managerOnly?: boolean }[] = [
     { key: 'me',    label: '내 근태' },
@@ -671,6 +673,14 @@ export default function AttendancePage() {
                     <LogOut className="h-5 w-5" /> 퇴근
                   </Button>
                 </div>
+                <div className="flex justify-center mt-3">
+                  <button
+                    onClick={() => setShowOvertimeModal(true)}
+                    className="flex items-center gap-1.5 text-sm text-orange-600 hover:text-orange-700 px-3 py-1.5 rounded-lg hover:bg-orange-50 transition-colors border border-orange-200"
+                  >
+                    <Zap size={14}/> 초과근무 신청
+                  </button>
+                </div>
 
                 {myToday && (
                   <div className="mt-6 inline-flex flex-wrap justify-center gap-3 md:gap-6 bg-gray-50 rounded-2xl px-4 md:px-6 py-3 text-sm text-text-secondary">
@@ -791,6 +801,7 @@ export default function AttendancePage() {
       {selectedEmployee && (
         <EmployeeAttendanceModal employee={selectedEmployee} onClose={() => setSelectedEmployee(null)} />
       )}
+      <OvertimeRequestModal open={showOvertimeModal} onClose={() => setShowOvertimeModal(false)} />
     </div>
   );
 }

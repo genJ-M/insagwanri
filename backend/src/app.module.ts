@@ -81,6 +81,11 @@ import { TrainingEnrollment } from './database/entities/training-enrollment.enti
 import { PhoneOtp } from './database/entities/phone-otp.entity';
 import { Feedback } from './database/entities/feedback.entity';
 import { Credit, CreditTransaction } from './database/entities/credit.entity';
+import { CustomTemplate } from './database/entities/custom-template.entity';
+import { EmployeeAvailability } from './database/entities/employee-availability.entity';
+import { ShiftSchedule, ShiftAssignment } from './database/entities/shift-schedule.entity';
+import { ShiftScheduleModule } from './modules/shift-schedule/shift-schedule.module';
+import { CustomTemplatesModule } from './modules/custom-templates/custom-templates.module';
 
 @Module({
   imports: [
@@ -160,6 +165,10 @@ import { Credit, CreditTransaction } from './database/entities/credit.entity';
             Feedback,
             Credit,
             CreditTransaction,
+            CustomTemplate,
+            EmployeeAvailability,
+            ShiftSchedule,
+            ShiftAssignment,
           ],
           synchronize: false, // Migration으로 스키마 관리
           logging: config.get<string>('NODE_ENV') === 'development',
@@ -210,6 +219,8 @@ import { Credit, CreditTransaction } from './database/entities/credit.entity';
     SearchModule,
     FeedbackModule,
     CreditModule,
+    ShiftScheduleModule,
+    CustomTemplatesModule,
 
     // 활동 로그 (통신비밀보호법, 전역)
     ActivityLogModule,

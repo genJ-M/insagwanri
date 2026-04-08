@@ -100,7 +100,8 @@
       "Bash(npm --version)",
       "Bash(node_modules/.bin/tsc --noEmit --skipLibCheck)",
       "Bash(cmd:*)",
-      "Bash(node_modules/.bin/tsc --noEmit)"
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(npx --prefix backend tsc --noEmit -p backend/tsconfig.json)"
     ]
   }
 }
