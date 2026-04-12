@@ -1,5 +1,6 @@
 'use client';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import { usePageGuard } from '@/hooks/usePageGuard';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -450,8 +451,11 @@ function AnnualCalendarTab() {
 // ── 메인 ──────────────────────────────────────────────
 export default function TaxDocumentsPage() {
   usePageTitle('세무·노무 서류');
+  const { isAllowed, isLoading: guardLoading } = usePageGuard('/tax-documents');
   const user = useAuthStore((s) => s.user);
   const [activeTab, setActiveTab] = useState<Tab>('할 일 목록');
+
+  if (guardLoading || !isAllowed) return null;
 
   if (user?.role === 'employee') {
     return (

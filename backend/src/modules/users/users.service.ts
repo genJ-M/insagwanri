@@ -2,6 +2,7 @@ import {
   Injectable, NotFoundException, ConflictException,
   ForbiddenException, BadRequestException, UnauthorizedException,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike, Not } from 'typeorm';
 import * as bcrypt from 'bcrypt';
@@ -16,6 +17,7 @@ import { ApprovalDocument, ApprovalDocStatus, ApprovalDocType } from '../../data
 import { ApprovalStep, StepStatus } from '../../database/entities/approval-step.entity';
 import { AuthenticatedUser, UserRole, UserPermissions } from '../../common/types/jwt-payload.type';
 import { EmailService } from '../notifications/email.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { SmsService } from '../../common/sms/sms.service';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -55,6 +57,7 @@ export class UsersService {
     private approvalStepRepo: Repository<ApprovalStep>,
 
     private readonly emailService: EmailService,
+    private readonly notificationsService: NotificationsService,
     private readonly smsService: SmsService,
     private readonly configService: ConfigService,
   ) {}
@@ -73,7 +76,7 @@ export class UsersService {
       select: [
         'id', 'name', 'email', 'phone', 'department', 'position',
         'role', 'status', 'joinedAt', 'lastLoginAt',
-        'profileImageUrl', 'employeeNumber', 'createdAt',
+        'profileImageUrl', 'employeeNumber', 'createdAt', 'birthday',
       ],
       order: { createdAt: 'ASC' },
     });
@@ -98,7 +101,7 @@ export class UsersService {
       select: [
         'id', 'name', 'email', 'phone', 'department', 'position',
         'role', 'status', 'joinedAt', 'lastLoginAt',
-        'profileImageUrl', 'employeeNumber', 'createdAt',
+        'profileImageUrl', 'employeeNumber', 'createdAt', 'birthday',
       ],
     });
     if (!user) throw new NotFoundException('직원을 찾을 수 없습니다.');
@@ -117,6 +120,7 @@ export class UsersService {
         ...(dto.department      && { department: dto.department }),
         ...(dto.position        && { position: dto.position }),
         ...(dto.joinedAt        && { joinedAt: new Date(dto.joinedAt) }),
+        ...(dto.birthday !== undefined && { birthday: dto.birthday ? new Date(dto.birthday) : null }),
         ...(dto.profileImageUrl !== undefined      && { profileImageUrl: dto.profileImageUrl }),
         ...(dto.coverImageUrl !== undefined        && { coverImageUrl: dto.coverImageUrl }),
         ...(dto.coverImageMobileUrl !== undefined  && { coverImageMobileUrl: dto.coverImageMobileUrl }),
@@ -126,7 +130,7 @@ export class UsersService {
     return this.userRepo.findOne({
       where: { id: currentUser.id },
       select: ['id', 'name', 'email', 'phone', 'department', 'position', 'profileImageUrl',
-               'coverImageUrl', 'coverImageMobileUrl', 'coverMobileCrop', 'joinedAt'],
+               'coverImageUrl', 'coverImageMobileUrl', 'coverMobileCrop', 'joinedAt', 'birthday'],
     });
   }
 
@@ -175,6 +179,7 @@ export class UsersService {
         ...(dto.department && { department: dto.department }),
         ...(dto.position   && { position: dto.position }),
         ...(dto.joinedAt   && { joinedAt: new Date(dto.joinedAt) }),
+        ...(dto.birthday !== undefined && { birthday: dto.birthday ? new Date(dto.birthday) : null }),
       },
     );
     return this.findOne(currentUser, targetId);
@@ -1112,5 +1117,180 @@ export class UsersService {
     await this.approvalStepRepo.save(steps);
 
     return { docId: doc.id, status: doc.status, message: '결재 기안이 생성되었습니다.' };
+  }
+
+  // ─────────────────────────────────────────
+  // 생일 조회 (인사·경영진 전용)
+  // ─────────────────────────────────────────
+
+  /**
+   * 이달 생일 목록 (월 기준, 날짜 오름차순)
+   * manager/owner 전용
+   */
+  async getBirthdaysThisMonth(currentUser: AuthenticatedUser) {
+    if (currentUser.role === UserRole.EMPLOYEE) throw new ForbiddenException();
+
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+    const month = now.getMonth() + 1; // 1~12
+
+    const users = await this.userRepo
+      .createQueryBuilder('u')
+      .select(['u.id', 'u.name', 'u.department', 'u.position', 'u.birthday', 'u.profileImageUrl'])
+      .where('u.company_id = :cid', { cid: currentUser.companyId })
+      .andWhere('u.deleted_at IS NULL')
+      .andWhere('u.birthday IS NOT NULL')
+      .andWhere('EXTRACT(MONTH FROM u.birthday) = :month', { month })
+      .orderBy('EXTRACT(DAY FROM u.birthday)', 'ASC')
+      .getMany();
+
+    return users.map(u => this.toBirthdayDto(u, now));
+  }
+
+  /**
+   * 다가오는 생일 (오늘 포함 N일 이내, 기본 30일)
+   * manager/owner 전용
+   */
+  async getUpcomingBirthdays(currentUser: AuthenticatedUser, days = 30) {
+    if (currentUser.role === UserRole.EMPLOYEE) throw new ForbiddenException();
+
+    const nowKst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+
+    // 연도를 무시하고 월·일만 비교하기 위해 올해/내년 연도로 정규화
+    // PostgreSQL: 생일의 올해 날짜를 계산 후 N일 이내인지 확인
+    const users = await this.userRepo
+      .createQueryBuilder('u')
+      .select(['u.id', 'u.name', 'u.department', 'u.position', 'u.birthday', 'u.profileImageUrl'])
+      .where('u.company_id = :cid', { cid: currentUser.companyId })
+      .andWhere('u.deleted_at IS NULL')
+      .andWhere('u.birthday IS NOT NULL')
+      .andWhere(`
+        (
+          DATE(CONCAT(EXTRACT(YEAR FROM CURRENT_DATE AT TIME ZONE 'Asia/Seoul'), '-',
+            LPAD(EXTRACT(MONTH FROM u.birthday)::text, 2, '0'), '-',
+            LPAD(EXTRACT(DAY FROM u.birthday)::text, 2, '0')))
+          BETWEEN (CURRENT_DATE AT TIME ZONE 'Asia/Seoul')
+              AND (CURRENT_DATE AT TIME ZONE 'Asia/Seoul' + INTERVAL '${days} days')
+        ) OR (
+          DATE(CONCAT(EXTRACT(YEAR FROM CURRENT_DATE AT TIME ZONE 'Asia/Seoul') + 1, '-',
+            LPAD(EXTRACT(MONTH FROM u.birthday)::text, 2, '0'), '-',
+            LPAD(EXTRACT(DAY FROM u.birthday)::text, 2, '0')))
+          BETWEEN (CURRENT_DATE AT TIME ZONE 'Asia/Seoul')
+              AND (CURRENT_DATE AT TIME ZONE 'Asia/Seoul' + INTERVAL '${days} days')
+        )
+      `)
+      .orderBy(`EXTRACT(MONTH FROM u.birthday)`, 'ASC')
+      .addOrderBy(`EXTRACT(DAY FROM u.birthday)`, 'ASC')
+      .getMany();
+
+    return users.map(u => this.toBirthdayDto(u, nowKst));
+  }
+
+  private toBirthdayDto(u: User, nowKst: Date) {
+    const bday = u.birthday as unknown as string; // DATE → string 'YYYY-MM-DD'
+    const [, mm, dd] = (bday ?? '').split('-');
+    const thisYear = nowKst.getFullYear();
+    const birthdayThisYear = new Date(`${thisYear}-${mm}-${dd}`);
+    const isToday =
+      birthdayThisYear.getMonth() === nowKst.getMonth() &&
+      birthdayThisYear.getDate() === nowKst.getDate();
+
+    const daysUntil = Math.ceil(
+      (birthdayThisYear.getTime() - nowKst.setHours(0, 0, 0, 0)) / 86400000,
+    );
+
+    return {
+      id:           u.id,
+      name:         u.name,
+      department:   u.department,
+      position:     u.position,
+      birthday:     bday,
+      birthdayMmDd: `${mm}/${dd}`,
+      isToday,
+      daysUntil:    daysUntil < 0 ? daysUntil + 365 : daysUntil,
+      profileImageUrl: u.profileImageUrl,
+    };
+  }
+
+  // ─────────────────────────────────────────
+  // 생일 알림 Cron (매일 오전 9시 KST)
+  // ─────────────────────────────────────────
+  /**
+   * 오늘 생일 및 7일 이내 생일 직원을 company별로 집계해
+   * 해당 회사의 owner/manager 전원에게 알림 발송
+   */
+  @Cron('0 9 * * *', { timeZone: 'Asia/Seoul' })
+  async notifyUpcomingBirthdays() {
+    const todayKst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+    const month = todayKst.getMonth() + 1;
+    const day   = todayKst.getDate();
+
+    // 오늘 or 7일 이내 생일 (연도 무시)
+    const upcoming = await this.userRepo
+      .createQueryBuilder('u')
+      .select(['u.id', 'u.name', 'u.department', 'u.company_id AS "companyId"', 'u.birthday'])
+      .where('u.deleted_at IS NULL')
+      .andWhere('u.birthday IS NOT NULL')
+      .andWhere(`
+        DATE(CONCAT(EXTRACT(YEAR FROM CURRENT_DATE AT TIME ZONE 'Asia/Seoul'), '-',
+          LPAD(EXTRACT(MONTH FROM u.birthday)::text, 2, '0'), '-',
+          LPAD(EXTRACT(DAY FROM u.birthday)::text, 2, '0')))
+        BETWEEN (CURRENT_DATE AT TIME ZONE 'Asia/Seoul')
+            AND (CURRENT_DATE AT TIME ZONE 'Asia/Seoul' + INTERVAL '7 days')
+      `)
+      .getRawMany();
+
+    if (!upcoming.length) return;
+
+    // company별 그룹핑
+    const byCompany = new Map<string, typeof upcoming>();
+    for (const u of upcoming) {
+      const cid = u.companyId ?? u.u_company_id;
+      if (!byCompany.has(cid)) byCompany.set(cid, []);
+      byCompany.get(cid)!.push(u);
+    }
+
+    for (const [companyId, members] of byCompany.entries()) {
+      // 오늘 생일인 직원
+      const todayBirthdays = members.filter(u => {
+        const bday = (u.u_birthday ?? u.birthday) as unknown as string;
+        const [, mm, dd] = (bday ?? '').split('-');
+        return Number(mm) === month && Number(dd) === day;
+      });
+
+      // 이 회사의 owner/manager 목록
+      const admins = await this.userRepo.find({
+        where: [
+          { companyId, role: UserRole.OWNER },
+          { companyId, role: UserRole.MANAGER },
+        ],
+        select: ['id'],
+      });
+
+      for (const member of members) {
+        const bday = (member.u_birthday ?? member.birthday) as unknown as string;
+        const [, mm, dd] = (bday ?? '').split('-');
+        const name = member.u_name ?? member.name;
+        const dept = member.u_department ?? member.department ?? '';
+        const isToday = Number(mm) === month && Number(dd) === day;
+
+        const title = isToday ? `🎂 오늘은 ${name}님의 생일입니다!` : `🎉 ${name}님의 생일이 다가오고 있습니다`;
+        const body  = isToday
+          ? `${dept ? `[${dept}] ` : ''}${name}님의 생일을 축하해 주세요!`
+          : `${dept ? `[${dept}] ` : ''}${name}님의 생일이 ${mm}/${dd}입니다.`;
+
+        for (const admin of admins) {
+          // 본인 생일은 스스로에게도 알림 (선택), 관리자 알림은 항상 발송
+          this.notificationsService.dispatch({
+            userId:    admin.id,
+            companyId,
+            type:      'birthday_upcoming',
+            title,
+            body,
+            refType:   'schedule',
+            refId:     member.u_id ?? member.id,
+          }).catch(() => {});
+        }
+      }
+    }
   }
 }

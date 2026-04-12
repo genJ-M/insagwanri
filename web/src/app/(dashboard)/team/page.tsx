@@ -3,7 +3,7 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { UserPlus, MoreVertical, Mail, Shield, User, RefreshCw, X, Smartphone, Link2, Copy, Check, QrCode, ChevronRight, Building2 } from 'lucide-react';
+import { UserPlus, MoreVertical, Mail, Shield, User, RefreshCw, X, Smartphone, Link2, Copy, Check, QrCode, ChevronRight, Building2, Cake, Gift, Users, Plus, Pencil, Trash2, Crown } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { clsx } from 'clsx';
@@ -17,7 +17,7 @@ import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import toast from 'react-hot-toast';
 
-type TabType = 'all' | 'manager' | 'employee' | 'invites';
+type TabType = 'all' | 'manager' | 'employee' | 'invites' | 'teams';
 
 const STATUS_BADGE: Record<string, 'green' | 'red' | 'yellow'> = {
   active: 'green', inactive: 'red', pending: 'yellow',
@@ -247,6 +247,497 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
           )}
         </div>
       )}
+    </Modal>
+  );
+}
+
+// ─── 팀 생성/수정 모달 (3단계 위저드) ───────────────────────────────────────
+const TEAM_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+
+const STEP_LABELS = ['기본 정보', '팀원 구성', '팀장 확인'];
+
+function CreateTeamModal({
+  open, onClose, members, editTeam,
+}: {
+  open: boolean;
+  onClose: () => void;
+  members: any[];
+  editTeam?: any;
+}) {
+  const queryClient = useQueryClient();
+
+  // 공통 상태
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [color, setColor] = useState(TEAM_COLORS[0]);
+  const [error, setError] = useState('');
+
+  // 생성 전용 상태
+  const [step, setStep] = useState(1);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [aiReasons, setAiReasons] = useState<Record<string, string>>({});
+  const [aiDisclaimer, setAiDisclaimer] = useState('');
+  const [leaderId, setLeaderId] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setStep(1); setError(''); setAiReasons({}); setAiDisclaimer('');
+    if (editTeam) {
+      setName(editTeam.name ?? '');
+      setDescription(editTeam.description ?? '');
+      setColor(editTeam.color ?? TEAM_COLORS[0]);
+      setSelectedMemberIds([]); setLeaderId(editTeam.leaderId ?? '');
+    } else {
+      setName(''); setDescription(''); setColor(TEAM_COLORS[0]);
+      setSelectedMemberIds([]); setLeaderId('');
+    }
+  }, [open, editTeam]);
+
+  const createMutation = useMutation({
+    mutationFn: (payload: any) => api.post('/teams', payload).then((r) => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      toast.success('팀이 생성되었습니다.');
+      onClose();
+    },
+    onError: (err: any) => setError(err.response?.data?.message ?? '팀 생성에 실패했습니다.'),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (payload: any) => api.patch(`/teams/${editTeam?.id}`, payload).then((r) => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      toast.success('팀 정보가 수정되었습니다.');
+      onClose();
+    },
+    onError: (err: any) => setError(err.response?.data?.message ?? '팀 수정에 실패했습니다.'),
+  });
+
+  const aiRecommendMutation = useMutation({
+    mutationFn: () =>
+      api.post('/ai/team-scope-recommend', {
+        teamName: name.trim(),
+        description: description.trim() || undefined,
+        employees: members
+          .filter((m) => m.role !== 'owner')
+          .map((m) => ({ userId: m.id, name: m.name, department: m.department, position: m.position })),
+      }).then((r) => r.data.data),
+    onSuccess: (data: any) => {
+      setSelectedMemberIds(data.recommendedUserIds ?? []);
+      const reasonMap: Record<string, string> = {};
+      (data.reasons ?? []).forEach((r: any) => { reasonMap[r.userId] = r.reason; });
+      setAiReasons(reasonMap);
+      setAiDisclaimer(data.disclaimer ?? '');
+      toast.success(`AI가 ${(data.recommendedUserIds ?? []).length}명을 추천했습니다.`);
+    },
+    onError: () => toast.error('AI 추천 요청에 실패했습니다.'),
+  });
+
+  const toggleMember = (id: string) => {
+    setSelectedMemberIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  const handleNext = () => {
+    if (step === 1 && !name.trim()) { setError('팀 이름을 입력해주세요.'); return; }
+    setError('');
+    setStep((s) => s + 1);
+  };
+
+  const handleSubmit = () => {
+    if (editTeam) {
+      updateMutation.mutate({ name: name.trim(), description: description.trim() || undefined, color });
+    } else {
+      createMutation.mutate({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        color,
+        memberIds: selectedMemberIds,
+        leaderId: leaderId || undefined,
+      });
+    }
+  };
+
+  const isPending = createMutation.isPending || updateMutation.isPending;
+  const candidateMembers = members.filter((m) => m.role !== 'owner');
+
+  // 수정 모드: 단계 없이 기본 정보만
+  if (editTeam) {
+    return (
+      <Modal open={open} onClose={onClose} title="팀 정보 수정">
+        <div className="space-y-4">
+          <div>
+            <label className="label">팀 이름 *</label>
+            <input className="input" value={name} onChange={(e) => { setName(e.target.value); setError(''); }} />
+          </div>
+          <div>
+            <label className="label">설명 (선택)</label>
+            <textarea className="input resize-none" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">팀 색상</label>
+            <div className="flex gap-2">
+              {TEAM_COLORS.map((c) => (
+                <button key={c} type="button" onClick={() => setColor(c)}
+                  className={clsx('w-7 h-7 rounded-full border-2 transition-transform', color === c ? 'border-gray-700 scale-110' : 'border-transparent')}
+                  style={{ backgroundColor: c }} />
+              ))}
+            </div>
+          </div>
+          {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={onClose}>취소</Button>
+            <Button loading={isPending} disabled={!name.trim() || isPending} onClick={handleSubmit}>저장</Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  // 생성 모드: 3단계 위저드
+  return (
+    <Modal open={open} onClose={onClose} title="새 팀 만들기">
+      {/* 단계 표시 */}
+      <div className="flex items-center gap-2 mb-5">
+        {STEP_LABELS.map((label, i) => {
+          const s = i + 1;
+          return (
+            <div key={s} className="flex items-center gap-2">
+              <div className={clsx(
+                'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors',
+                step === s ? 'bg-primary-500 text-white' : step > s ? 'bg-primary-200 text-primary-700' : 'bg-gray-100 text-text-muted',
+              )}>
+                {step > s ? '✓' : s}
+              </div>
+              <span className={clsx('text-xs', step === s ? 'text-text-primary font-medium' : 'text-text-muted')}>{label}</span>
+              {i < STEP_LABELS.length - 1 && <div className="w-6 h-px bg-border" />}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Step 1: 기본 정보 ── */}
+      {step === 1 && (
+        <div className="space-y-4">
+          <div>
+            <label className="label">팀 이름 *</label>
+            <input
+              className="input"
+              placeholder="예: 개발팀, 마케팅팀, 영업1팀"
+              value={name}
+              autoFocus
+              onChange={(e) => { setName(e.target.value); setError(''); }}
+            />
+          </div>
+          <div>
+            <label className="label">팀 소개 (선택)</label>
+            <textarea
+              className="input resize-none"
+              rows={2}
+              placeholder="이 팀의 역할이나 담당 업무를 입력하면 AI가 구성원을 더 잘 추천합니다."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label">팀 색상</label>
+            <div className="flex gap-2">
+              {TEAM_COLORS.map((c) => (
+                <button key={c} type="button" onClick={() => setColor(c)}
+                  className={clsx('w-7 h-7 rounded-full border-2 transition-transform', color === c ? 'border-gray-700 scale-110' : 'border-transparent hover:scale-105')}
+                  style={{ backgroundColor: c }} />
+              ))}
+            </div>
+          </div>
+          {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={onClose}>취소</Button>
+            <Button disabled={!name.trim()} onClick={handleNext}>다음 →</Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 2: 팀원 구성 ── */}
+      {step === 2 && (
+        <div className="space-y-3">
+          {/* AI 추천 버튼 */}
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-text-secondary">팀원을 선택하세요 <span className="text-text-muted">({selectedMemberIds.length}명 선택)</span></p>
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={aiRecommendMutation.isPending}
+              disabled={aiRecommendMutation.isPending || candidateMembers.length === 0}
+              onClick={() => aiRecommendMutation.mutate()}
+            >
+              ✨ AI 추천
+            </Button>
+          </div>
+
+          {/* AI 면책 문구 */}
+          {aiDisclaimer && (
+            <p className="text-[11px] text-text-muted bg-amber-50 border border-amber-100 px-2.5 py-1.5 rounded-lg">{aiDisclaimer}</p>
+          )}
+
+          {/* 팀원 체크리스트 */}
+          <div className="max-h-56 overflow-y-auto border border-border rounded-xl divide-y divide-border/50">
+            {candidateMembers.length === 0 ? (
+              <p className="text-sm text-text-muted text-center py-6">초대된 직원이 없습니다.</p>
+            ) : (
+              candidateMembers.map((m) => {
+                const isAiPick = !!aiReasons[m.id];
+                return (
+                  <label key={m.id} className={clsx(
+                    'flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors',
+                    isAiPick && selectedMemberIds.includes(m.id) ? 'bg-indigo-50' : 'hover:bg-background',
+                  )}>
+                    <input
+                      type="checkbox"
+                      checked={selectedMemberIds.includes(m.id)}
+                      onChange={() => toggleMember(m.id)}
+                      className="rounded"
+                    />
+                    <Avatar name={m.name} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm text-text-primary">{m.name}</span>
+                        {isAiPick && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600">AI추천</span>
+                        )}
+                      </div>
+                      {aiReasons[m.id] ? (
+                        <span className="text-xs text-indigo-500">{aiReasons[m.id]}</span>
+                      ) : (
+                        <span className="text-xs text-text-muted">{[m.department, m.position].filter(Boolean).join(' · ') || '-'}</span>
+                      )}
+                    </div>
+                  </label>
+                );
+              })
+            )}
+          </div>
+
+          <div className="flex justify-between pt-1">
+            <Button variant="secondary" onClick={() => setStep(1)}>← 이전</Button>
+            <Button onClick={handleNext}>다음 →</Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 3: 팀장 지정 + 최종 확인 ── */}
+      {step === 3 && (
+        <div className="space-y-4">
+          {/* 팀 요약 */}
+          <div className="flex items-center gap-3 p-3 bg-background rounded-xl border border-border">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: color }}>
+              <Users className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-text-primary">{name}</p>
+              <p className="text-xs text-text-muted">
+                팀원 {selectedMemberIds.length}명
+                {description ? ` · ${description.slice(0, 30)}${description.length > 30 ? '…' : ''}` : ''}
+              </p>
+            </div>
+          </div>
+
+          {/* 팀장 선택 */}
+          <div>
+            <label className="label">팀장 지정 (선택)</label>
+            <select className="input" value={leaderId} onChange={(e) => setLeaderId(e.target.value)}>
+              <option value="">팀장 없음</option>
+              {(selectedMemberIds.length > 0
+                ? candidateMembers.filter((m) => selectedMemberIds.includes(m.id))
+                : candidateMembers
+              ).map((m) => (
+                <option key={m.id} value={m.id}>{m.name} {m.department ? `(${m.department})` : ''}</option>
+              ))}
+            </select>
+          </div>
+
+          {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+
+          <div className="flex justify-between pt-1">
+            <Button variant="secondary" onClick={() => setStep(2)}>← 이전</Button>
+            <Button loading={isPending} disabled={isPending} onClick={handleSubmit}>
+              팀 만들기 완료
+            </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ─── 팀 상세 모달 ────────────────────────────────────────────────────────────
+function TeamDetailModal({
+  open, onClose, team, currentUserRole,
+}: {
+  open: boolean;
+  onClose: () => void;
+  team: any;
+  currentUserRole: string;
+}) {
+  const queryClient = useQueryClient();
+  const [addUserId, setAddUserId] = useState('');
+  const [membershipType, setMembershipType] = useState<'primary' | 'secondary' | 'tf' | 'dispatch'>('primary');
+
+  const { data: teamMembers = [], isLoading } = useQuery<any[]>({
+    queryKey: ['team-members', team?.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/teams/${team.id}/members`);
+      return data.data ?? data;
+    },
+    enabled: open && !!team?.id,
+  });
+
+  const { data: allUsers = [] } = useQuery<any[]>({
+    queryKey: ['team'],
+    queryFn: async () => {
+      const { data } = await api.get('/users');
+      return data.data ?? data;
+    },
+    enabled: open,
+  });
+
+  const memberUserIds = new Set((teamMembers as any[]).map((m: any) => m.userId));
+  const addableCandidates = (allUsers as any[]).filter((u: any) => !memberUserIds.has(u.id));
+
+  const addMutation = useMutation({
+    mutationFn: () => api.post(`/teams/${team.id}/members`, { userId: addUserId, membershipType }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team-members', team.id] });
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      setAddUserId('');
+      toast.success('팀원이 추가되었습니다.');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message ?? '팀원 추가에 실패했습니다.'),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (userId: string) => api.delete(`/teams/${team.id}/members/${userId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team-members', team.id] });
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      toast.success('팀원이 제거되었습니다.');
+    },
+    onError: () => toast.error('팀원 제거에 실패했습니다.'),
+  });
+
+  const setLeaderMutation = useMutation({
+    mutationFn: (userId: string) => api.patch(`/teams/${team.id}/leader`, { userId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      queryClient.invalidateQueries({ queryKey: ['team-members', team.id] });
+      toast.success('팀장이 지정되었습니다.');
+    },
+    onError: () => toast.error('팀장 지정에 실패했습니다.'),
+  });
+
+  if (!team) return null;
+
+  const MEMBERSHIP_LABELS: Record<string, string> = {
+    primary: '소속', secondary: '겸직', tf: 'TF', dispatch: '파견',
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title={`${team.name} 팀원 관리`}>
+      <div className="space-y-4">
+        {/* 팀원 목록 */}
+        <div>
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">팀원 목록</p>
+          {isLoading ? (
+            <p className="text-sm text-text-muted text-center py-4">불러오는 중...</p>
+          ) : teamMembers.length === 0 ? (
+            <p className="text-sm text-text-muted text-center py-4">팀원이 없습니다.</p>
+          ) : (
+            <div className="divide-y divide-border/60 border border-border rounded-xl overflow-hidden">
+              {teamMembers.map((m: any) => (
+                <div key={m.userId} className="flex items-center gap-3 px-3 py-2.5">
+                  <Avatar name={m.user?.name ?? ''} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-medium text-text-primary">{m.user?.name}</span>
+                      {team.leaderId === m.userId && (
+                        <span className="flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                          <Crown className="w-2.5 h-2.5" />팀장
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-text-muted">
+                      {MEMBERSHIP_LABELS[m.membershipType] ?? m.membershipType}
+                      {m.user?.department ? ` · ${m.user.department}` : ''}
+                    </span>
+                  </div>
+                  {currentUserRole !== 'employee' && (
+                    <div className="flex items-center gap-1">
+                      {team.leaderId !== m.userId && (
+                        <button
+                          onClick={() => setLeaderMutation.mutate(m.userId)}
+                          className="p-1.5 rounded-lg hover:bg-amber-50 text-text-muted hover:text-amber-600 transition-colors"
+                          title="팀장 지정"
+                        >
+                          <Crown className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => removeMutation.mutate(m.userId)}
+                        className="p-1.5 rounded-lg hover:bg-red-50 text-text-muted hover:text-red-500 transition-colors"
+                        title="팀원 제거"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 팀원 추가 (owner/manager) */}
+        {currentUserRole !== 'employee' && addableCandidates.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">팀원 추가</p>
+            <div className="flex gap-2">
+              <select
+                className="input flex-1 text-sm"
+                value={addUserId}
+                onChange={(e) => setAddUserId(e.target.value)}
+              >
+                <option value="">직원 선택...</option>
+                {addableCandidates.map((u: any) => (
+                  <option key={u.id} value={u.id}>{u.name} {u.department ? `(${u.department})` : ''}</option>
+                ))}
+              </select>
+              <select
+                className="input w-24 text-sm"
+                value={membershipType}
+                onChange={(e) => setMembershipType(e.target.value as any)}
+              >
+                <option value="primary">소속</option>
+                <option value="secondary">겸직</option>
+                <option value="tf">TF</option>
+                <option value="dispatch">파견</option>
+              </select>
+              <Button
+                size="sm"
+                disabled={!addUserId || addMutation.isPending}
+                loading={addMutation.isPending}
+                onClick={() => addMutation.mutate()}
+              >
+                추가
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end">
+          <Button variant="secondary" onClick={onClose}>닫기</Button>
+        </div>
+      </div>
     </Modal>
   );
 }
@@ -583,6 +1074,11 @@ export default function TeamPage() {
   const [filterDept, setFilterDept] = useState<string | null>(null);
   const PAGE_SIZE = 20;
 
+  // Teams 탭 전용 상태
+  const [showCreateTeam, setShowCreateTeam] = useState(false);
+  const [editingTeam, setEditingTeam] = useState<any>(null);
+  const [detailTeam, setDetailTeam] = useState<any>(null);
+
   const { data: members = [], isLoading } = useQuery({
     queryKey: ['team'],
     queryFn: async () => {
@@ -598,6 +1094,34 @@ export default function TeamPage() {
       return data.data ?? data;
     },
     enabled: user?.role !== 'employee',
+  });
+
+  // 이달 생일 (manager/owner 전용)
+  const { data: birthdaysThisMonth = [] } = useQuery<any[]>({
+    queryKey: ['birthdays-this-month'],
+    queryFn: async () => {
+      const { data } = await api.get('/users/birthdays/this-month');
+      return data.data ?? data;
+    },
+    enabled: user?.role !== 'employee',
+  });
+
+  const { data: teams = [], isLoading: teamsLoading } = useQuery<any[]>({
+    queryKey: ['teams'],
+    queryFn: async () => {
+      const { data } = await api.get('/teams');
+      return data.data ?? data;
+    },
+    enabled: tab === 'teams',
+  });
+
+  const deleteTeamMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/teams/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      toast.success('팀이 삭제되었습니다.');
+    },
+    onError: () => toast.error('팀 삭제에 실패했습니다.'),
   });
 
   const cancelInviteMutation = useMutation({
@@ -629,6 +1153,7 @@ export default function TeamPage() {
     { key: 'manager',  label: '관리자',       count: members.filter((m: any) => m.role === 'manager').length },
     { key: 'employee', label: '직원',         count: members.filter((m: any) => m.role === 'employee').length },
     { key: 'invites',  label: '초대 대기 중', count: invites.length },
+    { key: 'teams',    label: '팀',           count: teams.length },
   ];
 
   return (
@@ -653,10 +1178,16 @@ export default function TeamPage() {
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="input w-56"
           />
-          {user?.role !== 'employee' && (
+          {user?.role !== 'employee' && tab !== 'teams' && (
             <Button size="sm" onClick={() => setShowInvite(true)}>
               <UserPlus className="h-4 w-4" />
               직원 초대
+            </Button>
+          )}
+          {user?.role !== 'employee' && tab === 'teams' && (
+            <Button size="sm" onClick={() => setShowCreateTeam(true)}>
+              <Plus className="h-4 w-4" />
+              팀 만들기
             </Button>
           )}
         </div>
@@ -687,8 +1218,44 @@ export default function TeamPage() {
           ))}
         </div>
 
+        {/* 이달 생일 패널 (manager/owner) */}
+        {tab !== 'invites' && tab !== 'teams' && user?.role !== 'employee' && birthdaysThisMonth.length > 0 && (
+          <div className="rounded-2xl border border-pink-100 bg-gradient-to-r from-pink-50 to-rose-50 px-4 py-3">
+            <div className="flex items-center gap-2 mb-2.5">
+              <Cake className="w-4 h-4 text-pink-500" />
+              <span className="text-[13px] font-semibold text-pink-700">이달의 생일</span>
+              <span className="ml-auto text-[11px] text-pink-400">{new Date().toLocaleDateString('ko-KR', { month: 'long' })}</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {birthdaysThisMonth.map((b: any) => (
+                <div
+                  key={b.id}
+                  className={clsx(
+                    'flex items-center gap-2 px-3 py-1.5 rounded-xl text-[12px] font-medium',
+                    b.isToday
+                      ? 'bg-pink-500 text-white shadow-sm'
+                      : 'bg-white border border-pink-200 text-pink-800',
+                  )}
+                >
+                  {b.isToday && <Gift className="w-3.5 h-3.5" />}
+                  <span>{b.name}</span>
+                  <span className={clsx('font-mono text-[11px]', b.isToday ? 'text-pink-100' : 'text-pink-400')}>
+                    {b.birthdayMmDd}
+                  </span>
+                  {b.department && (
+                    <span className={clsx('text-[10px]', b.isToday ? 'text-pink-200' : 'text-pink-300')}>
+                      {b.department}
+                    </span>
+                  )}
+                  {b.isToday && <span className="text-[10px] text-pink-200">오늘!</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 직원 테이블 */}
-        {tab !== 'invites' && (
+        {tab !== 'invites' && tab !== 'teams' && (
           <Card padding="none">
             {isLoading ? (
               <div className="px-4"><SkeletonTableRows count={5} /></div>
@@ -717,7 +1284,26 @@ export default function TeamPage() {
                           <div className="flex items-center gap-3">
                             <Avatar name={m.name} size="md" />
                             <div>
-                              <p className="text-sm font-medium text-text-primary">{m.name}</p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-sm font-medium text-text-primary">{m.name}</p>
+                                {m.birthday && (() => {
+                                  const [, mm, dd] = (m.birthday as string).split('-');
+                                  const now = new Date();
+                                  const isToday = Number(mm) === now.getMonth() + 1 && Number(dd) === now.getDate();
+                                  const isThisMonth = Number(mm) === now.getMonth() + 1;
+                                  if (isToday) return (
+                                    <span title="오늘 생일!" className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-pink-500 text-white text-[10px] font-semibold">
+                                      <Cake className="w-2.5 h-2.5" />생일
+                                    </span>
+                                  );
+                                  if (isThisMonth) return (
+                                    <span title={`생일: ${mm}/${dd}`} className="text-[10px] text-pink-400 font-medium">
+                                      🎂 {mm}/{dd}
+                                    </span>
+                                  );
+                                  return null;
+                                })()}
+                              </div>
                               <p className="text-xs text-text-muted">{m.email}</p>
                             </div>
                           </div>
@@ -767,7 +1353,7 @@ export default function TeamPage() {
         )}
 
         {/* 페이지네이션 */}
-        {tab !== 'invites' && totalPages > 1 && (
+        {tab !== 'invites' && tab !== 'teams' && totalPages > 1 && (
           <div className="flex items-center justify-between text-sm">
             <span className="text-text-muted">
               {filtered.length}명 중 {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)}명 표시
@@ -802,6 +1388,84 @@ export default function TeamPage() {
                 다음
               </button>
             </div>
+          </div>
+        )}
+
+        {/* 팀 목록 */}
+        {tab === 'teams' && (
+          <div>
+            {teamsLoading ? (
+              <p className="text-sm text-text-muted text-center py-8">불러오는 중...</p>
+            ) : teams.length === 0 ? (
+              <div className="text-center py-12">
+                <Users className="h-10 w-10 text-text-muted mx-auto mb-3" />
+                <p className="text-sm text-text-muted">아직 팀이 없습니다.</p>
+                {user?.role !== 'employee' && (
+                  <Button size="sm" className="mt-3" onClick={() => setShowCreateTeam(true)}>
+                    <Plus className="h-4 w-4" />
+                    첫 팀 만들기
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {teams.map((team: any) => (
+                  <div key={team.id} className="cursor-pointer" onClick={() => setDetailTeam(team)}><Card className="group hover:shadow-md transition-shadow">
+                    <div className="flex items-start gap-3">
+                      {/* 색상 도트 */}
+                      <div
+                        className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center"
+                        style={{ backgroundColor: team.color ?? '#6366f1' }}
+                      >
+                        <Users className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-text-primary truncate">{team.name}</p>
+                          <span className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded-full bg-background border border-border text-text-muted">
+                            {team.memberCount ?? 0}명
+                          </span>
+                        </div>
+                        {team.description && (
+                          <p className="text-xs text-text-muted mt-0.5 line-clamp-2">{team.description}</p>
+                        )}
+                        {team.leader && (
+                          <div className="flex items-center gap-1 mt-1.5">
+                            <Crown className="w-3 h-3 text-amber-500" />
+                            <span className="text-xs text-text-secondary">{team.leader.name}</span>
+                          </div>
+                        )}
+                      </div>
+                      {user?.role !== 'employee' && (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => { setEditingTeam(team); setShowCreateTeam(true); }}
+                            className="p-1.5 rounded-lg hover:bg-background text-text-muted hover:text-primary-600 transition-colors"
+                            title="수정"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          {user?.role === 'owner' && (
+                            <button
+                              onClick={() => setConfirm({
+                                open: true,
+                                title: '팀 삭제',
+                                desc: `"${team.name}" 팀을 삭제하시겠습니까? 팀 채널도 함께 삭제됩니다.`,
+                                onConfirm: () => deleteTeamMutation.mutate(team.id),
+                              })}
+                              className="p-1.5 rounded-lg hover:bg-red-50 text-text-muted hover:text-red-500 transition-colors"
+                              title="삭제"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </Card></div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -862,6 +1526,20 @@ export default function TeamPage() {
 
       <InviteModal open={showInvite} onClose={() => setShowInvite(false)} />
       <ConfirmDialog state={confirm} onClose={() => setConfirm(CONFIRM_INIT)} />
+      <CreateTeamModal
+        open={showCreateTeam}
+        onClose={() => { setShowCreateTeam(false); setEditingTeam(null); }}
+        members={members}
+        editTeam={editingTeam}
+      />
+      {detailTeam && (
+        <TeamDetailModal
+          open={!!detailTeam}
+          onClose={() => setDetailTeam(null)}
+          team={teams.find((t: any) => t.id === detailTeam.id) ?? detailTeam}
+          currentUserRole={user?.role ?? 'employee'}
+        />
+      )}
       {permissionsUserId && (
         <PermissionsModal
           open={!!permissionsUserId}

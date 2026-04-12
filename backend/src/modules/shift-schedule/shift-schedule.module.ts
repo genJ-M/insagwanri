@@ -6,6 +6,7 @@ import { User } from '../../database/entities/user.entity';
 import { ShiftScheduleController } from './shift-schedule.controller';
 import { ShiftScheduleService } from './shift-schedule.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { TeamsModule } from '../teams/teams.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       User,
     ]),
     NotificationsModule,
+    TeamsModule,
   ],
   controllers: [ShiftScheduleController],
   providers: [ShiftScheduleService],

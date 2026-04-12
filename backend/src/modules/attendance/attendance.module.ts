@@ -7,9 +7,10 @@ import { AttendanceArchiveService } from './attendance-archive.service';
 import { AttendanceRecord } from '../../database/entities/attendance-record.entity';
 import { User } from '../../database/entities/user.entity';
 import { Company } from '../../database/entities/company.entity';
+import { TeamsModule } from '../teams/teams.module';
 
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([AttendanceRecord, User, Company])],
+  imports: [ConfigModule, TypeOrmModule.forFeature([AttendanceRecord, User, Company]), TeamsModule],
   controllers: [AttendanceController],
   providers: [AttendanceService, AttendanceArchiveService],
   exports: [AttendanceService],

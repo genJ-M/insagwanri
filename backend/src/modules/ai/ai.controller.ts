@@ -9,6 +9,7 @@ import { UserRole, AuthenticatedUser } from '../../common/types/jwt-payload.type
 import {
   DraftDto, SummarizeDto, AnnouncementDto,
   ScheduleSummaryDto, RefineDto, AiUsageQueryDto, AiHistoryQueryDto,
+  TeamScopeRecommendDto,
 } from './dto/ai.dto';
 
 @Controller('ai')
@@ -218,6 +219,23 @@ export class AiController {
     @Body('title') title: string,
   ) {
     const data = await this.aiService.classifyTask(user, title ?? '');
+    return { success: true, data };
+  }
+
+  /**
+   * POST /api/v1/ai/team-scope-recommend
+   * 팀명/설명으로 팀 구성원 AI 추천
+   * Request: { teamName, description?, employees: [{userId, name, department?, position?}] }
+   * Response: { recommendedUserIds: string[], reasons: [{userId, reason}][], disclaimer }
+   */
+  @Roles(UserRole.OWNER, UserRole.MANAGER)
+  @Post('team-scope-recommend')
+  @HttpCode(HttpStatus.OK)
+  async teamScopeRecommend(
+    @GetUser() user: AuthenticatedUser,
+    @Body() dto: TeamScopeRecommendDto,
+  ) {
+    const data = await this.aiService.teamScopeRecommend(user, dto);
     return { success: true, data };
   }
 

@@ -12,7 +12,7 @@ import { Company } from '../../database/entities/company.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import {
   DraftDto, SummarizeDto, AnnouncementDto,
-  ScheduleSummaryDto, RefineDto, AiUsageQueryDto,
+  ScheduleSummaryDto, RefineDto, AiUsageQueryDto, TeamScopeRecommendDto,
 } from './dto/ai.dto';
 import {
   AI_DISCLAIMER, TOKEN_COST, AiResult, OpenAiCallOptions,
@@ -24,6 +24,7 @@ import {
   buildAnnouncementPrompt,
   buildScheduleSummaryPrompt,
   buildRefinePrompt,
+  buildTeamScopeRecommendPrompt,
 } from './ai.prompts';
 
 @Injectable()
@@ -235,6 +236,67 @@ export class AiService {
     const matched = CATEGORIES.find((c) => c.id === rawId) ?? CATEGORIES[CATEGORIES.length - 1];
 
     return { category_id: matched.id, category_label: matched.label };
+  }
+
+  // ─────────────────────────────────────────
+  // 팀 구성원 추천 (team_scope_recommend)
+  // ─────────────────────────────────────────
+  async teamScopeRecommend(
+    currentUser: AuthenticatedUser,
+    dto: TeamScopeRecommendDto,
+  ): Promise<{
+    recommendedUserIds: string[];
+    reasons: { userId: string; reason: string }[];
+    disclaimer: string;
+  }> {
+    if (!dto.employees?.length) {
+      throw new BadRequestException('추천을 위한 직원 목록이 필요합니다.');
+    }
+
+    await this.checkRateLimit(currentUser);
+
+    const userPrompt = buildTeamScopeRecommendPrompt(
+      dto.teamName,
+      dto.description,
+      dto.employees,
+    );
+
+    const result = await this.callOpenAi(
+      currentUser,
+      AiFeature.TEAM_SCOPE_RECOMMEND,
+      dto.teamName,
+      {
+        systemPrompt: `${SYSTEM_PROMPTS.BASE}\n\n${SYSTEM_PROMPTS.TEAM_SCOPE}`,
+        userPrompt,
+        maxTokens: 600,
+        temperature: 0.2,
+      },
+    );
+
+    // JSON 파싱 — 실패해도 빈 추천으로 graceful degradation
+    let recommendedUserIds: string[] = [];
+    let reasons: { userId: string; reason: string }[] = [];
+
+    try {
+      const parsed = JSON.parse(result.output_text);
+
+      // 유효한 userId만 필터링 (주어진 목록에 있는 것만)
+      const validUserIds = new Set(dto.employees.map((e) => e.userId));
+      recommendedUserIds = (parsed.recommendedUserIds ?? []).filter(
+        (id: string) => validUserIds.has(id),
+      );
+      reasons = (parsed.reasons ?? []).filter((r: any) =>
+        validUserIds.has(r.userId),
+      );
+    } catch {
+      this.logger.warn(`[AI] team_scope_recommend JSON 파싱 실패: ${result.output_text}`);
+    }
+
+    return {
+      recommendedUserIds,
+      reasons,
+      disclaimer: AI_DISCLAIMER,
+    };
   }
 
   // ─────────────────────────────────────────

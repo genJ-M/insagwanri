@@ -88,6 +88,11 @@ export class UpdateUserDto {
   @IsDateString()
   joinedAt?: string;
 
+  /** 생년월일 (YYYY-MM-DD). 인사관리·생일 알림에 활용 */
+  @IsOptional()
+  @IsDateString()
+  birthday?: string;
+
   @IsOptional()
   @IsString()
   profileImageUrl?: string;

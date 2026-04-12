@@ -9,7 +9,11 @@ import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
-import { UpgradeSubscriptionDto, IssueBillingKeyDto, CancelSubscriptionDto } from './dto/subscription.dto';
+import {
+  UpgradeSubscriptionDto, IssueBillingKeyDto, CancelSubscriptionDto,
+  ToggleAutoRenewDto, PurchaseAddonDto,
+} from './dto/subscription.dto';
+import { ADDON_CATALOG, findAddon } from './addon-catalog.constant';
 
 @Injectable()
 export class SubscriptionsService {
@@ -333,6 +337,152 @@ export class SubscriptionsService {
       ORDER BY created_at DESC
       LIMIT 24
     `, [user.companyId]);
+  }
+
+  // ──────────────────────────────────────────────
+  // 자동결제 토글
+  // ──────────────────────────────────────────────
+  async toggleAutoRenew(dto: ToggleAutoRenewDto, user: AuthenticatedUser) {
+    if (user.role !== UserRole.OWNER) {
+      throw new ForbiddenException('자동결제 설정은 OWNER만 변경할 수 있습니다.');
+    }
+
+    const [sub] = await this.dataSource.query(
+      `SELECT id, status FROM subscriptions WHERE company_id = $1`,
+      [user.companyId],
+    );
+    if (!sub) throw new NotFoundException('구독 정보를 찾을 수 없습니다.');
+    if (sub.status === 'canceled') throw new BadRequestException('이미 해지된 구독입니다.');
+
+    await this.dataSource.query(
+      `UPDATE subscriptions SET auto_renew = $2, updated_at = NOW() WHERE id = $1`,
+      [sub.id, dto.autoRenew],
+    );
+    return { autoRenew: dto.autoRenew };
+  }
+
+  // ──────────────────────────────────────────────
+  // 애드온 카탈로그 조회
+  // ──────────────────────────────────────────────
+  getAddonCatalog() {
+    return ADDON_CATALOG;
+  }
+
+  // ──────────────────────────────────────────────
+  // 활성 애드온 조회
+  // ──────────────────────────────────────────────
+  async getActiveAddons(user: AuthenticatedUser) {
+    return this.dataSource.query(`
+      SELECT ap.id, ap.addon_code, ap.quantity, ap.unit_price_krw, ap.total_amount_krw,
+             ap.billing_cycle, ap.status, ap.active_from, ap.active_until, ap.created_at
+      FROM addon_purchases ap
+      WHERE ap.company_id = $1 AND ap.status = 'active'
+      ORDER BY ap.created_at DESC
+    `, [user.companyId]);
+  }
+
+  // ──────────────────────────────────────────────
+  // 애드온 구매
+  // ──────────────────────────────────────────────
+  async purchaseAddon(dto: PurchaseAddonDto, user: AuthenticatedUser) {
+    if (user.role !== UserRole.OWNER) {
+      throw new ForbiddenException('애드온 구매는 OWNER만 가능합니다.');
+    }
+
+    const addon = findAddon(dto.addonCode);
+    if (!addon) throw new NotFoundException('유효하지 않은 애드온입니다.');
+
+    // 결제 수단 조회
+    const [paymentMethod] = await this.dataSource.query(
+      `SELECT * FROM payment_methods WHERE id = $1 AND company_id = $2 AND is_active = true`,
+      [dto.paymentMethodId, user.companyId],
+    );
+    if (!paymentMethod) throw new NotFoundException('유효하지 않은 결제 수단입니다.');
+
+    // 금액 계산
+    const unitPrice = dto.billingCycle === 'yearly' ? addon.priceYearlyKrw : addon.priceMonthlyKrw;
+    const supplyAmount = unitPrice * dto.quantity;
+    const taxAmount = Math.round(supplyAmount * 0.1);
+    const totalAmount = supplyAmount + taxAmount;
+
+    // 기간 계산
+    const now = new Date();
+    const activeUntil = new Date(now);
+    if (dto.billingCycle === 'yearly') {
+      activeUntil.setFullYear(activeUntil.getFullYear() + 1);
+    } else {
+      activeUntil.setMonth(activeUntil.getMonth() + 1);
+    }
+
+    const orderId = `ADDON-${Date.now()}-${user.companyId.slice(0, 8)}`;
+    const invoiceNumber = `ADD-${now.toISOString().slice(0, 7)}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+    // Toss 결제
+    const billingKey = this.decryptBillingKey(paymentMethod.pg_billing_key);
+    const tossResult = await this.chargeToss({
+      billingKey,
+      customerKey: user.companyId,
+      orderId,
+      orderName: `관리왕 ${addon.name} (x${dto.quantity})`,
+      amount: totalAmount,
+    });
+
+    if (!tossResult.success) {
+      throw new BadRequestException(tossResult.failureReason ?? '결제에 실패했습니다.');
+    }
+
+    // 구독 ID 조회
+    const [sub] = await this.dataSource.query(
+      `SELECT id FROM subscriptions WHERE company_id = $1`,
+      [user.companyId],
+    );
+
+    // 트랜잭션: payment + addon_purchase 생성
+    await this.dataSource.transaction(async (em) => {
+      const [payment] = await em.query(`
+        INSERT INTO payments (
+          company_id, subscription_id, payment_method_id, invoice_number,
+          status, supply_amount_krw, tax_amount_krw, total_amount_krw,
+          billing_cycle, pg_provider, pg_transaction_id, pg_order_id,
+          pg_raw_response, paid_at, refundable_until
+        ) VALUES (
+          $1, $2, $3, $4, 'completed',
+          $5, $6, $7, $8,
+          'toss_payments', $9, $10, $11::jsonb,
+          NOW(), NOW() + INTERVAL '7 days'
+        ) RETURNING id
+      `, [
+        user.companyId, sub?.id ?? null, dto.paymentMethodId, invoiceNumber,
+        supplyAmount, taxAmount, totalAmount, dto.billingCycle,
+        tossResult.transactionId, orderId, JSON.stringify(tossResult.rawResponse),
+      ]);
+
+      await em.query(`
+        INSERT INTO addon_purchases (
+          company_id, subscription_id, addon_code, quantity,
+          unit_price_krw, total_amount_krw, billing_cycle,
+          status, payment_id, active_from, active_until
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, 'active', $8,
+          $9::date, $10::date
+        )
+      `, [
+        user.companyId, sub?.id ?? null, dto.addonCode, dto.quantity,
+        unitPrice, totalAmount, dto.billingCycle,
+        payment.id,
+        now.toISOString().slice(0, 10),
+        activeUntil.toISOString().slice(0, 10),
+      ]);
+    });
+
+    return {
+      addonCode: dto.addonCode,
+      addonName: addon.name,
+      quantity: dto.quantity,
+      totalAmount,
+      billingCycle: dto.billingCycle,
+      activeUntil,
+    };
   }
 
   // ──────────────────────────────────────────────

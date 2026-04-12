@@ -11,6 +11,12 @@ import { AuthenticatedUser } from '../../common/types/jwt-payload.type';
 export class WorkspaceController {
   constructor(private readonly workspaceService: WorkspaceService) {}
 
+  /** GET /workspace/industry-presets — 업종 프리셋 목록 (전 직원 조회 가능) */
+  @Get('industry-presets')
+  getIndustryPresets() {
+    return { success: true, data: this.workspaceService.getIndustryPresets() };
+  }
+
   /** GET /workspace/settings */
   @Get('settings')
   async getSettings(@GetUser() user: AuthenticatedUser) {

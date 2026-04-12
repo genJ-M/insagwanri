@@ -14,6 +14,7 @@ import {
   StepStatus,
 } from '../../database/entities/approval-step.entity';
 import { User } from '../../database/entities/user.entity';
+import { Company } from '../../database/entities/company.entity';
 import { AuthenticatedUser, UserRole, UserPermissions } from '../../common/types/jwt-payload.type';
 import {
   CreateApprovalDto, UpdateApprovalDto,
@@ -21,6 +22,7 @@ import {
 } from './dto/approval.dto';
 import { APPROVAL_TEMPLATES, TEMPLATE_CATEGORIES } from './approval-templates.constant';
 import { NotificationsService } from '../notifications/notifications.service';
+import { DocumentSealService } from './document-seal.service';
 
 @Injectable()
 export class ApprovalsService {
@@ -28,7 +30,9 @@ export class ApprovalsService {
     @InjectRepository(ApprovalDocument) private docRepo: Repository<ApprovalDocument>,
     @InjectRepository(ApprovalStep)     private stepRepo: Repository<ApprovalStep>,
     @InjectRepository(User)             private userRepo: Repository<User>,
+    @InjectRepository(Company)          private companyRepo: Repository<Company>,
     private notificationsService: NotificationsService,
+    private documentSealService: DocumentSealService,
   ) {}
 
   // ─── 템플릿 목록 ──────────────────────────────────
@@ -189,11 +193,15 @@ export class ApprovalsService {
     if (nextStep) {
       doc.currentStep = nextStep.step;
     } else {
-      // 모든 결재 완료
+      // 모든 결재 완료 → 봉인
       doc.status = ApprovalDocStatus.APPROVED;
       doc.completedAt = new Date();
+
+      await this.docRepo.save(doc);
+      await this.sealDocument(doc);
     }
-    await this.docRepo.save(doc);
+
+    if (nextStep) await this.docRepo.save(doc);
 
     // 권한 변경 기안: 최종 승인 시 자동 적용
     if (doc.status === ApprovalDocStatus.APPROVED && doc.type === ApprovalDocType.PERMISSION_CHANGE) {
@@ -282,12 +290,84 @@ export class ApprovalsService {
     const doc = await this.loadDoc(id, currentUser.companyId);
     if (doc.authorId !== currentUser.id) throw new ForbiddenException();
     if (doc.status === ApprovalDocStatus.IN_PROGRESS) throw new BadRequestException('진행 중인 문서는 삭제할 수 없습니다.');
+    if (doc.isSealed) throw new BadRequestException('봉인된 결재 문서는 삭제할 수 없습니다. (법정 보존 기간: 5년)');
 
     await this.docRepo.softDelete(id);
     return { id };
   }
 
+  // ─── 인쇄용 HTML ──────────────────────────────────
+  async getPrintHtml(id: string, currentUser: AuthenticatedUser): Promise<string> {
+    const doc = await this.loadDoc(id, currentUser.companyId);
+    this.assertAccess(doc, currentUser);
+
+    if (!doc.isSealed) {
+      throw new BadRequestException('봉인된 결재 문서만 인쇄할 수 있습니다. 최종 승인 완료 후 이용하세요.');
+    }
+
+    const steps = (doc.steps ?? []).sort((a, b) => a.step - b.step);
+    return this.documentSealService.generatePrintHtml(doc, steps);
+  }
+
+  // ─── 무결성 검증 ──────────────────────────────────
+  async verifyIntegrity(id: string, currentUser: AuthenticatedUser) {
+    const doc = await this.loadDoc(id, currentUser.companyId);
+    this.assertAccess(doc, currentUser);
+
+    const steps = (doc.steps ?? []).sort((a, b) => a.step - b.step);
+    const result = this.documentSealService.verify(doc, steps);
+
+    return {
+      documentId: doc.id,
+      title: doc.title,
+      isSealed: doc.isSealed,
+      sealedAt: doc.sealedAt,
+      retainUntil: doc.retainUntil,
+      sealHash: doc.sealHash,
+      contentHash: doc.contentHash,
+      ...result,
+    };
+  }
+
   // ─── 내부 헬퍼 ──────────────────────────────────
+  // ─── 봉인 실행 ────────────────────────────────────
+  private async sealDocument(doc: ApprovalDocument): Promise<void> {
+    try {
+      // 최신 단계 정보 다시 조회 (actedAt, comment 포함)
+      const fullDoc = await this.docRepo.findOne({
+        where: { id: doc.id },
+        relations: ['author', 'steps', 'steps.approver'],
+      });
+      if (!fullDoc) return;
+
+      const company = await this.companyRepo.findOne({ where: { id: fullDoc.companyId } });
+      const companyName = company?.name ?? '';
+
+      const steps = (fullDoc.steps ?? []).sort((a, b) => a.step - b.step);
+      const sealed = this.documentSealService.seal(fullDoc, steps, companyName);
+
+      // 단계별 hash 저장
+      await Promise.all(
+        sealed.stepHashes.map(({ stepId, hash }) =>
+          this.stepRepo.update({ id: stepId }, { stepHash: hash }),
+        ),
+      );
+
+      // 문서 봉인
+      await this.docRepo.update({ id: fullDoc.id }, {
+        isSealed:    true,
+        sealedAt:    sealed.sealedAt,
+        contentHash: sealed.contentHash,
+        sealHash:    sealed.sealHash,
+        retainUntil: sealed.retainUntil,
+        snapshot:    sealed.snapshot,
+      });
+    } catch (err) {
+      // 봉인 실패는 결재 자체를 롤백하지 않음 (로그만 기록)
+      console.error('[DocumentSeal] 봉인 실패:', err);
+    }
+  }
+
   private async loadDoc(id: string, companyId: string): Promise<ApprovalDocument> {
     const doc = await this.docRepo.findOne({
       where: { id, companyId },
@@ -374,7 +454,7 @@ export class ApprovalsService {
     }
   }
 
-  private toResponse(doc: ApprovalDocument, myId: string) {
+  private toResponse(doc: ApprovalDocument, myId: string, includeContent = true) {
     const steps = (doc.steps ?? [])
       .sort((a, b) => a.step - b.step)
       .map(s => ({
@@ -407,6 +487,11 @@ export class ApprovalsService {
         ? { id: doc.author.id, name: doc.author.name, department: doc.author.department, position: doc.author.position }
         : null,
       steps,
+      // 봉인 정보
+      isSealed: doc.isSealed ?? false,
+      sealedAt: doc.sealedAt ?? null,
+      retainUntil: doc.retainUntil ?? null,
+      sealHash: doc.sealHash ?? null,
     };
   }
 }

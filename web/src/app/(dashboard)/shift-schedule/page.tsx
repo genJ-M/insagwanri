@@ -374,6 +374,15 @@ export default function ShiftSchedulePage() {
   const qc = useQueryClient();
   const isManager = user?.role !== 'employee';
 
+  // 팀장 여부 확인 (employee role이지만 리더인 경우)
+  const { data: myTeams } = useQuery({
+    queryKey: ['my-teams'],
+    queryFn: () => api.get('/teams/mine').then((r) => r.data.data as { id: string; leaderId: string | null }[]),
+    enabled: user?.role === 'employee',
+  });
+  const isTeamLeader = isManager || (myTeams?.some((t) => t.leaderId === user?.id) ?? false);
+
+
   const [tab, setTab] = useState<TabType>('schedule');
   const [currentWeek, setCurrentWeek] = useState(() => getWeekMonday(new Date()));
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
@@ -417,7 +426,7 @@ export default function ShiftSchedulePage() {
     queryFn:  () => api.get('/shift-schedule/team-availability', {
       params: { week_start: currentWeek, department: currentSchedule?.department },
     }).then((r) => r.data.data as { weekDates: string[]; team: TeamMemberAvailability[] }),
-    enabled: isManager,
+    enabled: isTeamLeader,
   });
 
   const { data: myAvailRes, refetch: refetchMyAvail } = useQuery({
@@ -559,7 +568,8 @@ export default function ShiftSchedulePage() {
   const isDraft = currentSchedule?.status === 'draft';
 
   return (
-    <div className="space-y-4">
+    <div className="flex-1 overflow-y-auto">
+    <div className="p-4 md:p-8 space-y-4 max-w-[1280px]">
       {/* 헤더 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -572,7 +582,7 @@ export default function ShiftSchedulePage() {
           <Button variant="ghost" size="sm" onClick={() => setShowAvailModal(true)}>
             <Clock size={14}/> 내 가용시간
           </Button>
-          {isManager && (
+          {isTeamLeader && (
             <Button size="sm" onClick={() => setShowCreateModal(true)}>
               <Plus size={14}/> 근무표 작성
             </Button>
@@ -632,7 +642,7 @@ export default function ShiftSchedulePage() {
               </select>
             )}
 
-            {isManager && currentSchedule && (
+            {isTeamLeader && currentSchedule && (
               <div className="flex gap-2 ml-auto">
                 {isDraft ? (
                   <>
@@ -722,7 +732,7 @@ export default function ShiftSchedulePage() {
                           const dateStr    = weekDates[i];
                           const assignment = getAssignment(member.user.id, dateStr);
                           const avail      = getMemberAvail(member.user.id, dateStr);
-                          const canEdit    = isManager && isDraft;
+                          const canEdit    = isTeamLeader && isDraft;
 
                           return (
                             <td key={dow} className="p-1">
@@ -759,7 +769,7 @@ export default function ShiftSchedulePage() {
               <div className="text-center py-8">
                 <CalendarDays size={32} className="mx-auto text-gray-300 mb-2"/>
                 <p className="text-text-secondary text-sm">이번 주 근무표가 없습니다.</p>
-                {isManager && (
+                {isTeamLeader && (
                   <Button size="sm" className="mt-3" onClick={() => setShowCreateModal(true)}>
                     <Plus size={14}/> 근무표 만들기
                   </Button>
@@ -834,8 +844,8 @@ export default function ShiftSchedulePage() {
             </Card>
           )}
 
-          {/* 팀원 가용시간 요약 (관리자) */}
-          {isManager && teamAvailRes && (
+          {/* 팀원 가용시간 요약 (관리자 또는 팀장) */}
+          {isTeamLeader && teamAvailRes && (
             <div>
               <h3 className="text-sm font-semibold text-text-primary mb-2">팀원 가용시간 현황</h3>
               <Card className="overflow-x-auto p-0">
@@ -935,6 +945,7 @@ export default function ShiftSchedulePage() {
         onClose={() => setShowAvailModal(false)}
         onSave={(data) => availMut.mutate(data)}
       />
+    </div>
     </div>
   );
 }

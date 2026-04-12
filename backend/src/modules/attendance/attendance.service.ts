@@ -10,6 +10,7 @@ import { AttendanceRecord, AttendanceStatus } from '../../database/entities/atte
 import { User } from '../../database/entities/user.entity';
 import { Company } from '../../database/entities/company.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
+import { TeamsService } from '../teams/teams.service';
 import {
   ClockInDto, ClockOutDto, UpdateAttendanceDto,
   AttendanceQueryDto, AttendanceReportQueryDto,
@@ -29,6 +30,7 @@ export class AttendanceService {
     private companyRepo: Repository<Company>,
 
     private configService: ConfigService,
+    private teamsService: TeamsService,
   ) {}
 
   // ─────────────────────────────────────────
@@ -203,6 +205,21 @@ export class AttendanceService {
   // 근태 목록 (관리자)
   // ─────────────────────────────────────────
   async getAttendanceList(currentUser: AuthenticatedUser, query: AttendanceQueryDto) {
+    // 팀장(employee role)도 자신의 팀원 근태 조회 허용
+    if (currentUser.role === UserRole.EMPLOYEE) {
+      const memberIds = await this.teamsService.getLeaderTeamMemberIds(
+        currentUser.id, currentUser.companyId,
+      );
+      if (!memberIds) {
+        throw new ForbiddenException('근태 목록 조회 권한이 없습니다.');
+      }
+      // 팀장은 팀원 중에서만 조회 가능 (query.user_id가 팀원인지 검증)
+      if (query.user_id && !memberIds.includes(query.user_id)) {
+        throw new ForbiddenException('해당 직원의 근태를 조회할 권한이 없습니다.');
+      }
+      query = { ...query, _memberIds: memberIds } as any;
+    }
+
     const { date, start_date, end_date, user_id, status, page, limit } = query;
     const skip = ((page ?? 1) - 1) * (limit ?? 20);
 
@@ -215,6 +232,12 @@ export class AttendanceService {
         'a.status', 'a.isLate', 'a.lateMinutes', 'a.totalWorkMinutes',
         'u.id', 'u.name', 'u.department',
       ]);
+
+    // 팀장이면 팀원으로 범위 제한
+    const memberIds = (query as any)._memberIds as string[] | undefined;
+    if (memberIds) {
+      qb.andWhere('a.user_id IN (:...memberIds)', { memberIds });
+    }
 
     if (date) {
       qb.andWhere('a.work_date = :date', { date });
@@ -291,6 +314,17 @@ export class AttendanceService {
   // 월별 리포트
   // ─────────────────────────────────────────
   async getMonthlyReport(currentUser: AuthenticatedUser, query: AttendanceReportQueryDto) {
+    // 팀장도 허용
+    let leaderMemberIds: string[] | null = null;
+    if (currentUser.role === UserRole.EMPLOYEE) {
+      leaderMemberIds = await this.teamsService.getLeaderTeamMemberIds(
+        currentUser.id, currentUser.companyId,
+      );
+      if (!leaderMemberIds) {
+        throw new ForbiddenException('월별 리포트 조회 권한이 없습니다.');
+      }
+    }
+
     const now = new Date();
     const year  = query.year  ?? now.getFullYear();
     const month = query.month ?? now.getMonth() + 1;
@@ -303,6 +337,11 @@ export class AttendanceService {
       .leftJoinAndSelect('a.user', 'u')
       .where('a.company_id = :companyId', { companyId: currentUser.companyId })
       .andWhere('a.work_date BETWEEN :start AND :end', { start: startDate, end: endDate });
+
+    // 팀장이면 팀원으로 범위 제한
+    if (leaderMemberIds) {
+      qb.andWhere('a.user_id IN (:...memberIds)', { memberIds: leaderMemberIds });
+    }
 
     if (query.user_id) qb.andWhere('a.user_id = :userId', { userId: query.user_id });
 

@@ -60,9 +60,8 @@ export class VacationsController {
     return this.svc.create(dto, user);
   }
 
-  /** 승인 (관리자) */
+  /** 승인 (관리자 또는 팀장) */
   @Patch(':id/approve')
-  @Roles(UserRole.OWNER, UserRole.MANAGER)
   approve(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -70,9 +69,8 @@ export class VacationsController {
     return this.svc.approve(id, user);
   }
 
-  /** 반려 (관리자) */
+  /** 반려 (관리자 또는 팀장) */
   @Patch(':id/reject')
-  @Roles(UserRole.OWNER, UserRole.MANAGER)
   reject(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RejectVacationDto,

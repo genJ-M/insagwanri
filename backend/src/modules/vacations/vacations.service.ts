@@ -15,6 +15,7 @@ import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type
 import {
   CreateVacationDto, RejectVacationDto, VacationQueryDto, SetBalanceDto,
 } from './dto/vacation.dto';
+import { TeamsService } from '../teams/teams.service';
 
 // 연차 차감이 필요한 타입
 const DEDUCTIBLE_TYPES: VacationType[] = [
@@ -29,6 +30,7 @@ export class VacationsService {
     @InjectRepository(VacationRequest) private reqRepo: Repository<VacationRequest>,
     @InjectRepository(VacationBalance) private balanceRepo: Repository<VacationBalance>,
     @InjectRepository(User) private userRepo: Repository<User>,
+    private teamsService: TeamsService,
   ) {}
 
   // ─── 목록 조회 ───────────────────────────────────────
@@ -39,9 +41,18 @@ export class VacationsService {
       .where('v.company_id = :cid', { cid: currentUser.companyId })
       .orderBy('v.created_at', 'DESC');
 
-    // 직원은 본인 것만
     if (currentUser.role === UserRole.EMPLOYEE) {
-      qb.andWhere('v.user_id = :uid', { uid: currentUser.id });
+      const leaderMemberIds = await this.teamsService.getLeaderTeamMemberIds(
+        currentUser.id, currentUser.companyId,
+      );
+      if (leaderMemberIds) {
+        // 팀장: 본인 + 팀원 휴가 조회
+        const visibleIds = [currentUser.id, ...leaderMemberIds];
+        qb.andWhere('v.user_id IN (:...visibleIds)', { visibleIds });
+      } else {
+        // 일반 직원: 본인만
+        qb.andWhere('v.user_id = :uid', { uid: currentUser.id });
+      }
     } else if (query.user_id) {
       qb.andWhere('v.user_id = :uid', { uid: query.user_id });
     }
@@ -67,11 +78,11 @@ export class VacationsService {
       relations: ['user', 'approver'],
     });
     if (!req) throw new NotFoundException('휴가 신청을 찾을 수 없습니다.');
-    if (
-      currentUser.role === UserRole.EMPLOYEE &&
-      req.userId !== currentUser.id
-    ) {
-      throw new ForbiddenException('접근 권한이 없습니다.');
+    if (currentUser.role === UserRole.EMPLOYEE && req.userId !== currentUser.id) {
+      const isLeader = await this.teamsService.isLeaderOf(
+        currentUser.id, req.userId, currentUser.companyId,
+      );
+      if (!isLeader) throw new ForbiddenException('접근 권한이 없습니다.');
     }
     return this.toResponse(req);
   }
@@ -139,6 +150,13 @@ export class VacationsService {
   async approve(id: string, currentUser: AuthenticatedUser) {
     const req = await this.getReqOrFail(id, currentUser.companyId);
 
+    if (currentUser.role === UserRole.EMPLOYEE) {
+      const isLeader = await this.teamsService.isLeaderOf(
+        currentUser.id, req.userId, currentUser.companyId,
+      );
+      if (!isLeader) throw new ForbiddenException('휴가 승인 권한이 없습니다.');
+    }
+
     if (req.status !== VacationStatus.PENDING) {
       throw new BadRequestException('대기 중인 신청만 승인할 수 있습니다.');
     }
@@ -166,6 +184,13 @@ export class VacationsService {
   // ─── 반려 ────────────────────────────────────────────
   async reject(id: string, dto: RejectVacationDto, currentUser: AuthenticatedUser) {
     const req = await this.getReqOrFail(id, currentUser.companyId);
+
+    if (currentUser.role === UserRole.EMPLOYEE) {
+      const isLeader = await this.teamsService.isLeaderOf(
+        currentUser.id, req.userId, currentUser.companyId,
+      );
+      if (!isLeader) throw new ForbiddenException('휴가 반려 권한이 없습니다.');
+    }
 
     if (req.status !== VacationStatus.PENDING) {
       throw new BadRequestException('대기 중인 신청만 반려할 수 있습니다.');

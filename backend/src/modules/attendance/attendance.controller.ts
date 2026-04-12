@@ -89,7 +89,6 @@ export class AttendanceController {
    * GET /api/v1/attendance?date=2026-03-10&status=late
    * GET /api/v1/attendance?start_date=2026-03-01&end_date=2026-03-31&user_id=uuid
    */
-  @Roles(UserRole.OWNER, UserRole.MANAGER)
   @Get()
   async getAttendanceList(
     @GetUser() user: AuthenticatedUser,
@@ -105,7 +104,6 @@ export class AttendanceController {
    * Example Request:
    * GET /api/v1/attendance/report?year=2026&month=3
    */
-  @Roles(UserRole.OWNER, UserRole.MANAGER)
   @Get('report')
   async getMonthlyReport(
     @GetUser() user: AuthenticatedUser,

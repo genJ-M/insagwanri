@@ -1,5 +1,6 @@
 'use client';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import { usePageGuard } from '@/hooks/usePageGuard';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -489,6 +490,7 @@ function SalaryForm({
 // ── 메인 ──────────────────────────────────────────────
 export default function SalaryPage() {
   usePageTitle('급여 관리');
+  const { isAllowed, isLoading: guardLoading } = usePageGuard('/salary');
   const user = useAuthStore((s) => s.user);
   const isManager = user?.role !== 'employee';
   const qc = useQueryClient();
@@ -548,6 +550,9 @@ export default function SalaryPage() {
     mutationFn: (id: string) => api.delete(`/salary/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['salary'] }); toast.success('삭제되었습니다.'); },
   });
+
+  // 가시성 가드 — 로딩 중이거나 접근 불가 시 숨김
+  if (guardLoading || !isAllowed) return null;
 
   // 급여 접근 권한 없음 (403)
   if (salaryError?.response?.status === 403) {

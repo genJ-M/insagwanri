@@ -1,6 +1,7 @@
 import {
   IsString, IsOptional, IsIn, IsUUID,
   MinLength, MaxLength, IsDateString, IsArray, IsInt, Min, Max,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -108,6 +109,43 @@ export class RefineDto {
   @IsOptional()
   @IsIn(['formal', 'friendly', 'concise'])
   tone?: string = 'formal';
+}
+
+// ─────────────────────────────────────────
+// 팀 구성원 AI 추천 (team-scope-recommend)
+// ─────────────────────────────────────────
+export class TeamScopeEmployeeDto {
+  @IsUUID()
+  userId: string;
+
+  @IsString()
+  name: string;
+
+  @IsOptional() @IsString()
+  department?: string;
+
+  @IsOptional() @IsString()
+  position?: string;
+
+  @IsOptional() @IsString()
+  role?: string;
+}
+
+export class TeamScopeRecommendDto {
+  @IsString()
+  @MinLength(2, { message: '팀 이름을 2자 이상 입력해주세요.' })
+  @MaxLength(100)
+  teamName: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TeamScopeEmployeeDto)
+  employees: TeamScopeEmployeeDto[];
 }
 
 // ─────────────────────────────────────────

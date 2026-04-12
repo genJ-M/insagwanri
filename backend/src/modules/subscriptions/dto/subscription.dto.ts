@@ -1,4 +1,7 @@
-import { IsString, IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsUUID, IsBoolean, IsIn, IsInt, Min, Max } from 'class-validator';
+import { ADDON_CATALOG } from '../addon-catalog.constant';
+
+const ADDON_CODES = ADDON_CATALOG.map((a) => a.code);
 
 export enum BillingCycleDto {
   MONTHLY = 'monthly',
@@ -34,4 +37,25 @@ export class CancelSubscriptionDto {
 
   @IsOptional()
   cancelAtPeriodEnd?: boolean; // true = 기간 만료 후 해지, false = 즉시
+}
+
+export class ToggleAutoRenewDto {
+  @IsBoolean()
+  autoRenew: boolean;
+}
+
+export class PurchaseAddonDto {
+  @IsIn(ADDON_CODES)
+  addonCode: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  quantity: number;
+
+  @IsEnum(BillingCycleDto)
+  billingCycle: BillingCycleDto;
+
+  @IsUUID()
+  paymentMethodId: string;
 }

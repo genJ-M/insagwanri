@@ -351,6 +351,8 @@ export class NotificationsService {
       return settings.pushMessage;
     if (type.startsWith('schedule_')) return settings.pushSchedule;
     if (type.startsWith('attendance_')) return settings.pushAttendance;
+    if (type === 'birthday_upcoming') return settings.pushSchedule; // 인사 일정 계열
+    if (type.startsWith('team_')) return true;
     return true;
   }
 

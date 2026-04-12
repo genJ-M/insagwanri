@@ -96,4 +96,25 @@ export class CalendarSettingsController {
   setVisibility(@GetUser() user: AuthenticatedUser, @Body() dto: SetDepartmentVisibilityDto) {
     return this.svc.setDepartmentVisibility(user, dto);
   }
+
+  /** GET /api/v1/calendar-settings/visibility/user/:userId — 개인 오버라이드 조회 */
+  @Roles(UserRole.OWNER, UserRole.MANAGER)
+  @Get('visibility/user/:userId')
+  getUserVisibility(
+    @GetUser() user: AuthenticatedUser,
+    @Param('userId') userId: string,
+  ) {
+    return this.svc.getUserVisibilityOverride(userId, user);
+  }
+
+  /** PATCH /api/v1/calendar-settings/visibility/user/:userId — 개인 오버라이드 설정 */
+  @Roles(UserRole.OWNER, UserRole.MANAGER)
+  @Patch('visibility/user/:userId')
+  setUserVisibility(
+    @GetUser() user: AuthenticatedUser,
+    @Param('userId') userId: string,
+    @Body() dto: SetDepartmentVisibilityDto,
+  ) {
+    return this.svc.setUserVisibility(userId, dto, user);
+  }
 }

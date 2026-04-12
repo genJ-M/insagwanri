@@ -269,6 +269,117 @@ function RecurringEventModal({
   );
 }
 
+// ─── 개인 오버라이드 패널 ─────────────────────────────────────────────────────
+function UserOverridePanel({ users }: { users: any[] }) {
+  const qc = useQueryClient();
+  const [selectedUserId, setSelectedUserId] = useState('');
+
+  const { data: overrideMap = {} } = useQuery<Record<string, boolean>>({
+    queryKey: ['user-visibility-override', selectedUserId],
+    queryFn: () => api.get(`/calendar-settings/visibility/user/${selectedUserId}`).then(r => r.data.data as Record<string, boolean>),
+    enabled: !!selectedUserId,
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: ({ pageKey, isVisible }: { pageKey: string; isVisible: boolean }) =>
+      api.patch(`/calendar-settings/visibility/user/${selectedUserId}`, {
+        department: `user:${selectedUserId}`, // backend ignores this field for user overrides
+        pages: [{ page_key: pageKey, is_visible: isVisible }],
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['user-visibility-override', selectedUserId] });
+      qc.invalidateQueries({ queryKey: ['page-visibility'] });
+    },
+    onError: () => toast.error('변경에 실패했습니다.'),
+  });
+
+  const resetMut = useMutation({
+    mutationFn: () => api.patch(`/calendar-settings/visibility/user/${selectedUserId}`, {
+      department: `user:${selectedUserId}`,
+      pages: ALL_PAGES.map(k => ({ page_key: k, is_visible: true })),
+    }),
+    onSuccess: () => {
+      toast.success('개인 설정이 초기화되었습니다.');
+      qc.invalidateQueries({ queryKey: ['user-visibility-override', selectedUserId] });
+      qc.invalidateQueries({ queryKey: ['page-visibility'] });
+    },
+    onError: () => toast.error('초기화에 실패했습니다.'),
+  });
+
+  const selectedUser = users.find((u: any) => u.id === selectedUserId);
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm text-text-secondary mb-3">
+          부서 설정을 무시하고 특정 직원에게만 적용되는 개인 화면 오버라이드를 설정합니다.
+        </p>
+        <select
+          value={selectedUserId}
+          onChange={e => setSelectedUserId(e.target.value)}
+          className="w-full max-w-sm border border-border rounded-lg px-3 py-2 text-sm"
+        >
+          <option value="">직원 선택...</option>
+          {users.map((u: any) => (
+            <option key={u.id} value={u.id}>
+              {u.name} {u.department ? `(${u.department})` : ''} — {u.role}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {selectedUserId && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-semibold text-text-primary">
+              {selectedUser?.name ?? ''}님의 개인 설정
+            </p>
+            <button
+              onClick={() => resetMut.mutate()}
+              className="text-xs text-text-muted hover:text-red-500 underline"
+            >
+              전체 초기화
+            </button>
+          </div>
+          <p className="text-xs text-text-muted mb-3">
+            설정이 없는 항목은 부서 설정을 따릅니다. 여기서 명시적으로 설정한 항목만 개인 오버라이드로 저장됩니다.
+          </p>
+          <div className="border border-border rounded-xl overflow-hidden">
+            {ALL_PAGES.filter(k => k !== '/').map((key, i) => {
+              const isVisible = overrideMap[key] !== false;
+              const hasOverride = key in overrideMap;
+              return (
+                <div key={key} className={clsx(
+                  'flex items-center justify-between px-4 py-2.5',
+                  i !== 0 && 'border-t border-border',
+                  hasOverride && 'bg-blue-50/50',
+                )}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-text-primary">{PAGE_LABELS[key]}</span>
+                    {hasOverride && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 font-medium">개인 설정</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => toggleMut.mutate({ pageKey: key, isVisible: !isVisible })}
+                    className={clsx(
+                      'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors',
+                      isVisible ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500',
+                    )}
+                  >
+                    {isVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                    {isVisible ? '표시' : '숨김'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── 팀 가시성 설정 패널 ──────────────────────────────────────────────────────
 function VisibilityPanel({ users, templates, visibilityData, userRole }: {
   users: any[];
@@ -279,6 +390,7 @@ function VisibilityPanel({ users, templates, visibilityData, userRole }: {
   const qc = useQueryClient();
   const [selectedDept, setSelectedDept] = useState('__default__');
   const [applying, setApplying]         = useState<string | null>(null);
+  const [showUserOverride, setShowUserOverride] = useState(false);
 
   const departments = [...new Set(users.map((u: any) => u.department).filter(Boolean))] as string[];
   const allDepts = ['__default__', ...departments];
@@ -388,6 +500,25 @@ function VisibilityPanel({ users, templates, visibilityData, userRole }: {
             );
           })}
         </div>
+      </div>
+
+      {/* 개인 오버라이드 섹션 */}
+      <div className="border border-border rounded-xl p-4">
+        <button
+          onClick={() => setShowUserOverride(p => !p)}
+          className="flex items-center justify-between w-full"
+        >
+          <div>
+            <p className="text-sm font-semibold text-text-primary text-left">개인 화면 오버라이드</p>
+            <p className="text-xs text-text-muted mt-0.5">특정 직원에게만 적용되는 개별 설정</p>
+          </div>
+          <ChevronDown className={clsx('h-4 w-4 text-text-muted transition-transform', showUserOverride && 'rotate-180')} />
+        </button>
+        {showUserOverride && (
+          <div className="mt-4 pt-4 border-t border-border">
+            <UserOverridePanel users={users} />
+          </div>
+        )}
       </div>
     </div>
   );

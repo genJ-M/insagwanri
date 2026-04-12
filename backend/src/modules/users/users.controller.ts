@@ -70,6 +70,21 @@ export class UsersController {
     return this.usersService.getOrgStats(user);
   }
 
+  /** GET /users/birthdays/this-month — 이달 생일 목록 (manager/owner) */
+  @Get('birthdays/this-month')
+  async getBirthdaysThisMonth(@GetUser() user: AuthenticatedUser) {
+    return this.usersService.getBirthdaysThisMonth(user);
+  }
+
+  /** GET /users/birthdays/upcoming?days=30 — 다가오는 생일 (manager/owner) */
+  @Get('birthdays/upcoming')
+  async getUpcomingBirthdays(
+    @GetUser() user: AuthenticatedUser,
+    @Query('days') days?: string,
+  ) {
+    return this.usersService.getUpcomingBirthdays(user, days ? Number(days) : 30);
+  }
+
   /** GET /users/invites — 대기 중인 초대 목록 */
   @Get('invites')
   async findInvites(@GetUser() user: AuthenticatedUser) {

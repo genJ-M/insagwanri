@@ -7,6 +7,7 @@ import {
   UpdateWorkspaceDto, UpdateWorkSettingsDto, UpdateGpsSettingsDto, UpdateBrandingDto,
   UpdateAttendanceMethodsDto,
 } from './dto/workspace.dto';
+import { INDUSTRY_PRESETS } from './industry-presets.constant';
 
 @Injectable()
 export class WorkspaceService {
@@ -85,6 +86,10 @@ export class WorkspaceService {
       },
     });
     return this.getSettings(currentUser);
+  }
+
+  getIndustryPresets() {
+    return INDUSTRY_PRESETS;
   }
 
   private requireOwner(user: AuthenticatedUser) {

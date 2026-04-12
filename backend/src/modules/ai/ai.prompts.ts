@@ -95,6 +95,20 @@ export const SYSTEM_PROMPTS = {
 - concise: 불필요한 표현 제거, 간결하게
 - 응답은 다듬어진 문장만 출력한다.
 `.trim(),
+
+  // ─────────────────────────────
+  // 팀 구성원 추천 (team_scope_recommend)
+  // ─────────────────────────────
+  TEAM_SCOPE: `
+당신은 팀 구성 보조 도구입니다.
+팀명과 설명을 보고 주어진 직원 목록 중 해당 팀에 적합한 구성원을 추천합니다.
+다음 원칙을 반드시 준수하세요:
+1. 주어진 직원 목록에 있는 userId만 사용한다. 없는 ID를 생성하지 않는다.
+2. 팀명과 설명에서 업무 영역을 파악하여 부서·직책이 연관된 직원을 우선 추천한다.
+3. 추천 근거는 부서·직책 정보에만 근거한다. 주관적 판단을 추가하지 않는다.
+4. 반드시 유효한 JSON만 출력한다. 다른 텍스트는 절대 포함하지 않는다.
+5. 추천 인원은 최소 1명, 최대 전체의 절반 이하로 한다.
+`.trim(),
 } as const;
 
 // ─────────────────────────────────────────
@@ -194,5 +208,46 @@ export const buildRefinePrompt = (inputText: string, tone: string): string => {
 
 [원문]
 ${inputText}
+`.trim();
+};
+
+export interface TeamScopeEmployee {
+  userId: string;
+  name: string;
+  department?: string;
+  position?: string;
+  role?: string;
+}
+
+export const buildTeamScopeRecommendPrompt = (
+  teamName: string,
+  description: string | undefined,
+  employees: TeamScopeEmployee[],
+): string => {
+  const employeeList = employees
+    .map((e) =>
+      `userId: ${e.userId} | 이름: ${e.name} | 부서: ${e.department ?? '미지정'} | 직책: ${e.position ?? '미지정'}`,
+    )
+    .join('\n');
+
+  const maxRecommend = Math.max(1, Math.floor(employees.length / 2));
+
+  return `
+팀명: ${teamName}
+${description ? `팀 설명: ${description}` : ''}
+
+[직원 목록] (총 ${employees.length}명)
+${employeeList}
+
+위 직원 목록 중 "${teamName}" 팀에 적합한 구성원을 추천해주세요.
+최대 ${maxRecommend}명까지 추천 가능합니다.
+
+반드시 아래 형식의 JSON만 출력하세요. 다른 텍스트는 포함하지 마세요:
+{
+  "recommendedUserIds": ["userId1", "userId2"],
+  "reasons": [
+    { "userId": "userId1", "reason": "추천 이유 (부서/직책 기반, 20자 이내)" }
+  ]
+}
 `.trim();
 };

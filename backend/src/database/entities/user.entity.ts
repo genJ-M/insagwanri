@@ -132,6 +132,10 @@ export class User {
   @Column({ name: 'joined_at', type: 'date', nullable: true })
   joinedAt: Date | null;
 
+  /** 생년월일 (인사관리·생일 알림용, 연도 포함 전체 저장) */
+  @Column({ type: 'date', nullable: true })
+  birthday: Date | null;
+
   @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
   lastLoginAt: Date | null;
 

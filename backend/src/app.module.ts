@@ -91,6 +91,9 @@ import { ShiftSchedule, ShiftAssignment } from './database/entities/shift-schedu
 import { ShiftScheduleModule } from './modules/shift-schedule/shift-schedule.module';
 import { CustomTemplatesModule } from './modules/custom-templates/custom-templates.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
+import { TeamsModule } from './modules/teams/teams.module';
+import { Team } from './database/entities/team.entity';
+import { TeamMember } from './database/entities/team-member.entity';
 
 @Module({
   imports: [
@@ -175,6 +178,8 @@ import { InvitationsModule } from './modules/invitations/invitations.module';
             EmployeeAvailability,
             ShiftSchedule,
             ShiftAssignment,
+            Team,
+            TeamMember,
           ],
           synchronize: false, // Migration으로 스키마 관리
           logging: config.get<string>('NODE_ENV') === 'development',
@@ -229,6 +234,7 @@ import { InvitationsModule } from './modules/invitations/invitations.module';
     ShiftScheduleModule,
     CustomTemplatesModule,
     InvitationsModule,
+    TeamsModule,
 
     // 활동 로그 (통신비밀보호법, 전역)
     ActivityLogModule,

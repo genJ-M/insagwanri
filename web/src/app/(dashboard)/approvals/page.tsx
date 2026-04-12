@@ -6,6 +6,7 @@ import {
   ChevronRight, Clock, CheckCircle2, XCircle,
   User as UserIcon, AlertCircle, LayoutTemplate,
   Pencil, Tag, Search, Link2, ChevronDown, ChevronUp,
+  Printer, ShieldCheck, Lock,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
@@ -36,6 +37,11 @@ interface ApprovalDoc {
   templateId: string | null;
   author: { id: string; name: string; department: string | null; position: string | null } | null;
   steps: ApprovalStep[];
+  // 봉인 정보
+  isSealed?: boolean;
+  sealedAt?: string | null;
+  retainUntil?: string | null;
+  sealHash?: string | null;
 }
 
 interface TemplatePlaceholder {
@@ -50,6 +56,27 @@ interface ApprovalTemplate {
 }
 
 interface TaskItem { id: string; title: string; status: string; assignee?: { name: string } | null }
+
+// ─── 인쇄 헬퍼 ───────────────────────────────────────
+// window.open() 은 Authorization 헤더를 보내지 못하므로
+// api axios 인스턴스로 HTML을 가져온 뒤 Blob URL로 새 창을 엽니다.
+async function openPrintWindow(docId: string) {
+  try {
+    const res = await api.get(`/approvals/${docId}/print`, { responseType: 'text' });
+    const blob = new Blob([res.data], { type: 'text/html; charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    // 새 창이 로드된 후 URL 해제 (메모리 누수 방지)
+    if (w) {
+      w.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+    } else {
+      // 팝업 차단 시 즉시 해제
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    }
+  } catch {
+    toast.error('인쇄용 문서를 불러오는 데 실패했습니다.');
+  }
+}
 
 // ─── 상수 ────────────────────────────────────────────
 const TYPE_LABELS: Record<string, string> = {
@@ -757,6 +784,45 @@ function DocDetail({ doc, onClose, onAction }: {
               </div>
             </div>
           )}
+
+          {/* 봉인 정보 */}
+          {doc.isSealed && (
+            <div className="border border-emerald-200 bg-emerald-50 rounded-xl p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <Lock className="w-4 h-4 text-emerald-600" />
+                <span className="text-[13px] font-semibold text-emerald-800">전자 결재 봉인 완료</span>
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="space-y-1 text-[11px] text-emerald-700">
+                <p>봉인일시: {doc.sealedAt ? format(new Date(doc.sealedAt), 'yyyy.MM.dd HH:mm', { locale: ko }) : '-'}</p>
+                <p>법정보존기한: {doc.retainUntil ? format(new Date(doc.retainUntil), 'yyyy.MM.dd', { locale: ko }) : '-'} (5년)</p>
+                <p className="font-mono break-all text-[10px] text-emerald-600">
+                  봉인해시: {doc.sealHash ? `${doc.sealHash.slice(0, 20)}…${doc.sealHash.slice(-8)}` : '-'}
+                </p>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => openPrintWindow(doc.id)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700"
+                >
+                  <Printer className="w-3.5 h-3.5" />인쇄 / PDF 저장
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await api.get(`/approvals/${doc.id}/verify`);
+                      const v = res.data.data ?? res.data;
+                      if (v.valid) toast.success(`✓ 무결성 확인 완료 — ${v.details}`);
+                      else toast.error(`⚠ ${v.details}`);
+                    } catch { toast.error('검증에 실패했습니다.'); }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 text-[12px] font-semibold hover:bg-emerald-100"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />무결성 검증
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="px-6 pb-6">
@@ -956,6 +1022,11 @@ export default function ApprovalsPage() {
                               결재 대기
                             </span>
                           )}
+                          {doc.isSealed && (
+                            <span className="flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <Lock className="w-2.5 h-2.5" />봉인
+                            </span>
+                          )}
                           {(doc.relatedTaskIds?.length ?? 0) > 0 && (
                             <span className="flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-600 border border-indigo-200">
                               <Link2 className="w-2.5 h-2.5" />업무 {doc.relatedTaskIds.length}
@@ -991,6 +1062,15 @@ export default function ApprovalsPage() {
                           <button onClick={() => { if (window.confirm('결재를 취소하시겠습니까?')) cancelMutation.mutate(doc.id); }}
                             title="취소" className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100">
                             <X className="w-4 h-4" />
+                          </button>
+                        )}
+                        {doc.isSealed && (
+                          <button
+                            onClick={() => openPrintWindow(doc.id)}
+                            title="인쇄 / PDF 저장"
+                            className="p-1.5 rounded-lg text-emerald-500 hover:bg-emerald-50"
+                          >
+                            <Printer className="w-4 h-4" />
                           </button>
                         )}
                       </div>

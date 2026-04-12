@@ -5,17 +5,22 @@ import {
 import { SalaryService } from './salary.service';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { AuthenticatedUser } from '../../common/types/jwt-payload.type';
+import { CalendarSettingsService } from '../calendar-settings/calendar-settings.service';
 import {
   CreateSalaryDto, UpdateSalaryDto, SalaryQueryDto, AutoCalculateDto,
 } from './dto/salary.dto';
 
 @Controller('salary')
 export class SalaryController {
-  constructor(private readonly salaryService: SalaryService) {}
+  constructor(
+    private readonly salaryService: SalaryService,
+    private readonly pageVisibility: CalendarSettingsService,
+  ) {}
 
   /** GET /salary — 급여 목록 (관리자: 전체, 직원: 본인) */
   @Get()
   async findAll(@GetUser() user: AuthenticatedUser, @Query() query: SalaryQueryDto) {
+    await this.pageVisibility.assertPageAccess(user, '/salary');
     const data = await this.salaryService.findAll(user, query);
     return { success: true, data };
   }
@@ -23,6 +28,7 @@ export class SalaryController {
   /** GET /salary/me — 내 급여 목록 */
   @Get('me')
   async findMine(@GetUser() user: AuthenticatedUser, @Query() query: SalaryQueryDto) {
+    await this.pageVisibility.assertPageAccess(user, '/salary');
     const data = await this.salaryService.findMine(user, query);
     return { success: true, data };
   }

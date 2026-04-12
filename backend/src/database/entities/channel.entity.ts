@@ -10,6 +10,7 @@ export enum ChannelType {
   GENERAL      = 'general',
   DIRECT       = 'direct',
   GROUP        = 'group',
+  TEAM         = 'team',
 }
 
 @Entity('channels')
@@ -32,6 +33,10 @@ export class Channel {
 
   @Column({ name: 'creator_id', type: 'uuid', nullable: true })
   creatorId: string;
+
+  /** 팀 채널인 경우 연결된 팀 ID */
+  @Column({ name: 'team_id', type: 'uuid', nullable: true })
+  teamId: string | null;
 
   @ManyToOne(() => Company) @JoinColumn({ name: 'company_id' }) company: Company;
   @ManyToOne(() => User, { nullable: true }) @JoinColumn({ name: 'creator_id' }) creator: User;

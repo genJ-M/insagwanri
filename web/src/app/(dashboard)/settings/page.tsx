@@ -5,17 +5,27 @@ import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User, Building2, Clock, MapPin, Bell, Image,
-  Eye, EyeOff, Check, AlertTriangle, Smartphone,
+  Eye, EyeOff, Check, AlertTriangle, Smartphone, ChevronDown, X,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import Card, { CardHeader } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import Modal from '@/components/ui/Modal';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import ImageUploader from '@/components/ui/ImageUploader';
 import CoverCropModal from '@/components/ui/CoverCropModal';
+
+// ── 업종 타입 ────────────────────────────────────
+interface IndustryPreset {
+  code: string;
+  label: string;
+  emoji: string;
+  description: string;
+  recommendedAttendanceMethods: string[];
+}
 
 type Section = 'profile' | 'company' | 'work' | 'gps' | 'attendance-methods' | 'notification' | 'branding';
 
@@ -294,6 +304,104 @@ const COMPANY_TYPE_OPTIONS = [
   { value: 'corporation', label: '법인' },
 ] as const;
 
+// ── 업종 선택 컴포넌트 ──────────────────────────
+function IndustryPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (code: string, label: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [customInput, setCustomInput] = useState('');
+
+  const { data: presets = [] } = useQuery<IndustryPreset[]>({
+    queryKey: ['industry-presets'],
+    queryFn: () => api.get('/workspace/industry-presets').then((r) => r.data.data),
+    staleTime: Infinity,
+  });
+
+  const selected = presets.find((p) => p.code === value);
+  const isCustom = value && !selected;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg border-[1.5px] border-border text-sm text-left transition-all hover:border-gray-300 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
+      >
+        <span className={clsx(value ? 'text-text-primary' : 'text-text-muted')}>
+          {selected ? `${selected.emoji} ${selected.label}` : isCustom ? value : '업종을 선택하세요'}
+        </span>
+        <ChevronDown size={16} className="text-text-muted flex-shrink-0" />
+      </button>
+
+      <Modal open={open} onClose={() => setOpen(false)} title="업종 선택">
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            해당하는 업종을 선택하면 권장 기능이 자동으로 설정됩니다.
+          </p>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[400px] overflow-y-auto pr-1">
+            {presets.map((preset) => (
+              <button
+                key={preset.code}
+                type="button"
+                onClick={() => { onChange(preset.code, preset.label); setOpen(false); }}
+                className={clsx(
+                  'flex flex-col items-start gap-1 p-3 rounded-xl border-2 text-left transition-all',
+                  value === preset.code
+                    ? 'border-primary-500 bg-primary-50'
+                    : 'border-border hover:border-gray-300 hover:bg-surface-2',
+                )}
+              >
+                <span className="text-2xl">{preset.emoji}</span>
+                <span className="text-sm font-medium text-text-primary leading-tight">{preset.label}</span>
+                <span className="text-[11px] text-text-muted leading-tight">{preset.description}</span>
+                {value === preset.code && (
+                  <span className="mt-1 text-[10px] font-medium text-primary-600 bg-primary-100 px-1.5 py-0.5 rounded-full">선택됨</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="border-t border-border pt-3">
+            <p className="text-xs text-text-muted mb-2">목록에 없으면 직접 입력하세요</p>
+            <div className="flex gap-2">
+              <input
+                value={customInput}
+                onChange={(e) => setCustomInput(e.target.value)}
+                placeholder="예: 펫샵, 세탁소, 주유소..."
+                className="flex-1 px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:border-primary-500"
+              />
+              <Button
+                size="sm"
+                disabled={!customInput.trim()}
+                onClick={() => { onChange(customInput.trim(), customInput.trim()); setCustomInput(''); setOpen(false); }}
+              >
+                적용
+              </Button>
+            </div>
+          </div>
+
+          {value && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="text-xs text-text-muted hover:text-red-500 flex items-center gap-1"
+                onClick={() => { onChange('', ''); setOpen(false); }}
+              >
+                <X size={12} /> 업종 초기화
+              </button>
+            </div>
+          )}
+        </div>
+      </Modal>
+    </>
+  );
+}
+
 // ── 회사 정보 섹션 ─────────────────────────────
 function CompanySection() {
   const queryClient = useQueryClient();
@@ -368,7 +476,10 @@ function CompanySection() {
             </div>
             <div>
               <label className="label">업종</label>
-              <input value={form.industry} onChange={(e) => set('industry', e.target.value)} className={inputCls} />
+              <IndustryPicker
+                value={form.industry}
+                onChange={(code) => set('industry', code)}
+              />
             </div>
           </div>
 

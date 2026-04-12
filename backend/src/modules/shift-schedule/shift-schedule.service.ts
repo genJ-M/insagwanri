@@ -15,6 +15,7 @@ import {
   BulkUpsertAssignmentsDto, UpsertAvailabilityDto, AvailabilityQueryDto,
 } from './dto/shift-schedule.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { TeamsService } from '../teams/teams.service';
 
 @Injectable()
 export class ShiftScheduleService {
@@ -24,10 +25,23 @@ export class ShiftScheduleService {
     @InjectRepository(EmployeeAvailability) private availRepo:  Repository<EmployeeAvailability>,
     @InjectRepository(User)                private userRepo:   Repository<User>,
     private notificationsService: NotificationsService,
+    private teamsService: TeamsService,
   ) {}
 
   private managerOrAbove(role: UserRole) {
     return role !== UserRole.EMPLOYEE;
+  }
+
+  /**
+   * 관리자 또는 팀장인지 확인.
+   * 팀장이면 해당 팀원 ID 목록 반환, 관리자/소유자면 null 반환.
+   * 권한 없으면 ForbiddenException.
+   */
+  private async assertCanManage(user: AuthenticatedUser): Promise<string[] | null> {
+    if (this.managerOrAbove(user.role)) return null;
+    const memberIds = await this.teamsService.getLeaderTeamMemberIds(user.id, user.companyId);
+    if (!memberIds) throw new ForbiddenException('관리자만 근무표를 관리할 수 있습니다.');
+    return memberIds;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -65,7 +79,9 @@ export class ShiftScheduleService {
     });
     if (!sched) throw new NotFoundException('근무표를 찾을 수 없습니다.');
     if (user.role === UserRole.EMPLOYEE && sched.status !== ShiftScheduleStatus.PUBLISHED) {
-      throw new ForbiddenException('아직 발행되지 않은 근무표입니다.');
+      // 팀장이면 미발행 근무표도 조회 가능
+      const memberIds = await this.teamsService.getLeaderTeamMemberIds(user.id, user.companyId);
+      if (!memberIds) throw new ForbiddenException('아직 발행되지 않은 근무표입니다.');
     }
 
     const assignments = await this.assignRepo.find({
@@ -78,9 +94,7 @@ export class ShiftScheduleService {
   }
 
   async create(user: AuthenticatedUser, dto: CreateShiftScheduleDto) {
-    if (!this.managerOrAbove(user.role)) {
-      throw new ForbiddenException('관리자만 근무표를 생성할 수 있습니다.');
-    }
+    await this.assertCanManage(user);
     const sched = this.schedRepo.create({
       companyId:  user.companyId,
       creatorId:  user.id,
@@ -94,7 +108,7 @@ export class ShiftScheduleService {
   }
 
   async update(user: AuthenticatedUser, id: string, dto: UpdateShiftScheduleDto) {
-    if (!this.managerOrAbove(user.role)) throw new ForbiddenException();
+    await this.assertCanManage(user);
     const sched = await this.schedRepo.findOne({ where: { id, companyId: user.companyId } });
     if (!sched) throw new NotFoundException('근무표를 찾을 수 없습니다.');
     if (sched.status === ShiftScheduleStatus.PUBLISHED) {
@@ -109,7 +123,7 @@ export class ShiftScheduleService {
   }
 
   async remove(user: AuthenticatedUser, id: string) {
-    if (!this.managerOrAbove(user.role)) throw new ForbiddenException();
+    await this.assertCanManage(user);
     const sched = await this.schedRepo.findOne({ where: { id, companyId: user.companyId } });
     if (!sched) throw new NotFoundException();
     await this.schedRepo.softDelete(id);
@@ -121,7 +135,7 @@ export class ShiftScheduleService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   async publish(user: AuthenticatedUser, id: string) {
-    if (!this.managerOrAbove(user.role)) throw new ForbiddenException();
+    await this.assertCanManage(user);
     const sched = await this.schedRepo.findOne({ where: { id, companyId: user.companyId } });
     if (!sched) throw new NotFoundException();
 
@@ -156,7 +170,7 @@ export class ShiftScheduleService {
   }
 
   async unpublish(user: AuthenticatedUser, id: string) {
-    if (!this.managerOrAbove(user.role)) throw new ForbiddenException();
+    await this.assertCanManage(user);
     const sched = await this.schedRepo.findOne({ where: { id, companyId: user.companyId } });
     if (!sched) throw new NotFoundException();
     sched.status      = ShiftScheduleStatus.DRAFT;
@@ -170,9 +184,17 @@ export class ShiftScheduleService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   async upsertAssignments(user: AuthenticatedUser, schedId: string, dto: BulkUpsertAssignmentsDto) {
-    if (!this.managerOrAbove(user.role)) throw new ForbiddenException();
+    const leaderMemberIds = await this.assertCanManage(user);
     const sched = await this.schedRepo.findOne({ where: { id: schedId, companyId: user.companyId } });
     if (!sched) throw new NotFoundException();
+
+    // 팀장은 자신의 팀원만 배정 가능
+    if (leaderMemberIds) {
+      const unauthorized = dto.assignments.find((a) => !leaderMemberIds.includes(a.user_id));
+      if (unauthorized) {
+        throw new ForbiddenException('팀장은 소속 팀원만 배정할 수 있습니다.');
+      }
+    }
 
     for (const item of dto.assignments) {
       // 시간 유효성 (off 타입 제외)
@@ -218,7 +240,10 @@ export class ShiftScheduleService {
   }
 
   async deleteAssignment(user: AuthenticatedUser, schedId: string, userId: string, date: string) {
-    if (!this.managerOrAbove(user.role)) throw new ForbiddenException();
+    const leaderMemberIds = await this.assertCanManage(user);
+    if (leaderMemberIds && !leaderMemberIds.includes(userId)) {
+      throw new ForbiddenException('팀장은 소속 팀원만 배정을 삭제할 수 있습니다.');
+    }
     await this.assignRepo.delete({ shiftScheduleId: schedId, userId, date });
     return { success: true };
   }
@@ -251,9 +276,9 @@ export class ShiftScheduleService {
     return { success: true, data: list };
   }
 
-  /** 팀원 전체 가용시간 조회 (관리자, 근무표 작성 시 사용) */
+  /** 팀원 전체 가용시간 조회 (관리자 또는 팀장, 근무표 작성 시 사용) */
   async getTeamAvailability(user: AuthenticatedUser, weekStart: string, department?: string) {
-    if (!this.managerOrAbove(user.role)) throw new ForbiddenException();
+    const leaderMemberIds = await this.assertCanManage(user);
 
     // 해당 부서 직원 목록
     const userQb = this.userRepo.createQueryBuilder('u')
@@ -261,6 +286,8 @@ export class ShiftScheduleService {
       .where('u.company_id = :cid', { cid: user.companyId })
       .andWhere('u.deleted_at IS NULL');
     if (department) userQb.andWhere('u.department = :dept', { dept: department });
+    // 팀장은 자신의 팀원만 조회
+    if (leaderMemberIds) userQb.andWhere('u.id IN (:...leaderMemberIds)', { leaderMemberIds });
     const users = await userQb.getMany();
 
     const weekDates = Array.from({ length: 7 }, (_, i) =>
@@ -364,7 +391,7 @@ export class ShiftScheduleService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   async recommend(user: AuthenticatedUser, schedId: string) {
-    if (!this.managerOrAbove(user.role)) throw new ForbiddenException();
+    await this.assertCanManage(user);
     const sched = await this.schedRepo.findOne({ where: { id: schedId, companyId: user.companyId } });
     if (!sched) throw new NotFoundException();
 

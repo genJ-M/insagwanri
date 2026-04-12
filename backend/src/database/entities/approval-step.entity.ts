@@ -44,6 +44,11 @@ export class ApprovalStep {
   @Column({ name: 'acted_at', type: 'timestamptz', nullable: true })
   actedAt: Date | null;
 
+  // SHA-256(document_id + step + approver_id + status + comment + acted_at + prev_hash)
+  // 결재 완료 시 생성. 이전 단계 해시를 체인으로 연결해 위변조 감지
+  @Column({ name: 'step_hash', type: 'varchar', length: 64, nullable: true })
+  stepHash: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

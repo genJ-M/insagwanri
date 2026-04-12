@@ -206,9 +206,10 @@ export class CalendarSettingsService {
   async getVisibility(user: AuthenticatedUser) {
     if (user.role === UserRole.EMPLOYEE) throw new ForbiddenException('관리자 전용입니다.');
     const rows = await this.visibilityRepo.find({ where: { companyId: user.companyId } });
-    // 부서별로 그룹화
+    // 부서별로 그룹화 (user:<id> 개인 오버라이드 행은 별도 관리하므로 제외)
     const byDept: Record<string, Record<string, boolean>> = {};
     for (const r of rows) {
+      if (r.department.startsWith('user:')) continue; // 개인 오버라이드 제외
       if (!byDept[r.department]) byDept[r.department] = {};
       byDept[r.department][r.pageKey] = r.isVisible;
     }
@@ -225,23 +226,84 @@ export class CalendarSettingsService {
     const me = await this.userRepo.findOne({ where: { id: user.id }, select: ['department'] });
     const dept = me?.department ?? null;
 
-    // 부서별 설정 우선, 없으면 기본값 확인
-    const deptRows = dept
-      ? await this.visibilityRepo.find({ where: { companyId: user.companyId, department: dept } })
-      : [];
+    // 1) 기본값 → 2) 부서별 → 3) 개인 오버라이드 순서로 적용
     const defaultRows = await this.visibilityRepo.find({
       where: { companyId: user.companyId, department: '__default__' },
     });
+    const deptRows = dept
+      ? await this.visibilityRepo.find({ where: { companyId: user.companyId, department: dept } })
+      : [];
+    const userRows = await this.visibilityRepo.find({
+      where: { companyId: user.companyId, department: `user:${user.id}` },
+    });
 
     const map: Record<string, boolean> = {};
-    for (const key of ALL_PAGE_KEYS) map[key] = true; // default all visible
+    for (const key of ALL_PAGE_KEYS) map[key] = true;
     for (const r of defaultRows) map[r.pageKey] = r.isVisible;
-    for (const r of deptRows)    map[r.pageKey] = r.isVisible; // dept overrides default
+    for (const r of deptRows)    map[r.pageKey] = r.isVisible;
+    for (const r of userRows)    map[r.pageKey] = r.isVisible; // 개인 오버라이드 최우선
 
     // manager: calendar-settings 항상 표시
     if (user.role === UserRole.MANAGER) map['/calendar-settings'] = true;
 
     return { success: true, data: map };
+  }
+
+  /**
+   * 특정 사용자의 개인 페이지 가시성 오버라이드 설정 (관리자 이상)
+   * department = 'user:<targetUserId>' 컨벤션 사용
+   */
+  async setUserVisibility(
+    targetUserId: string,
+    dto: SetDepartmentVisibilityDto,
+    user: AuthenticatedUser,
+  ) {
+    if (user.role === UserRole.EMPLOYEE) throw new ForbiddenException('관리자만 설정할 수 있습니다.');
+
+    // 대상 사용자가 같은 회사인지 확인
+    const target = await this.userRepo.findOne({
+      where: { id: targetUserId, companyId: user.companyId },
+      select: ['id'],
+    });
+    if (!target) throw new NotFoundException('사용자를 찾을 수 없습니다.');
+
+    await this.setDepartmentVisibility(user, {
+      department: `user:${targetUserId}`,
+      pages: dto.pages,
+    });
+    return { success: true };
+  }
+
+  /**
+   * 특정 사용자의 개인 오버라이드 조회
+   */
+  async getUserVisibilityOverride(targetUserId: string, user: AuthenticatedUser) {
+    if (user.role === UserRole.EMPLOYEE) throw new ForbiddenException();
+    const target = await this.userRepo.findOne({
+      where: { id: targetUserId, companyId: user.companyId },
+      select: ['id'],
+    });
+    if (!target) throw new NotFoundException();
+
+    const rows = await this.visibilityRepo.find({
+      where: { companyId: user.companyId, department: `user:${targetUserId}` },
+    });
+    const map: Record<string, boolean> = {};
+    for (const r of rows) map[r.pageKey] = r.isVisible;
+    return { success: true, data: map };
+  }
+
+  /**
+   * 특정 페이지 접근 가능 여부 검증 — owner는 항상 통과
+   * 숨겨진 페이지 접근 시 ForbiddenException 발생
+   */
+  async assertPageAccess(user: AuthenticatedUser, pageKey: string): Promise<void> {
+    if (user.role === UserRole.OWNER) return;
+
+    const { data: map } = await this.getMyVisibility(user);
+    if (map[pageKey] === false) {
+      throw new ForbiddenException(`이 페이지에 대한 접근 권한이 없습니다: ${pageKey}`);
+    }
   }
 
   async setDepartmentVisibility(user: AuthenticatedUser, dto: SetDepartmentVisibilityDto) {

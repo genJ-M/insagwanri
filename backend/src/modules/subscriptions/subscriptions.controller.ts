@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Body,
   Param,
@@ -11,7 +12,10 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
-import { UpgradeSubscriptionDto, IssueBillingKeyDto, CancelSubscriptionDto } from './dto/subscription.dto';
+import {
+  UpgradeSubscriptionDto, IssueBillingKeyDto, CancelSubscriptionDto,
+  ToggleAutoRenewDto, PurchaseAddonDto,
+} from './dto/subscription.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { AuthenticatedUser } from '../../common/types/jwt-payload.type';
@@ -62,6 +66,31 @@ export class SubscriptionsController {
   @Post('toss/billing-key')
   issueBillingKey(@Body() dto: IssueBillingKeyDto, @GetUser() user: AuthenticatedUser) {
     return this.subscriptionsService.issueBillingKey(dto, user);
+  }
+
+  // PATCH /api/v1/subscriptions/auto-renew
+  @Patch('auto-renew')
+  @HttpCode(HttpStatus.OK)
+  toggleAutoRenew(@Body() dto: ToggleAutoRenewDto, @GetUser() user: AuthenticatedUser) {
+    return this.subscriptionsService.toggleAutoRenew(dto, user);
+  }
+
+  // GET /api/v1/subscriptions/addons
+  @Get('addons')
+  getAddonCatalog() {
+    return { success: true, data: this.subscriptionsService.getAddonCatalog() };
+  }
+
+  // GET /api/v1/subscriptions/addons/active
+  @Get('addons/active')
+  getActiveAddons(@GetUser() user: AuthenticatedUser) {
+    return this.subscriptionsService.getActiveAddons(user);
+  }
+
+  // POST /api/v1/subscriptions/addons/purchase
+  @Post('addons/purchase')
+  purchaseAddon(@Body() dto: PurchaseAddonDto, @GetUser() user: AuthenticatedUser) {
+    return this.subscriptionsService.purchaseAddon(dto, user);
   }
 
   // DELETE /api/v1/subscriptions/payment-methods/:id
