@@ -629,8 +629,6 @@ export default function AttendancePage() {
   const handleClockIn  = async () => { const pos = await getLocation(); clockInMutation.mutate(pos ?? {}); };
   const handleClockOut = async () => { const pos = await getLocation(); clockOutMutation.mutate(pos ?? {}); };
 
-  const canClockIn  = !myToday?.clockInAt;
-  const canClockOut = !!myToday?.clockInAt && !myToday?.clockOutAt;
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -665,14 +663,36 @@ export default function AttendancePage() {
                   {format(now, 'HH:mm:ss')}
                 </p>
 
-                <div className="flex justify-center gap-3">
-                  <Button onClick={handleClockIn} disabled={!canClockIn} loading={clockInMutation.isPending} size="lg" className="px-10">
-                    <LogIn className="h-5 w-5" /> 출근
-                  </Button>
-                  <Button onClick={handleClockOut} disabled={!canClockOut} loading={clockOutMutation.isPending} variant="secondary" size="lg" className="px-10">
-                    <LogOut className="h-5 w-5" /> 퇴근
-                  </Button>
-                </div>
+                {/* 이미 출근 → 근무중 상태 표시 */}
+                {myToday?.clockInAt && !myToday?.clockOutAt ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl px-6 py-3 text-base font-semibold">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                      </span>
+                      근무중입니다
+                    </div>
+                    <Button onClick={handleClockOut} loading={clockOutMutation.isPending} variant="secondary" size="lg" className="px-10">
+                      <LogOut className="h-5 w-5" /> 퇴근
+                    </Button>
+                  </div>
+                ) : myToday?.clockOutAt ? (
+                  /* 퇴근 완료 */
+                  <div className="inline-flex items-center gap-2 bg-gray-50 border border-gray-200 text-gray-500 rounded-2xl px-6 py-3 text-base font-semibold">
+                    <LogOut className="h-5 w-5" /> 오늘 근무 종료
+                  </div>
+                ) : (
+                  /* 아직 출근 전 */
+                  <div className="flex justify-center gap-3">
+                    <Button onClick={handleClockIn} loading={clockInMutation.isPending} size="lg" className="px-10">
+                      <LogIn className="h-5 w-5" /> 출근
+                    </Button>
+                    <Button disabled variant="secondary" size="lg" className="px-10 opacity-40">
+                      <LogOut className="h-5 w-5" /> 퇴근
+                    </Button>
+                  </div>
+                )}
                 <div className="flex justify-center mt-3">
                   <button
                     onClick={() => setShowOvertimeModal(true)}

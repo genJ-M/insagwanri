@@ -31,7 +31,8 @@ export type NotificationType =
   | 'task_time_adjust_rejected'
   | 'birthday_upcoming'
   | 'team_member_added'
-  | 'team_leader_assigned';
+  | 'team_leader_assigned'
+  | 'attendance_clock_in_reminder';
 
 export type NotificationRefType =
   | 'task'
