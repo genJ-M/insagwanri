@@ -105,6 +105,7 @@ import { BusinessLocation } from './database/entities/business-location.entity';
 import { UserLocation } from './database/entities/user-location.entity';
 import { ShiftSwapModule } from './modules/shift-swap/shift-swap.module';
 import { ShiftSwapRequest } from './database/entities/shift-swap-request.entity';
+import { MarketingModule } from './modules/marketing/marketing.module';
 
 @Module({
   imports: [
@@ -257,6 +258,7 @@ import { ShiftSwapRequest } from './database/entities/shift-swap-request.entity'
     CareWorkerModule,
     LocationsModule,
     ShiftSwapModule,
+    MarketingModule,
 
     // 활동 로그 (통신비밀보호법, 전역)
     ActivityLogModule,

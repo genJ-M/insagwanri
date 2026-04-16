@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import PricingWizard from '@/components/landing/PricingWizard';
+import SiteBanner from '@/components/marketing/SiteBanner';
+import SitePopup from '@/components/marketing/SitePopup';
+import { fetchBlocks, fetchActiveBanner, fetchActivePopups, b, type BlockMap } from '@/lib/marketing';
 
 export const metadata: Metadata = {
   title: '관리왕 — 중소사업장 직원 관리 플랫폼',
@@ -66,7 +69,7 @@ function Nav() {
 
 // ─── 히어로 ───────────────────────────────────────────────────────────────
 
-function Hero() {
+function Hero({ bk }: { bk: BlockMap }) {
   return (
     <section className="relative overflow-hidden bg-gradient-to-br from-primary-600 to-primary-700 pt-16 pb-24">
       {/* 배경 장식 */}
@@ -84,11 +87,11 @@ function Hero() {
         <div className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20
                         text-white text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
           <span className="w-1.5 h-1.5 rounded-full bg-status-checkin animate-pulse" />
-          중소사업장 맞춤 · 직종별 큐레이션
+          {b(bk, 'hero', 'badge', '🚀 중소사업장을 위한 스마트 인사 관리')}
         </div>
 
         <h1 className="text-3xl sm:text-5xl font-black text-white leading-tight tracking-tight mb-5">
-          복잡한 인사 관리,
+          {b(bk, 'hero', 'title_line1', '복잡한 인사 관리,')}
           <br />
           이제 <span className="relative inline-block">
             관리왕
@@ -97,13 +100,11 @@ function Hero() {
               className="absolute -bottom-1 left-0 right-0 h-1 bg-white/30 rounded-full"
             />
           </span>{' '}
-          하나로 끝.
+          {b(bk, 'hero', 'title_line2', '하나로 끝.')}
         </h1>
 
         <p className="text-base sm:text-lg text-white/80 max-w-xl mx-auto mb-8 leading-relaxed">
-          출퇴근부터 급여·계약·세무까지.
-          <br className="hidden sm:block" />
-          직종별 맞춤 패키지로 필요한 기능만, 필요한 만큼.
+          {b(bk, 'hero', 'subtitle', '출퇴근부터 급여·계약·세무까지. 직종별 맞춤 패키지로 필요한 기능만, 필요한 만큼.')}
         </p>
 
         {/* CTA */}
@@ -113,36 +114,31 @@ function Hero() {
             className="w-full sm:w-auto bg-white text-primary-700 font-bold text-sm
                        px-7 py-3.5 rounded-xl hover:bg-primary-50 transition-colors shadow-lg"
           >
-            내 업종 맞춤 가격 보기 ↓
+            {b(bk, 'hero', 'cta_primary', '내 업종 맞춤 가격 보기 ↓')}
           </a>
           <Link
             href="/auth/register"
             className="w-full sm:w-auto bg-white/10 border border-white/30 text-white
                        font-semibold text-sm px-7 py-3.5 rounded-xl hover:bg-white/20 transition-colors"
           >
-            14일 무료 체험 시작 →
+            {b(bk, 'hero', 'cta_secondary', '14일 무료 체험 시작 →')}
           </Link>
         </div>
 
         {/* 신뢰 지표 */}
         <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2
                         text-xs text-white/60 font-medium">
-          <span className="flex items-center gap-1.5">
-            <CheckIcon className="w-3.5 h-3.5 text-status-checkin" />
-            신용카드 불필요
-          </span>
-          <span className="flex items-center gap-1.5">
-            <CheckIcon className="w-3.5 h-3.5 text-status-checkin" />
-            언제든 취소
-          </span>
-          <span className="flex items-center gap-1.5">
-            <CheckIcon className="w-3.5 h-3.5 text-status-checkin" />
-            Free 플랜 영구 무료
-          </span>
-          <span className="flex items-center gap-1.5">
-            <CheckIcon className="w-3.5 h-3.5 text-status-checkin" />
-            개인정보 암호화 보관
-          </span>
+          {[
+            b(bk, 'hero', 'trust_1', '신용카드 불필요'),
+            b(bk, 'hero', 'trust_2', '언제든 취소'),
+            b(bk, 'hero', 'trust_3', 'Free 플랜 영구 무료'),
+            b(bk, 'hero', 'trust_4', '개인정보 암호화 보관'),
+          ].map((text) => (
+            <span key={text} className="flex items-center gap-1.5">
+              <CheckIcon className="w-3.5 h-3.5 text-status-checkin" />
+              {text}
+            </span>
+          ))}
         </div>
       </div>
     </section>
@@ -151,21 +147,19 @@ function Hero() {
 
 // ─── 가격 마법사 섹션 ──────────────────────────────────────────────────────
 
-function WizardSection() {
+function WizardSection({ bk }: { bk: BlockMap }) {
   return (
     <section id="pricing" className="py-16 sm:py-20 bg-background scroll-mt-16">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="text-center mb-10">
           <p className="text-xs font-bold text-primary-600 uppercase tracking-widest mb-2">
-            직종별 맞춤 요금제
+            {b(bk, 'pricing', 'badge', '💰 합리적인 요금제')}
           </p>
           <h2 className="text-2xl sm:text-3xl font-black text-text-primary mb-3">
-            보이는 것은 적게, 선택은 정교하게
+            {b(bk, 'pricing', 'title', '우리 팀에 딱 맞는 플랜 선택')}
           </h2>
           <p className="text-sm sm:text-base text-text-secondary max-w-lg mx-auto">
-            업종·직원 수·필요 기능을 선택하는 즉시
-            <br className="hidden sm:block" />
-            오른쪽 견적서에 실시간으로 반영됩니다.
+            {b(bk, 'pricing', 'subtitle', '소규모 팀부터 중견 기업까지, 유연하게 확장 가능한 플랜을 제공합니다')}
           </p>
         </div>
 
@@ -216,19 +210,19 @@ const FEATURES = [
   },
 ];
 
-function FeaturesSection() {
+function FeaturesSection({ bk }: { bk: BlockMap }) {
   return (
     <section id="features" className="py-16 sm:py-20 bg-white scroll-mt-16">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="text-center mb-12">
           <p className="text-xs font-bold text-primary-600 uppercase tracking-widest mb-2">
-            핵심 기능
+            {b(bk, 'features', 'badge', '✨ 핵심 기능')}
           </p>
           <h2 className="text-2xl sm:text-3xl font-black text-text-primary mb-3">
-            사장님이 직접 고른 기능들
+            {b(bk, 'features', 'title', '업무에 필요한 모든 것')}
           </h2>
           <p className="text-sm text-text-secondary">
-            복잡한 기능은 없애고, 실제로 쓰이는 것만 남겼습니다
+            {b(bk, 'features', 'subtitle', '관리왕 하나로 인사·근태·급여를 통합 관리하세요')}
           </p>
         </div>
 
@@ -384,15 +378,15 @@ function TestimonialsSection() {
 
 // ─── 최종 CTA 배너 ────────────────────────────────────────────────────────
 
-function CtaSection() {
+function CtaSection({ bk }: { bk: BlockMap }) {
   return (
     <section className="py-16 sm:py-20 bg-gradient-to-br from-primary-600 to-primary-700">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
         <h2 className="text-2xl sm:text-3xl font-black text-white mb-3">
-          지금 바로 시작하세요
+          {b(bk, 'cta', 'title', '지금 바로 시작하세요')}
         </h2>
         <p className="text-white/80 text-sm sm:text-base mb-8">
-          14일 무료 체험 · 신용카드 불필요 · 5분이면 설정 완료
+          {b(bk, 'cta', 'subtitle', '14일 무료 체험 · 신용카드 불필요 · 5분이면 설정 완료')}
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -401,7 +395,7 @@ function CtaSection() {
             className="w-full sm:w-auto bg-white text-primary-700 font-bold text-sm
                        px-8 py-3.5 rounded-xl hover:bg-primary-50 transition-colors shadow-lg"
           >
-            무료 체험 시작하기 →
+            {b(bk, 'cta', 'button', '무료 체험 시작하기 →')}
           </Link>
           <a
             href="#pricing"
@@ -465,19 +459,27 @@ function Footer() {
 
 // ─── 페이지 진입점 ────────────────────────────────────────────────────────
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const [bk, banner, popups] = await Promise.all([
+    fetchBlocks(),
+    fetchActiveBanner(),
+    fetchActivePopups(),
+  ]);
+
   return (
     <div className="min-h-screen">
+      <SiteBanner banner={banner} />
       <Nav />
       <main>
-        <Hero />
-        <WizardSection />
-        <FeaturesSection />
+        <Hero bk={bk} />
+        <WizardSection bk={bk} />
+        <FeaturesSection bk={bk} />
         <ComparisonSection />
         <TestimonialsSection />
-        <CtaSection />
+        <CtaSection bk={bk} />
       </main>
       <Footer />
+      <SitePopup popups={popups} />
     </div>
   );
 }
