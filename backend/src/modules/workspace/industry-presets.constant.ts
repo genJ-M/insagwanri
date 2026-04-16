@@ -47,7 +47,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     label: '소매 / 유통',
     emoji: '🛒',
     description: '편의점, 마트, 의류·잡화 소매, 온라인 쇼핑몰',
-    defaultPages: ['attendance', 'shift-schedule', 'vacations', 'payroll', 'tasks', 'inventory'],
+    defaultPages: ['attendance', 'shift-schedule', 'vacations', 'payroll', 'tasks', 'locations'],
     recommendedAttendanceMethods: ['qr', 'wifi', 'manual'],
   },
   {
@@ -63,7 +63,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     label: '제조업',
     emoji: '🏭',
     description: '공장, 생산직, 가공·조립, 식품 제조',
-    defaultPages: ['attendance', 'shift-schedule', 'vacations', 'payroll', 'hr-notes', 'tasks'],
+    defaultPages: ['attendance', 'shift-schedule', 'vacations', 'payroll', 'hr-notes', 'tasks', 'shift-swap'],
     recommendedAttendanceMethods: ['qr', 'face', 'gps'],
   },
   {
@@ -71,7 +71,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     label: '건설 / 건축',
     emoji: '🏗️',
     description: '건설, 토목, 인테리어, 설비·전기 공사',
-    defaultPages: ['attendance', 'shift-schedule', 'vacations', 'payroll', 'contracts', 'tasks'],
+    defaultPages: ['attendance', 'shift-schedule', 'vacations', 'payroll', 'contracts', 'tasks', 'field-visits'],
     recommendedAttendanceMethods: ['gps', 'qr', 'manual'],
   },
   {
@@ -79,7 +79,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     label: '의료 / 헬스케어',
     emoji: '🏥',
     description: '병원, 의원, 약국, 요양원, 헬스장·스포츠센터',
-    defaultPages: ['attendance', 'shift-schedule', 'vacations', 'payroll', 'hr-notes', 'approvals'],
+    defaultPages: ['attendance', 'shift-schedule', 'vacations', 'payroll', 'hr-notes', 'approvals', 'care-worker'],
     recommendedAttendanceMethods: ['face', 'qr', 'manual'],
   },
   {
@@ -103,7 +103,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     label: '물류 / 운송',
     emoji: '🚚',
     description: '배송, 택배, 화물, 창고관리, 이사',
-    defaultPages: ['attendance', 'shift-schedule', 'vacations', 'payroll', 'tasks', 'contracts'],
+    defaultPages: ['attendance', 'shift-schedule', 'vacations', 'payroll', 'tasks', 'contracts', 'field-visits'],
     recommendedAttendanceMethods: ['gps', 'manual'],
   },
   {

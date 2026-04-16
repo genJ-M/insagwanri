@@ -58,6 +58,10 @@ const ALL_PAGES: { key: string; label: string; desc: string }[] = [
   { key: 'hr-notes',       label: '인사 노트',        desc: '직원별 인사 기록 관리' },
   { key: 'contracts',      label: '계약서',           desc: '근로계약서 디지털 관리' },
   { key: 'training',       label: '교육·훈련',        desc: '사내 교육 이력 및 수료증' },
+  { key: 'field-visits',  label: '현장 방문',         desc: 'GPS 체크인 · 방문지 기록 · 차량 연동 (Basic+)' },
+  { key: 'care-worker',   label: '돌봄·의료 관리',    desc: '자격증 관리 · 케어 세션 · 야간/휴일 수당 (Pro+)' },
+  { key: 'locations',     label: '지점 관리',          desc: '다지점 직원 배정 · 현황 대시보드 (애드온)' },
+  { key: 'shift-swap',    label: '교대 교환',          desc: '교대 근무 맞교환 요청 · 관리자 승인 (Basic+)' },
 ];
 
 const TERMS_TEXT = `제1조 (목적)

@@ -1,8 +1,8 @@
 import {
   Injectable, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, Between } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, IsNull, Between, DataSource } from 'typeorm';
 import { CareLicense } from '../../database/entities/care-license.entity';
 import { CareSession } from '../../database/entities/care-session.entity';
 import { Company } from '../../database/entities/company.entity';
@@ -43,13 +43,33 @@ export class CareWorkerService {
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
     private readonly notificationsService: NotificationsService,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
+
+  // ──────────────────────────────────────────────────────────────
+  // 플랜 게이트: care-worker 기능은 Pro 이상 필요
+  // ──────────────────────────────────────────────────────────────
+  private async assertProPlan(companyId: string): Promise<void> {
+    const [sub] = await this.dataSource.query(`
+      SELECT p.name FROM subscriptions s
+      JOIN plans p ON p.id = s.plan_id
+      WHERE s.company_id = $1 AND s.status IN ('active', 'trialing')
+    `, [companyId]);
+    const planName: string = sub?.name ?? 'free';
+    if (planName !== 'pro' && planName !== 'enterprise') {
+      throw new ForbiddenException(
+        '돌봄·의료 관리 기능은 Pro 플랜 이상에서 사용할 수 있습니다.',
+      );
+    }
+  }
 
   // ──────────────────────────────────────────────────────────────
   // 자격증/면허 관리
   // ──────────────────────────────────────────────────────────────
 
   async createLicense(user: AuthenticatedUser, dto: CreateCareLicenseDto, targetUserId?: string) {
+    await this.assertProPlan(user.companyId);
     const userId = targetUserId ?? user.id;
     if (userId !== user.id && user.role === UserRole.EMPLOYEE) {
       throw new ForbiddenException('본인 자격증만 등록할 수 있습니다.');
@@ -69,6 +89,7 @@ export class CareWorkerService {
   }
 
   async listLicenses(user: AuthenticatedUser, query: LicenseQueryDto) {
+    await this.assertProPlan(user.companyId);
     const userId = query.userId ?? user.id;
     if (userId !== user.id && user.role === UserRole.EMPLOYEE) {
       throw new ForbiddenException('본인 자격증만 조회할 수 있습니다.');
@@ -134,6 +155,7 @@ export class CareWorkerService {
   // ──────────────────────────────────────────────────────────────
 
   async startSession(user: AuthenticatedUser, dto: StartCareSessionDto) {
+    await this.assertProPlan(user.companyId);
     // 진행 중인 동일 수급자 세션 있으면 거부
     if (dto.recipientId) {
       const open = await this.sessionRepo.findOne({

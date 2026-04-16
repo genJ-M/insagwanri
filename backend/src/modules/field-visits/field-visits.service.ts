@@ -1,8 +1,8 @@
 import {
   Injectable, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, IsNull, DataSource } from 'typeorm';
 import { FieldLocation } from '../../database/entities/field-location.entity';
 import { FieldVisit } from '../../database/entities/field-visit.entity';
 import { Task, TaskStatus, TaskPriority } from '../../database/entities/task.entity';
@@ -43,13 +43,33 @@ export class FieldVisitsService {
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
     private readonly notificationsService: NotificationsService,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
+
+  // ─────────────────────────────────────────────────────────────
+  // 플랜 게이트: field-visits 기능은 Basic 이상 필요
+  // ─────────────────────────────────────────────────────────────
+  private async assertBasicPlan(companyId: string): Promise<void> {
+    const [sub] = await this.dataSource.query(`
+      SELECT p.name FROM subscriptions s
+      JOIN plans p ON p.id = s.plan_id
+      WHERE s.company_id = $1 AND s.status IN ('active', 'trialing')
+    `, [companyId]);
+    const planName: string = sub?.name ?? 'free';
+    if (planName === 'free') {
+      throw new ForbiddenException(
+        '현장 방문 관리 기능은 Basic 플랜 이상에서 사용할 수 있습니다.',
+      );
+    }
+  }
 
   // ─────────────────────────────────────────────────────────────
   // FieldLocation CRUD (manager/owner 전용)
   // ─────────────────────────────────────────────────────────────
 
   async createLocation(user: AuthenticatedUser, dto: CreateFieldLocationDto) {
+    await this.assertBasicPlan(user.companyId);
     const loc = this.locRepo.create({
       companyId:   user.companyId,
       name:        dto.name,
@@ -65,6 +85,7 @@ export class FieldVisitsService {
   }
 
   async listLocations(user: AuthenticatedUser, query: FieldLocationQueryDto) {
+    await this.assertBasicPlan(user.companyId);
     const qb = this.locRepo.createQueryBuilder('l')
       .where('l.company_id = :cid', { cid: user.companyId })
       .andWhere('l.deleted_at IS NULL');
@@ -100,6 +121,7 @@ export class FieldVisitsService {
   // ─────────────────────────────────────────────────────────────
 
   async checkIn(user: AuthenticatedUser, dto: FieldCheckInDto) {
+    await this.assertBasicPlan(user.companyId);
     // 이미 오픈된 방문 있으면 거부 (하루 중 중복 체크인 방지 — 같은 날)
     const visitDate = dto.visitDate ?? kstDateString();
     const existing = await this.visitRepo.findOne({

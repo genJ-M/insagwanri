@@ -24,7 +24,7 @@ export class LocationsService {
   // ──────────────────────────────────────────────
   private async getLocationQuota(companyId: string): Promise<number> {
     const rows = await this.dataSource.query(
-      `SELECT quantity FROM subscription_addons
+      `SELECT quantity FROM addon_purchases
        WHERE company_id = $1 AND addon_code = 'extra_location' AND status = 'active'`,
       [companyId],
     );

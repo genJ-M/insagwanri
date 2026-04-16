@@ -45,6 +45,24 @@ export const ADDON_CATALOG: AddonItem[] = [
     priceYearlyKrw: 99000,
     emoji: '🏢',
   },
+  {
+    code: 'contract',
+    name: '전자계약서',
+    description: '근로계약서 전자 서명 및 법적 보관 기능을 활성화합니다.',
+    unit: '회사 단위',
+    priceMonthlyKrw: 9900,
+    priceYearlyKrw: 99000,
+    emoji: '📝',
+  },
+  {
+    code: 'tax_alert',
+    name: '세무 자동 알림',
+    description: '35일 이내 세무·노무 할 일을 자동으로 알림 발송합니다.',
+    unit: '회사 단위',
+    priceMonthlyKrw: 5000,
+    priceYearlyKrw: 50000,
+    emoji: '📅',
+  },
 ];
 
 export function findAddon(code: string): AddonItem | undefined {

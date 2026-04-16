@@ -123,6 +123,12 @@ const FEATURES = [
   // [integration]
   { key: 'sso',                    category: 'integration',   feature_type: 'boolean', name: 'SSO 연동',           default_enabled: false, sort_order: 80 },
   { key: 'webhooks',               category: 'integration',   feature_type: 'boolean', name: '웹훅',              default_enabled: false, sort_order: 81 },
+  // [operations] 직군별 특화 기능
+  { key: 'field_visits',           category: 'operations',    feature_type: 'boolean', name: '현장 방문 관리',    default_enabled: false, sort_order: 90 },
+  { key: 'care_worker',            category: 'operations',    feature_type: 'boolean', name: '돌봄·의료 관리',    default_enabled: false, sort_order: 91 },
+  { key: 'multi_location',         category: 'operations',    feature_type: 'boolean', name: '다지점 관리',        default_enabled: false, sort_order: 92 },
+  { key: 'shift_swap',             category: 'operations',    feature_type: 'boolean', name: '교대 교환',          default_enabled: false, sort_order: 93 },
+  { key: 'approvals_seal',         category: 'operations',    feature_type: 'boolean', name: '결재 봉인·5년 보존', default_enabled: false, sort_order: 94 },
 ];
 
 // plan_features 설정: { planName → { featureKey → { is_enabled, limit_value? } } }
@@ -156,6 +162,11 @@ const PLAN_FEATURES: Record<string, Record<string, { is_enabled: boolean; limit_
     storage_gb:             { is_enabled: true, limit_value: 1 },
     sso:                    { is_enabled: false },
     webhooks:               { is_enabled: false },
+    field_visits:           { is_enabled: false },
+    care_worker:            { is_enabled: false },
+    multi_location:         { is_enabled: false },
+    shift_swap:             { is_enabled: false },
+    approvals_seal:         { is_enabled: false },
   },
   basic: {
     attendance_basic:       { is_enabled: true },
@@ -186,6 +197,11 @@ const PLAN_FEATURES: Record<string, Record<string, { is_enabled: boolean; limit_
     storage_gb:             { is_enabled: true, limit_value: 10 },
     sso:                    { is_enabled: false },
     webhooks:               { is_enabled: false },
+    field_visits:           { is_enabled: true  },  // Basic+: 현장 방문
+    care_worker:            { is_enabled: false },   // Pro 전용
+    multi_location:         { is_enabled: false },   // 애드온 구매 시 활성
+    shift_swap:             { is_enabled: true  },   // Basic+: 교대 교환
+    approvals_seal:         { is_enabled: false },   // Pro 전용
   },
   pro: {
     attendance_basic:       { is_enabled: true },
@@ -216,6 +232,11 @@ const PLAN_FEATURES: Record<string, Record<string, { is_enabled: boolean; limit_
     storage_gb:             { is_enabled: true, limit_value: 50 },
     sso:                    { is_enabled: false },
     webhooks:               { is_enabled: false },
+    field_visits:           { is_enabled: true  },
+    care_worker:            { is_enabled: true  },   // Pro+: 돌봄·의료
+    multi_location:         { is_enabled: false },   // 애드온 구매 시 활성
+    shift_swap:             { is_enabled: true  },
+    approvals_seal:         { is_enabled: true  },   // Pro+: 결재 봉인
   },
   enterprise: {
     attendance_basic:       { is_enabled: true },
@@ -246,6 +267,11 @@ const PLAN_FEATURES: Record<string, Record<string, { is_enabled: boolean; limit_
     storage_gb:             { is_enabled: true, limit_value: 500 },
     sso:                    { is_enabled: true },
     webhooks:               { is_enabled: true },
+    field_visits:           { is_enabled: true },
+    care_worker:            { is_enabled: true },
+    multi_location:         { is_enabled: true },
+    shift_swap:             { is_enabled: true },
+    approvals_seal:         { is_enabled: true },
   },
 };
 

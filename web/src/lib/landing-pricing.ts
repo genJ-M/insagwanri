@@ -93,7 +93,9 @@ export const BUSINESS_TYPES: BusinessType[] = [
 export const PLANS: Record<PlanKey, {
   name: string;
   label: string;
-  price: number;
+  price: number;          // 월간 정가
+  priceYearly: number;    // 연간 (월 환산 = price × 0.8)
+  yearlyDiscount: number; // %
   maxEmployees: number;
   features: string[];
 }> = {
@@ -101,20 +103,26 @@ export const PLANS: Record<PlanKey, {
     name: 'Free',
     label: '무료',
     price: 0,
+    priceYearly: 0,
+    yearlyDiscount: 0,
     maxEmployees: 5,
     features: ['직원 5명 이하', '기본 출퇴근 기록', '직원 프로필 관리', '모바일 앱'],
   },
   basic: {
     name: 'Basic',
     label: '베이직',
-    price: 29000,
+    price: 49000,
+    priceYearly: 470400,   // 49,000 × 12 × 0.8
+    yearlyDiscount: 20,
     maxEmployees: 30,
     features: ['직원 최대 30명', '급여 명세서 발행', '전자결재 기본', '시프트 스케줄', '세무 캘린더'],
   },
   pro: {
     name: 'Pro',
     label: '프로',
-    price: 69000,
+    price: 99000,
+    priceYearly: 950400,   // 99,000 × 12 × 0.8
+    yearlyDiscount: 20,
     maxEmployees: 100,
     features: ['직원 최대 100명', 'AI 어시스턴트', '고급 리포트 · 분석', '전자결재 고급 (봉인·보존)', '우선 고객 지원'],
   },
@@ -130,14 +138,15 @@ export interface Addon {
 }
 
 export const ADDONS: Addon[] = [
-  { id: 'contract', emoji: '📝', name: '전자계약서', desc: '근로계약서 전자 서명 · 법적 보관', price: 9900, popular: true },
-  { id: 'ai', emoji: '🤖', name: 'AI 어시스턴트 확장', desc: '공지 초안 생성 · 업무 분석 (+50회/일)', price: 8000, popular: false },
-  { id: 'location', emoji: '🏢', name: '추가 지점', desc: '사업장(지점) 1개 추가 관리', price: 9900, popular: false },
-  { id: 'tax', emoji: '📅', name: '세무 자동 알림', desc: '35일 이내 세무 · 노무 할 일 푸시', price: 5000, popular: true },
+  { id: 'contract',          emoji: '📝', name: '전자계약서',         desc: '근로계약서 전자 서명 · 법적 보관',          price: 9900, popular: true  },
+  { id: 'tax_alert',         emoji: '📅', name: '세무 자동 알림',     desc: '35일 이내 세무 · 노무 할 일 자동 알림',    price: 5000, popular: true  },
+  { id: 'extra_ai_50',       emoji: '🤖', name: 'AI 어시스턴트 확장', desc: '공지 초안 생성 · 업무 분석 (+50회/일)',    price: 8000, popular: false },
+  { id: 'extra_location',    emoji: '🏢', name: '추가 지점 (+1개)',   desc: '사업장(지점) 1개 추가 관리',              price: 9900, popular: false },
+  { id: 'extra_employees_5', emoji: '👥', name: '추가 직원 (+5명)',   desc: '직원 한도를 5명 추가 (여러 개 구매 가능)', price: 5000, popular: false },
 ];
 
 export function derivePlan(type: BusinessType, employees: number): PlanKey | 'enterprise' {
-  if (employees >= 100) return 'enterprise';
+  if (employees > 100) return 'enterprise';  // Pro 상한 100명 초과 시 → 영업 문의
   if (employees > 30) return 'pro';
   if (employees > 5) return type.minPlan;
   return type.minPlan === 'pro' ? 'pro' : 'free';
