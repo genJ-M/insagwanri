@@ -50,9 +50,13 @@ const config: Config = {
         '3xl': '20px',
       },
       animation: {
-        'fade-in':  'fadeIn 150ms ease',
-        'slide-in': 'slideIn 200ms ease',
-        'slide-up': 'slideUp 220ms cubic-bezier(0.32, 0.72, 0, 1)',
+        'fade-in':    'fadeIn 150ms ease',
+        'slide-in':   'slideIn 200ms ease',
+        'slide-up':   'slideUp 220ms cubic-bezier(0.32, 0.72, 0, 1)',
+        // 견적서 addon 행 진입 — 위에서 아래로 밀려 내려옴
+        'addon-enter': 'addonEnter 280ms cubic-bezier(0, 0, 0.2, 1) both',
+        // 견적서 addon 행 퇴장 — 접히듯 사라짐
+        'addon-exit':  'addonExit 200ms ease both',
       },
       keyframes: {
         fadeIn: {
@@ -66,6 +70,15 @@ const config: Config = {
         slideUp: {
           from: { opacity: '0', transform: 'translateY(100%)' },
           to:   { opacity: '1', transform: 'translateY(0)' },
+        },
+        // 높이(grid-template-rows) + 투명도 + 위치 동시 전환
+        addonEnter: {
+          '0%':   { gridTemplateRows: '0fr', opacity: '0', transform: 'translateY(-10px)' },
+          '100%': { gridTemplateRows: '1fr', opacity: '1', transform: 'translateY(0)'     },
+        },
+        addonExit: {
+          '0%':   { gridTemplateRows: '1fr', opacity: '1', transform: 'translateY(0)'    },
+          '100%': { gridTemplateRows: '0fr', opacity: '0', transform: 'translateY(-5px)' },
         },
       },
     },
