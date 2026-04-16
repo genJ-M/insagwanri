@@ -1655,7 +1655,7 @@ function OwnerBoardPanel({
       <Card>
         <CardHeader
           title={`현재 근무 중 ${filteredWorking.length}명`}
-          subtitle={selectedLocation ? '선택된 지점 기준' : '출근 후 아직 퇴근하지 않은 직원'}
+          description={selectedLocation ? '선택된 지점 기준' : '출근 후 아직 퇴근하지 않은 직원'}
         />
         {filteredWorking.length === 0 ? (
           <p className="text-sm text-text-secondary text-center py-6">현재 근무 중인 직원이 없습니다.</p>
@@ -1697,7 +1697,7 @@ function OwnerBoardPanel({
       {/* 30일 추이 차트 */}
       {trendData.length > 0 && (
         <Card>
-          <CardHeader title="최근 30일 출근 추이" subtitle="날짜별 출근·지각·결근 현황"/>
+          <CardHeader title="최근 30일 출근 추이" description="날짜별 출근·지각·결근 현황"/>
           <div className="flex items-end gap-[2px] h-20 mt-3">
             {trendData.map((d) => {
               const pct = maxPresent > 0 ? (d.present / maxPresent) * 100 : 0;
@@ -1736,7 +1736,7 @@ function OwnerBoardPanel({
 
       {/* 시간대 조회 */}
       <Card>
-        <CardHeader title="시간대 조회" subtitle="특정 날짜·시각에 누가 근무 중이었는지 확인합니다"/>
+        <CardHeader title="시간대 조회" description="특정 날짜·시각에 누가 근무 중이었는지 확인합니다"/>
         <div className="flex flex-wrap items-end gap-3 mt-3">
           <div>
             <label className="label">날짜</label>

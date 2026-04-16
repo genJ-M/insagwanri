@@ -114,7 +114,7 @@ function LocationFormModal({ open, onClose, initial, managers, onSuccess }: Loca
   });
 
   return (
-    <Modal isOpen={open} onClose={onClose} title={isEdit ? '지점 수정' : '새 지점 추가'}>
+    <Modal open={open} onClose={onClose} title={isEdit ? '지점 수정' : '새 지점 추가'}>
       <div className="space-y-4">
         {/* 지점명 */}
         <div>
@@ -194,7 +194,7 @@ function LocationFormModal({ open, onClose, initial, managers, onSuccess }: Loca
         )}
 
         <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="flex-1" onClick={onClose}>취소</Button>
+          <Button variant="secondary" className="flex-1" onClick={onClose}>취소</Button>
           <Button
             className="flex-1"
             onClick={() => mutation.mutate(form)}
@@ -438,7 +438,7 @@ export default function LocationsPage() {
             </p>
           </div>
           <Link href="/subscription?tab=addons">
-            <Button size="sm" variant="outline" className="flex-shrink-0 text-amber-700 border-amber-300 hover:bg-amber-100">
+            <Button size="sm" variant="secondary" className="flex-shrink-0 text-amber-700 border-amber-300 hover:bg-amber-100">
               애드온 구매
             </Button>
           </Link>

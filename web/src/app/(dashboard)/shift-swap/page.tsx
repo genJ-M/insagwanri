@@ -159,7 +159,7 @@ function CreateModal({ open, onClose, userId }: CreateModalProps) {
   };
 
   return (
-    <Modal isOpen={open} onClose={onClose} title="근무 교환 신청">
+    <Modal open={open} onClose={onClose} title="근무 교환 신청">
       <div className="space-y-4">
         {/* 유형 선택 */}
         <div>
@@ -264,7 +264,7 @@ function CreateModal({ open, onClose, userId }: CreateModalProps) {
         </div>
 
         <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="flex-1" onClick={onClose}>취소</Button>
+          <Button variant="secondary" className="flex-1" onClick={onClose}>취소</Button>
           <Button className="flex-1" onClick={handleSubmit} disabled={mutation.isPending}>
             {mutation.isPending ? '신청 중...' : type === 'cover' ? '대타 모집 게시' : '교환 신청'}
           </Button>
@@ -369,7 +369,7 @@ function SwapCard({ req, myId, isManager, onAction }: SwapCardProps) {
         {isTarget && req.status === 'pending_peer' && req.type === 'swap' && (
           <>
             <Button size="sm" className="flex-1" onClick={() => onAction('accept', req)}>수락</Button>
-            <Button size="sm" variant="outline" className="flex-1 text-red-500 border-red-200 hover:bg-red-50" onClick={() => onAction('decline', req)}>거절</Button>
+            <Button size="sm" variant="secondary" className="flex-1 text-red-500 border-red-200 hover:bg-red-50" onClick={() => onAction('decline', req)}>거절</Button>
           </>
         )}
         {/* 대타 자원 (요청자 본인 제외, open 상태) */}
@@ -382,12 +382,12 @@ function SwapCard({ req, myId, isManager, onAction }: SwapCardProps) {
         {isManager && req.status === 'pending_approval' && (
           <>
             <Button size="sm" className="flex-1" onClick={() => onAction('approve', req)}>승인</Button>
-            <Button size="sm" variant="outline" className="flex-1 text-red-500 border-red-200 hover:bg-red-50" onClick={() => onAction('reject', req)}>거절</Button>
+            <Button size="sm" variant="secondary" className="flex-1 text-red-500 border-red-200 hover:bg-red-50" onClick={() => onAction('reject', req)}>거절</Button>
           </>
         )}
         {/* 요청자 취소 */}
         {isRequester && ['pending_peer', 'peer_declined'].includes(req.status) && (
-          <Button size="sm" variant="outline" className="flex-1 text-zinc-500" onClick={() => onAction('cancel', req)}>
+          <Button size="sm" variant="secondary" className="flex-1 text-zinc-500" onClick={() => onAction('cancel', req)}>
             취소
           </Button>
         )}
@@ -411,7 +411,7 @@ interface NoteModalProps {
 function NoteModal({ open, onClose, title, confirmLabel, confirmClass, onConfirm, loading }: NoteModalProps) {
   const [note, setNote] = useState('');
   return (
-    <Modal isOpen={open} onClose={onClose} title={title}>
+    <Modal open={open} onClose={onClose} title={title}>
       <div className="space-y-4">
         <textarea
           className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 resize-none"
@@ -421,7 +421,7 @@ function NoteModal({ open, onClose, title, confirmLabel, confirmClass, onConfirm
           onChange={(e) => setNote(e.target.value)}
         />
         <div className="flex gap-2">
-          <Button variant="outline" className="flex-1" onClick={onClose}>취소</Button>
+          <Button variant="secondary" className="flex-1" onClick={onClose}>취소</Button>
           <Button
             className={clsx('flex-1', confirmClass)}
             onClick={() => onConfirm(note)}

@@ -2562,7 +2562,7 @@ function LocationsSection() {
 
       {/* 지점 추가 모달 */}
       <Modal
-        isOpen={showCreate}
+        open={showCreate}
         onClose={() => { setShowCreate(false); setForm({ name: '', address: '', phone: '', note: '' }); }}
         title="지점 추가"
       >
@@ -2602,7 +2602,7 @@ function LocationsSection() {
 
       {/* 지점 수정 모달 */}
       <Modal
-        isOpen={!!editTarget}
+        open={!!editTarget}
         onClose={() => setEditTarget(null)}
         title="지점 수정"
       >
