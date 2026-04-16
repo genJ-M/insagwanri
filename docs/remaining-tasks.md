@@ -1,7 +1,7 @@
 # 서비스 완성을 위한 잔여 작업 목록
 
 > 작성일: 2026-03-11
-> 최종 업데이트: 2026-03-27 (빌드 가이드 v2 기준 재정렬 — Kakao 제거, 글로벌 AI 토큰 상한 추가, PIPA 체크리스트 추가)
+> 최종 업데이트: 2026-04-16 (현장직·돌봄직·다지점·교대교환·팀관리·랜딩·구독 자동결제·마케팅 스튜디오 추가 반영)
 > 참조 문서: `saas-design.md`, `admin-system-design.md`, `infra/ARCHITECTURE.md`, `docs/claude-build-guide.md`
 
 ## 완료 표기 규칙
@@ -50,6 +50,7 @@
 | `HMAC_SECRET` | [ ] | 위와 동일 방법 — ENCRYPTION_KEY와 다른 값으로 |
 | `CUSTOMER_JWT_ACCESS_SECRET` | [ ] | Admin Backend용 — Customer JWT_ACCESS_SECRET과 동일값 |
 | `OPENAI_DAILY_TOKEN_LIMIT` | [ ] | 글로벌 일일 토큰 상한선 (예: `1000000`) — 0이면 비활성 |
+| `MARKETING_STUDIO_KEY` | [ ] | 마케팅 스튜디오 접속 비밀키 (최소 8자, 임의 문자열) |
 
 > ⚠️ `ENCRYPTION_KEY` + `HMAC_SECRET`은 설정 후 절대 변경 불가. 변경 시 암호화된 기존 데이터 복호화 불가.
 
@@ -74,6 +75,29 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | `1741910420000-CreateActivityLogsTable` | [ ] | user_activity_logs |
 | `1741910421000-ExtendInviteTokensAndPhoneOtp` | [ ] | invite_tokens 확장 + phone_otps 생성 |
 | `1741910422000-AddCompanyTypeAndUserPermissions` | [ ] | company.company_type 등 5컬럼 + users.managed_departments/permissions |
+| `1744000000000-AddAttendanceMethods` | [ ] | attendance_methods 테이블 |
+| `1744001000000-AddUserWorkSchedule` | [ ] | user_work_schedules 테이블 |
+| `1744100000000-CreateFeedbackTable` | [ ] | feedbacks 테이블 |
+| `1744500000000-AddApprovalTaskLinks` | [ ] | approvals.related_task_ids JSONB |
+| `1744600000000-ExtendTasksForInstructions` | [ ] | tasks 컬럼 확장 |
+| `1744900000000-AddAnnouncementTargeting` | [ ] | messages 5컬럼 추가 |
+| `1745000000000-AddCalendarSettingsAndVisibility` | [ ] | recurring_calendar_events + dept_page_visibility |
+| `1745100000000-ExtendInviteTokens` | [ ] | invite_tokens 확장 (그룹 링크) |
+| `1745200000000-AddDocumentSealingAndRetention` | [ ] | approvals 봉인 컬럼 |
+| `1745300000000-AddUserBirthday` | [ ] | users.birthday |
+| `1745400000000-AddSubscriptionRenewalTracking` | [ ] | 구독 갱신 추적 컬럼 |
+| `1745400000000-CreateTeamsTables` | [ ] | teams 테이블 |
+| `1745500000000-CreateSubscriptionTables` | [ ] | 구독 이력 테이블 |
+| `1745600000000-AddItWorkFeatures` | [ ] | IT 직군 기능 컬럼 |
+| `1745700000000-AddPublicSectorFeatures` | [ ] | 공공기관 기능 컬럼 |
+| `1745800000000-AddShiftWorkerFeatures` | [ ] | 교대 근무 기능 컬럼 |
+| `1745900000000-AddPartTimeFeatures` | [ ] | 파트타임 기능 컬럼 |
+| `1746000000000-AddFieldVisitFeatures` | [ ] | 현장 방문 테이블 |
+| `1746100000000-AddCareWorkerFeatures` | [ ] | 돌봄 자격증·세션 테이블 |
+| `1746200000000-AddBusinessLocations` | [ ] | business_locations 테이블 |
+| `1746300000000-AddCurrentSessionId` | [ ] | users.current_session_id |
+| `1746400000000-CreateShiftSwapRequests` | [ ] | shift_swap_requests 테이블 |
+| `1746500000000-CreateMarketingTables` | [ ] | marketing_blocks / marketing_banners / marketing_popups |
 
 ### 0-4. OAuth 앱 등록 (수동)
 
@@ -148,7 +172,20 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | training | [CODE] | 교육 관리, 수강/수료 |
 | activity-logs | [CODE] | 통신비밀보호법, 90일 Cron 자동삭제 |
 | crypto (공통) | [CODE] | AES-256-GCM + HMAC-SHA256 |
-| tax-documents | [CODE] | 세무·노무 서류 자동생성 + Cron 알림 (2026-03-31 신규) |
+| tax-documents | [CODE] | 세무·노무 서류 자동생성 + Cron 알림 (2026-03-31) |
+| attendance-methods | [CODE] | 5가지 방식(manual/gps/wifi/qr/face), QR HMAC 토큰 (2026-04-07) |
+| user-work-schedule | [CODE] | 직원별 근무시간 설정, 법정휴게 자동계산 (2026-04-07) |
+| feedback | [CODE] | 우클릭 신고, 스크린샷, ? 버튼 (2026-04-07) |
+| invitations | [CODE] | 개인/그룹 초대 링크, 이메일 인증 플로우 (2026-04-08) |
+| calendar-settings | [CODE] | 팀별 반복일정, 사이드바 가시성 설정 (2026-04-08) |
+| approvals (봉인) | [CODE] | SHA-256 해시 체인, 5년 보존, 인쇄/검증 (2026-04-09) |
+| teams | [CODE] | 팀 CRUD, 구성원 관리 (2026-04-09) |
+| field-visits | [CODE] | GPS 체크인, 방문지, 차량 연동 (2026-04-13) |
+| care-worker | [CODE] | 자격증, 세션, 야간/휴일 수당, 피로도 Cron (2026-04-13) |
+| locations | [CODE] | 다지점 CRUD, 직원 배정, 애드온 ₩9,900/월 (2026-04-13) |
+| shift-swap | [CODE] | 교대 교환 요청·승인 워크플로우 (2026-04-13) |
+| subscriptions (자동결제) | [CODE] | 빌링 Cron, 만료 알림, 애드온 카탈로그 (2026-04-13) |
+| marketing | [CODE] | 텍스트 블록/배너/팝업 CMS — Public + Studio API (2026-04-16) |
 
 ### Frontend — Customer Web
 
@@ -181,6 +218,14 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | /tax-documents (6탭: 할일·원천징수·4대보험·연말정산·퇴직금·연간캘린더) | [CODE] |
 | /settings (브랜딩 탭 + 사업자정보 카드 + 알림설정 탭) | [CODE] |
 | /subscription, /onboarding/* | [CODE] |
+| /invitations (관리자 — 초대 링크 관리) | [CODE] |
+| /join/[token] (공개 가입 페이지) | [CODE] |
+| /calendar-settings (3탭: 반복일정·예정일정·팀별화면설정) | [CODE] |
+| /shift-swap (교대 교환 요청 관리) | [CODE] |
+| /locations (다지점 관리 대시보드) | [CODE] |
+| / (랜딩 페이지 — 비로그인) | [CODE] |
+| /quote (요금 견적 계산기) | [CODE] |
+| /marketing-studio (마케팅 스튜디오 CMS) | [CODE] |
 
 ---
 
@@ -359,7 +404,7 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | 순위 | 작업 | 방법 |
 |------|------|------|
 | 1 | **Google OAuth 앱 등록** | Google Cloud Console → Web 클라이언트 ID |
-| 2 | **Render 환경변수 추가** | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ENCRYPTION_KEY`, `HMAC_SECRET`, `OPENAI_DAILY_TOKEN_LIMIT` |
+| 2 | **Render 환경변수 추가** | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ENCRYPTION_KEY`, `HMAC_SECRET`, `OPENAI_DAILY_TOKEN_LIMIT`, `MARKETING_STUDIO_KEY` |
 | 3 | **DB 마이그레이션 실행** | render.yaml startCommand에 포함 (배포 시 자동) |
 | 4 | **Render DB 유료 플랜 전환** | 무료 DB 90일 만료·백업 없음 — 데이터 보장 필수 |
 | 5 | **E2E 검증** | 회원가입 → Google 로그인 → 출퇴근 → 로그아웃 |
