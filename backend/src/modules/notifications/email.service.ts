@@ -123,6 +123,14 @@ export class EmailService {
       </p>
       <p style="color:#6b7280;font-size:13px;">만료 시각: ${opts.expiresAt}</p>
       <p style="color:#6b7280;font-size:13px;">이 링크는 24시간 후 만료됩니다. 본인이 요청하지 않은 경우 무시해 주세요.</p>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;" />
+      <p style="color:#9ca3af;font-size:12px;">
+        📌 <strong>보안 안내:</strong> 계정 1개는 1개 기기에서만 동시 사용이 가능합니다.
+        다른 기기에서 로그인하면 기존 기기의 세션이 자동으로 종료됩니다.
+      </p>
+      <p style="color:#9ca3af;font-size:12px;">
+        ⚠️ 이 메일이 스팸함에 들어갔다면, 받은 편지함으로 이동하거나 발신 주소를 연락처에 추가해 주세요.
+      </p>
     `;
     return this.layout('이메일 인증', content);
   }
@@ -145,6 +153,14 @@ export class EmailService {
         </a>
       </p>
       <p style="color:#6b7280;font-size:13px;">만료 시각: ${opts.expiresAt}</p>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;" />
+      <p style="color:#9ca3af;font-size:12px;">
+        📌 <strong>보안 안내:</strong> 계정 1개는 1개 기기에서만 동시 사용이 가능합니다.
+        가입 후 다른 기기에서 로그인하면 이전 기기의 세션이 자동으로 종료됩니다.
+      </p>
+      <p style="color:#9ca3af;font-size:12px;">
+        ⚠️ 이 메일이 스팸함에 들어갔다면, 받은 편지함으로 이동하거나 발신 주소(noreply@gwanriwang.com)를 주소록에 추가해 주세요.
+      </p>
     `;
     return this.layout('초대장 도착', content);
   }

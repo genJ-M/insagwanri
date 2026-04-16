@@ -4,6 +4,7 @@ import {
 } from 'typeorm';
 import { Company } from './company.entity';
 import { User } from './user.entity';
+import { BusinessLocation } from './business-location.entity';
 
 export enum ShiftScheduleStatus {
   DRAFT     = 'draft',
@@ -51,8 +52,13 @@ export class ShiftSchedule {
   @Column({ name: 'published_at', type: 'timestamptz', nullable: true })
   publishedAt: Date | null;
 
+  /** 해당 근무표가 속한 지점 (null = 전 지점 공통) */
+  @Column({ name: 'location_id', type: 'uuid', nullable: true })
+  locationId: string | null;
+
   @ManyToOne(() => Company) @JoinColumn({ name: 'company_id' }) company: Company;
   @ManyToOne(() => User)    @JoinColumn({ name: 'creator_id' }) creator: User;
+  @ManyToOne(() => BusinessLocation, { nullable: true }) @JoinColumn({ name: 'location_id' }) location: BusinessLocation | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt: Date;
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt: Date;

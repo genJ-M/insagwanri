@@ -99,6 +99,55 @@ export class AttendanceRecord {
   @Column({ name: 'clock_out_method', type: 'varchar', length: 20, nullable: true })
   clockOutMethod: string | null;
 
+  /**
+   * 근무 위치 (office | remote | field)
+   * WiFi SSID가 사내 SSID 목록에 포함되면 'office', 미포함이면 'remote'
+   */
+  @Column({ name: 'work_location', type: 'varchar', length: 20, default: 'office' })
+  workLocation: string;
+
+  /**
+   * 유연근무 유형 (공공기관 특화)
+   * regular: 일반 / staggered: 시차출퇴근 / discretionary: 재량근무 / intensive: 집중근무
+   */
+  @Column({ name: 'flex_type', type: 'varchar', length: 30, default: 'regular' })
+  flexType: string;
+
+  /**
+   * 야근 면책 적용 여부
+   * 전날 퇴근 시간이 회사 설정 threshold(기본 22시) 이후면 다음날 지각 면책
+   */
+  @Column({ name: 'late_exempted', default: false })
+  lateExempted: boolean;
+
+  /**
+   * 연속 근무 12h 초과 플래그 (현장직 특화)
+   * 퇴근 시 totalWorkMinutes >= threshold 이면 true
+   */
+  @Column({ name: 'is_long_work', default: false })
+  isLongWork: boolean;
+
+  /**
+   * 야간 근무 시간(분) — 22시~06시 구간 (회사 설정으로 조정 가능)
+   * 야간수당 계산의 기준이 됨
+   */
+  @Column({ name: 'night_work_minutes', type: 'smallint', default: 0 })
+  nightWorkMinutes: number;
+
+  /**
+   * 반올림 정책 적용 후 실 임금 계산 기준 근무 분수 (파트타임 특화)
+   * totalWorkMinutes에서 지각/조퇴 차감 후 반올림 정책 적용 결과
+   */
+  @Column({ name: 'rounded_work_minutes', type: 'smallint', nullable: true })
+  roundedWorkMinutes: number | null;
+
+  /**
+   * 당일 임금 (파트타임 특화, 원 단위)
+   * roundedWorkMinutes / 60 × hourlyRate
+   */
+  @Column({ name: 'wage_amount', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  wageAmount: number | null;
+
   @Column({ name: 'approved_by', type: 'uuid', nullable: true })
   approvedBy: string | null;
 

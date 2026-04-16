@@ -13,7 +13,7 @@ import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 
 // ─── 타입 ────────────────────────────────────────────
-type VacationType = 'annual' | 'half_day_am' | 'half_day_pm' | 'sick' | 'event' | 'maternity' | 'paternity' | 'other';
+type VacationType = 'annual' | 'half_day_am' | 'half_day_pm' | 'sick' | 'event' | 'maternity' | 'paternity' | 'business_trip' | 'external_training' | 'other';
 type VacationStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
 interface VacationRequest {
@@ -52,14 +52,16 @@ interface TeamBalance {
 
 // ─── 상수 ────────────────────────────────────────────
 const TYPE_LABELS: Record<VacationType, string> = {
-  annual: '연차',
-  half_day_am: '오전 반차',
-  half_day_pm: '오후 반차',
-  sick: '병가',
-  event: '경조사',
-  maternity: '출산휴가',
-  paternity: '육아휴직',
-  other: '기타',
+  annual:            '연차',
+  half_day_am:       '오전 반차',
+  half_day_pm:       '오후 반차',
+  sick:              '병가',
+  event:             '경조사',
+  maternity:         '출산휴가',
+  paternity:         '육아휴직',
+  business_trip:     '출장',
+  external_training: '외부교육',
+  other:             '기타',
 };
 
 const STATUS_CONFIG: Record<VacationStatus, { label: string; color: string }> = {
@@ -81,14 +83,16 @@ function StatusBadge({ status }: { status: VacationStatus }) {
 
 function TypeBadge({ type }: { type: VacationType }) {
   const colors: Record<VacationType, string> = {
-    annual:     'bg-blue-50 text-blue-700 border border-blue-200',
-    half_day_am:'bg-violet-50 text-violet-700 border border-violet-200',
-    half_day_pm:'bg-violet-50 text-violet-700 border border-violet-200',
-    sick:       'bg-rose-50 text-rose-700 border border-rose-200',
-    event:      'bg-orange-50 text-orange-700 border border-orange-200',
-    maternity:  'bg-pink-50 text-pink-700 border border-pink-200',
-    paternity:  'bg-teal-50 text-teal-700 border border-teal-200',
-    other:      'bg-gray-100 text-gray-600 border border-gray-200',
+    annual:            'bg-blue-50 text-blue-700 border border-blue-200',
+    half_day_am:       'bg-violet-50 text-violet-700 border border-violet-200',
+    half_day_pm:       'bg-violet-50 text-violet-700 border border-violet-200',
+    sick:              'bg-rose-50 text-rose-700 border border-rose-200',
+    event:             'bg-orange-50 text-orange-700 border border-orange-200',
+    maternity:         'bg-pink-50 text-pink-700 border border-pink-200',
+    paternity:         'bg-teal-50 text-teal-700 border border-teal-200',
+    business_trip:     'bg-sky-50 text-sky-700 border border-sky-200',
+    external_training: 'bg-indigo-50 text-indigo-700 border border-indigo-200',
+    other:             'bg-gray-100 text-gray-600 border border-gray-200',
   };
   return (
     <span className={clsx('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold', colors[type])}>
@@ -107,6 +111,7 @@ function VacationForm({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
   const [loading, setLoading] = useState(false);
 
   const isHalfDay = type === 'half_day_am' || type === 'half_day_pm';
+  const isDuty    = type === 'business_trip' || type === 'external_training';
 
   const handleTypeChange = (v: VacationType) => {
     setType(v);
@@ -170,6 +175,14 @@ function VacationForm({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
               ))}
             </select>
           </div>
+
+          {/* 출장/외부교육 안내 */}
+          {isDuty && (
+            <div className="rounded-lg bg-sky-50 border border-sky-200 p-3 text-xs text-sky-800">
+              <b>{TYPE_LABELS[type]}</b>은 연차 차감 없이 복무로 처리됩니다.
+              승인 시 해당 기간 근태가 <b>정상(출근)</b>으로 자동 등록됩니다.
+            </div>
+          )}
 
           {/* 기간 */}
           <div className="grid grid-cols-2 gap-3">

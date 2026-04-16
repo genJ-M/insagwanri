@@ -8,11 +8,13 @@ import {
   ShiftSchedule, ShiftScheduleStatus, ShiftAssignment, ShiftType,
 } from '../../database/entities/shift-schedule.entity';
 import { EmployeeAvailability } from '../../database/entities/employee-availability.entity';
+import { ShiftHandover, HandoverStatus } from '../../database/entities/shift-handover.entity';
 import { User } from '../../database/entities/user.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import {
   CreateShiftScheduleDto, UpdateShiftScheduleDto, ShiftScheduleQueryDto,
   BulkUpsertAssignmentsDto, UpsertAvailabilityDto, AvailabilityQueryDto,
+  CreateHandoverDto, SignHandoverDto,
 } from './dto/shift-schedule.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TeamsService } from '../teams/teams.service';
@@ -23,6 +25,7 @@ export class ShiftScheduleService {
     @InjectRepository(ShiftSchedule)       private schedRepo: Repository<ShiftSchedule>,
     @InjectRepository(ShiftAssignment)     private assignRepo: Repository<ShiftAssignment>,
     @InjectRepository(EmployeeAvailability) private availRepo:  Repository<EmployeeAvailability>,
+    @InjectRepository(ShiftHandover)       private handoverRepo: Repository<ShiftHandover>,
     @InjectRepository(User)                private userRepo:   Repository<User>,
     private notificationsService: NotificationsService,
     private teamsService: TeamsService,
@@ -377,6 +380,32 @@ export class ShiftScheduleService {
     return { success: true, data: await this.availRepo.save(a) };
   }
 
+  /** 직원 본인의 월간 배정 목록 (발행된 근무표 기준) */
+  async getMyMonthlyAssignments(user: AuthenticatedUser, month: string) {
+    // month = 'YYYY-MM'
+    const [y, m] = month.split('-').map(Number);
+    const from = `${y}-${String(m).padStart(2, '0')}-01`;
+    // 월의 마지막 날 계산
+    const to   = format(new Date(y, m, 0), 'yyyy-MM-dd');
+
+    const assignments = await this.assignRepo
+      .createQueryBuilder('a')
+      .innerJoin('a.shiftSchedule', 's')
+      .where('a.company_id = :cid',   { cid: user.companyId })
+      .andWhere('a.user_id = :uid',   { uid: user.id })
+      .andWhere('a.date >= :from',    { from })
+      .andWhere('a.date <= :to',      { to })
+      .andWhere('s.status = :pub',    { pub: 'published' })
+      .select([
+        'a.id', 'a.date', 'a.shiftType', 'a.startTime', 'a.endTime',
+        'a.location', 'a.note', 'a.isConfirmed',
+      ])
+      .orderBy('a.date', 'ASC')
+      .getMany();
+
+    return { success: true, data: assignments };
+  }
+
   async deleteAvailability(user: AuthenticatedUser, availId: string) {
     const a = await this.availRepo.findOne({
       where: { id: availId, companyId: user.companyId, userId: user.id },
@@ -428,6 +457,137 @@ export class ShiftScheduleService {
   private timeToMin(t: string) {
     const [h, m] = t.split(':').map(Number);
     return h * 60 + m;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 교대 인수인계 (현장직 특화)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** 인수인계 생성 (인계자 본인 또는 관리자가 생성) */
+  async createHandover(user: AuthenticatedUser, dto: CreateHandoverDto) {
+    if (user.role === UserRole.EMPLOYEE && user.id !== dto.from_user_id) {
+      throw new ForbiddenException('본인의 인수인계만 생성할 수 있습니다.');
+    }
+
+    const handover = this.handoverRepo.create({
+      companyId:    user.companyId,
+      fromUserId:   dto.from_user_id,
+      toUserId:     dto.to_user_id,
+      assignmentId: dto.assignment_id ?? null,
+      shiftDate:    dto.shift_date,
+      handoverTime: dto.handover_time ?? null,
+      status:       HandoverStatus.PENDING,
+      fromNote:     dto.from_note ?? null,
+    });
+    const saved = await this.handoverRepo.save(handover);
+
+    await this.notificationsService.dispatch({
+      companyId: user.companyId,
+      userId:    dto.to_user_id,
+      type:      'shift_handover_requested',
+      title:     '교대 인수인계 요청',
+      body:      `${dto.shift_date} 교대에 대한 인수인계 확인 서명이 요청되었습니다.`,
+      refId:     saved.id,
+      refType:   'shift_handover',
+    });
+
+    return { success: true, data: saved };
+  }
+
+  /** 인계자(from) 서명 */
+  async signHandoverFrom(user: AuthenticatedUser, handoverId: string, dto: SignHandoverDto) {
+    const handover = await this.handoverRepo.findOne({
+      where: { id: handoverId, companyId: user.companyId },
+    });
+    if (!handover) throw new NotFoundException('인수인계 기록을 찾을 수 없습니다.');
+    if (handover.fromUserId !== user.id) {
+      throw new ForbiddenException('인계자만 서명할 수 있습니다.');
+    }
+    if (handover.status !== HandoverStatus.PENDING) {
+      throw new BadRequestException('이미 처리된 인수인계입니다.');
+    }
+
+    handover.fromNote     = dto.note ?? handover.fromNote;
+    handover.fromSignedAt = new Date();
+    handover.status       = HandoverStatus.FROM_SIGNED;
+    const saved = await this.handoverRepo.save(handover);
+
+    await this.notificationsService.dispatch({
+      companyId: user.companyId,
+      userId:    handover.toUserId,
+      type:      'shift_handover_from_signed',
+      title:     '인계자 서명 완료',
+      body:      `${handover.shiftDate} 교대 인수인계의 인계자 서명이 완료되었습니다. 인수자 서명을 해주세요.`,
+      refId:     saved.id,
+      refType:   'shift_handover',
+    });
+
+    return { success: true, data: saved };
+  }
+
+  /** 인수자(to) 서명 또는 이의 제기 */
+  async signHandoverTo(user: AuthenticatedUser, handoverId: string, dto: SignHandoverDto) {
+    const handover = await this.handoverRepo.findOne({
+      where: { id: handoverId, companyId: user.companyId },
+    });
+    if (!handover) throw new NotFoundException('인수인계 기록을 찾을 수 없습니다.');
+    if (handover.toUserId !== user.id) {
+      throw new ForbiddenException('인수자만 서명할 수 있습니다.');
+    }
+    if (handover.status !== HandoverStatus.FROM_SIGNED) {
+      throw new BadRequestException('인계자 서명이 완료된 후에 인수자 서명이 가능합니다.');
+    }
+
+    if (dto.dispute) {
+      handover.status        = HandoverStatus.DISPUTED;
+      handover.disputeReason = dto.note ?? null;
+    } else {
+      handover.toNote     = dto.note ?? null;
+      handover.toSignedAt = new Date();
+      handover.status     = HandoverStatus.COMPLETED;
+    }
+    const saved = await this.handoverRepo.save(handover);
+
+    await this.notificationsService.dispatch({
+      companyId: user.companyId,
+      userId:    handover.fromUserId,
+      type:      dto.dispute ? 'shift_handover_disputed' : 'shift_handover_completed',
+      title:     dto.dispute ? '인수인계 이의 제기' : '인수인계 완료',
+      body:      dto.dispute
+        ? `${handover.shiftDate} 교대 인수인계에 이의가 제기되었습니다. 사유: ${dto.note ?? ''}`
+        : `${handover.shiftDate} 교대 인수인계가 양방 서명으로 완료되었습니다.`,
+      refId:     saved.id,
+      refType:   'shift_handover',
+    });
+
+    return { success: true, data: saved };
+  }
+
+  /** 인수인계 목록 조회 */
+  async listHandovers(
+    user: AuthenticatedUser,
+    query: { start_date?: string; end_date?: string; status?: string },
+  ) {
+    const qb = this.handoverRepo
+      .createQueryBuilder('h')
+      .leftJoinAndSelect('h.fromUser', 'fu')
+      .leftJoinAndSelect('h.toUser', 'tu')
+      .where('h.company_id = :cid', { cid: user.companyId });
+
+    if (user.role === UserRole.EMPLOYEE) {
+      qb.andWhere('(h.from_user_id = :uid OR h.to_user_id = :uid)', { uid: user.id });
+    }
+    if (query.start_date && query.end_date) {
+      qb.andWhere('h.shift_date BETWEEN :start AND :end', {
+        start: query.start_date, end: query.end_date,
+      });
+    }
+    if (query.status) {
+      qb.andWhere('h.status = :status', { status: query.status });
+    }
+
+    qb.orderBy('h.shift_date', 'DESC').addOrderBy('h.created_at', 'DESC');
+    return { success: true, data: await qb.getMany() };
   }
 }
 

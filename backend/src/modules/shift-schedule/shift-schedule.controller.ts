@@ -5,6 +5,7 @@ import { ShiftScheduleService } from './shift-schedule.service';
 import {
   CreateShiftScheduleDto, UpdateShiftScheduleDto, ShiftScheduleQueryDto,
   BulkUpsertAssignmentsDto, UpsertAvailabilityDto, AvailabilityQueryDto,
+  CreateHandoverDto, SignHandoverDto, HandoverQueryDto,
 } from './dto/shift-schedule.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../common/types/jwt-payload.type';
@@ -31,6 +32,15 @@ export class ShiftScheduleController {
   @Get('availability')
   getAvailability(@CurrentUser() user: AuthenticatedUser, @Query() query: AvailabilityQueryDto) {
     return this.svc.getAvailability(user, query);
+  }
+
+  /** 내 월간 배정 목록 (발행된 근무표 기준) — :id 보다 앞에 위치 필수 */
+  @Get('my-monthly')
+  getMyMonthlyAssignments(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('month') month: string,
+  ) {
+    return this.svc.getMyMonthlyAssignments(user, month);
   }
 
   @Get(':id')
@@ -113,5 +123,34 @@ export class ShiftScheduleController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.svc.deleteAvailability(user, id);
+  }
+
+  // ── 교대 인수인계 ─────────────────────────────────────────────────────────
+  @Get('handovers')
+  listHandovers(@CurrentUser() user: AuthenticatedUser, @Query() query: HandoverQueryDto) {
+    return this.svc.listHandovers(user, query);
+  }
+
+  @Post('handovers')
+  createHandover(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateHandoverDto) {
+    return this.svc.createHandover(user, dto);
+  }
+
+  @Post('handovers/:id/sign-from')
+  signHandoverFrom(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SignHandoverDto,
+  ) {
+    return this.svc.signHandoverFrom(user, id, dto);
+  }
+
+  @Post('handovers/:id/sign-to')
+  signHandoverTo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SignHandoverDto,
+  ) {
+    return this.svc.signHandoverTo(user, id, dto);
   }
 }

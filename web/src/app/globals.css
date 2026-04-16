@@ -6,6 +6,8 @@
 @layer base {
   * { box-sizing: border-box; }
 
+  html { scroll-behavior: smooth; }
+
   body {
     letter-spacing: -0.012em;
     word-break: keep-all;

@@ -11,6 +11,7 @@ import {
 } from '../../database/entities/vacation-request.entity';
 import { VacationBalance } from '../../database/entities/vacation-balance.entity';
 import { User } from '../../database/entities/user.entity';
+import { AttendanceRecord, AttendanceStatus } from '../../database/entities/attendance-record.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import {
   CreateVacationDto, RejectVacationDto, VacationQueryDto, SetBalanceDto,
@@ -24,12 +25,19 @@ const DEDUCTIBLE_TYPES: VacationType[] = [
   VacationType.HALF_DAY_PM,
 ];
 
+// 자동 복무처리가 필요한 타입 (출장/외부교육)
+const AUTO_DUTY_TYPES: VacationType[] = [
+  VacationType.BUSINESS_TRIP,
+  VacationType.EXTERNAL_TRAINING,
+];
+
 @Injectable()
 export class VacationsService {
   constructor(
     @InjectRepository(VacationRequest) private reqRepo: Repository<VacationRequest>,
     @InjectRepository(VacationBalance) private balanceRepo: Repository<VacationBalance>,
     @InjectRepository(User) private userRepo: Repository<User>,
+    @InjectRepository(AttendanceRecord) private attendanceRepo: Repository<AttendanceRecord>,
     private teamsService: TeamsService,
   ) {}
 
@@ -176,6 +184,11 @@ export class VacationsService {
       );
     }
 
+    // 출장/외부교육: 해당 날짜 범위 근태 자동 normal 처리
+    if (AUTO_DUTY_TYPES.includes(req.type as VacationType)) {
+      await this.autoCreateDutyAttendance(req, currentUser.id);
+    }
+
     return this.toResponse(
       await this.reqRepo.findOne({ where: { id }, relations: ['user', 'approver'] }) as VacationRequest,
     );
@@ -320,6 +333,57 @@ export class VacationsService {
     }
     bal.usedDays = Math.max(0, Number(bal.usedDays) + delta);
     await this.balanceRepo.save(bal);
+  }
+
+  /**
+   * 출장/외부교육 승인 시 해당 날짜 범위의 attendance_records 자동 생성
+   * 이미 출근 기록이 있는 날은 건너뜀 (멱등)
+   */
+  private async autoCreateDutyAttendance(req: VacationRequest, approverId: string): Promise<void> {
+    const start = new Date(req.startDate);
+    const end   = new Date(req.endDate);
+
+    const workLocation = req.type === VacationType.BUSINESS_TRIP ? 'field' : 'office';
+    const note = req.type === VacationType.BUSINESS_TRIP ? '출장 (자동 복무처리)' : '외부교육 (자동 복무처리)';
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const workDate = d.toISOString().split('T')[0];
+      const existing = await this.attendanceRepo.findOne({
+        where: { userId: req.userId, workDate },
+      });
+      if (existing?.clockInAt) continue; // 이미 출근 기록 있으면 건너뜀
+
+      const startOfDay = new Date(`${workDate}T00:00:00.000Z`);
+      const endOfDay   = new Date(`${workDate}T09:00:00.000Z`); // 09:00 출근 가정
+
+      if (existing) {
+        existing.clockInAt      = endOfDay;
+        existing.clockOutAt     = new Date(`${workDate}T18:00:00.000Z`);
+        existing.totalWorkMinutes = 480; // 8시간
+        existing.status         = AttendanceStatus.NORMAL;
+        existing.workLocation   = workLocation;
+        existing.note           = note;
+        existing.approvedBy     = approverId;
+        existing.approvedAt     = new Date();
+        await this.attendanceRepo.save(existing);
+      } else {
+        const record = this.attendanceRepo.create({
+          companyId:        req.companyId,
+          userId:           req.userId,
+          workDate,
+          clockInAt:        endOfDay,
+          clockOutAt:       new Date(`${workDate}T18:00:00.000Z`),
+          totalWorkMinutes: 480,
+          breakMinutes:     60,
+          status:           AttendanceStatus.NORMAL,
+          workLocation,
+          note,
+          approvedBy:       approverId,
+          approvedAt:       new Date(),
+        });
+        await this.attendanceRepo.save(record);
+      }
+    }
   }
 
   private toResponse(req: VacationRequest) {

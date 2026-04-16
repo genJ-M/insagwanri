@@ -9,6 +9,8 @@ export interface JwtPayload {
   companyId: string;  // 멀티테넌트 격리 핵심
   role: UserRole;
   email: string;
+  /** 단일 기기 세션 강제 — 로그인마다 새 UUID 발급, DB와 불일치 시 즉시 401 */
+  sessionId: string;
 }
 
 export interface JwtRefreshPayload extends JwtPayload {

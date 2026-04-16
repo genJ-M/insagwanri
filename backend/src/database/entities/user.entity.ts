@@ -63,6 +63,14 @@ export class User {
   @Column({ name: 'refresh_token_hash', type: 'text', nullable: true })
   refreshTokenHash: string | null;
 
+  /**
+   * 현재 유효한 세션 ID (UUID).
+   * 로그인할 때마다 새로 발급되어 JWT payload에 포함됨.
+   * 다른 기기에서 로그인하면 이 값이 변경되어 이전 기기의 토큰이 즉시 무효화됨.
+   */
+  @Column({ name: 'current_session_id', type: 'uuid', nullable: true })
+  currentSessionId: string | null;
+
   @Column({ length: 50 })
   name: string;
 
@@ -135,6 +143,13 @@ export class User {
   /** 생년월일 (인사관리·생일 알림용, 연도 포함 전체 저장) */
   @Column({ type: 'date', nullable: true })
   birthday: Date | null;
+
+  /**
+   * 시급 (파트타임/아르바이트 전용)
+   * 분 단위 임금 계산 및 주휴수당 계산 기준
+   */
+  @Column({ name: 'hourly_rate', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  hourlyRate: number | null;
 
   @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
   lastLoginAt: Date | null;

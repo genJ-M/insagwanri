@@ -345,8 +345,11 @@ export class AuthService {
   // 로그아웃
   // ──────────────────────────────────────────────
   async logout(userId: string, companyId?: string) {
-    // DB의 refresh_token_hash를 null로 설정하여 무효화
-    await this.userRepository.update(userId, { refreshTokenHash: null as any });
+    // DB의 refresh_token_hash + current_session_id를 null로 설정하여 모든 세션 무효화
+    await this.userRepository.update(userId, {
+      refreshTokenHash: null as any,
+      currentSessionId: null as any,
+    });
 
     // 통신비밀보호법 — 로그아웃 활동 기록 (fire-and-forget)
     this.activityLogService.log({
@@ -360,11 +363,15 @@ export class AuthService {
   // 토큰 생성 (내부 유틸)
   // ──────────────────────────────────────────────
   private async generateTokens(user: Partial<User>, companyId: string) {
+    // 단일 기기 세션: 로그인마다 새 UUID 발급
+    const sessionId = crypto.randomUUID();
+
     const payload: JwtPayload = {
       sub: user.id!,
       companyId,
       role: user.role!,
       email: user.email!,
+      sessionId,
     };
 
     const [accessToken, refreshToken] = await Promise.all([
@@ -378,9 +385,9 @@ export class AuthService {
       }),
     ]);
 
-    // Refresh Token 해시 저장 (원문은 저장하지 않음)
+    // Refresh Token 해시 + 현재 세션 ID 저장 (이전 기기 세션 자동 무효화)
     const refreshTokenHash = await bcrypt.hash(refreshToken, BCRYPT_ROUNDS);
-    await this.userRepository.update(user.id!, { refreshTokenHash });
+    await this.userRepository.update(user.id!, { refreshTokenHash, currentSessionId: sessionId });
 
     return {
       access_token: accessToken,

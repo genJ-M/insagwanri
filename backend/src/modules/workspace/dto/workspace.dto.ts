@@ -151,6 +151,51 @@ export class AttendanceMethodsQrDto {
   windowMinutes?: number;
 }
 
+export class UpdatePublicSectorSettingsDto {
+  /** 유연근무제 활성화 */
+  @IsOptional()
+  @IsBoolean()
+  flexWorkEnabled?: boolean;
+
+  /** 연가 소진 강제화 알림 활성화 */
+  @IsOptional()
+  @IsBoolean()
+  annualLeaveForceEnabled?: boolean;
+
+  /** 강제화 기준 잔여일수 (기본 5일) */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  annualLeaveForceThreshold?: number;
+}
+
+export class UpdateItSettingsDto {
+  /** 야근 다음날 지각 면책 활성화 */
+  @IsOptional()
+  @IsBoolean()
+  lateNightExemptionEnabled?: boolean;
+
+  /** 야근 기준 시간 (0~23, 기본 22) */
+  @IsOptional()
+  @IsInt()
+  @Min(18)
+  @Max(23)
+  lateNightThresholdHour?: number;
+
+  /** 면책 유예 시간(분, 기본 60) */
+  @IsOptional()
+  @IsInt()
+  @Min(15)
+  @Max(180)
+  lateNightGraceMinutes?: number;
+
+  /** 연장근무 사전 결재 승인 필수 여부 */
+  @IsOptional()
+  @IsBoolean()
+  overtimeApprovalRequired?: boolean;
+}
+
 export class UpdateAttendanceMethodsDto {
   /** 활성화할 출퇴근 방식 목록 (순서 = 우선순위) */
   @IsArray()
@@ -166,4 +211,71 @@ export class UpdateAttendanceMethodsDto {
   @ValidateNested()
   @Type(() => AttendanceMethodsQrDto)
   qr?: AttendanceMethodsQrDto;
+}
+
+export class UpdatePartTimeSettingsDto {
+  /** 분 단위 반올림 단위 (1=1분, 5, 10, 15, 30) */
+  @IsOptional()
+  @IsInt()
+  @IsIn([1, 5, 10, 15, 30])
+  partTimeRoundingUnit?: number;
+
+  /** 반올림 정책: floor(절사) | round(반올림) | ceil(올림) */
+  @IsOptional()
+  @IsIn(['floor', 'round', 'ceil'])
+  partTimeRoundingPolicy?: string;
+
+  /** 지각/조퇴 차감 단위 (1=1분, 5, 10, 15) */
+  @IsOptional()
+  @IsInt()
+  @IsIn([1, 5, 10, 15])
+  partTimeDeductionUnit?: number;
+
+  /** 근무 확인 SMS 자동 발송 활성화 */
+  @IsOptional()
+  @IsBoolean()
+  workConfirmSmsEnabled?: boolean;
+}
+
+export class UpdateShiftWorkerSettingsDto {
+  /** 연속 근무 경고 기준 (시간, 기본 12) */
+  @IsOptional()
+  @IsInt()
+  @Min(4)
+  @Max(24)
+  shiftLongWorkThresholdHours?: number;
+
+  /** 야간 근무 시작 시간 (0~23, 기본 22) */
+  @IsOptional()
+  @IsInt()
+  @Min(18)
+  @Max(23)
+  nightWorkStartHour?: number;
+
+  /** 야간 근무 종료 시간 (0~23, 기본 6) */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(12)
+  nightWorkEndHour?: number;
+
+  /** 야간수당 배율 (기본 1.5) */
+  @IsOptional()
+  @IsNumber()
+  @Min(1.0)
+  @Max(3.0)
+  nightPayRate?: number;
+}
+
+export class UpdateFieldVisitWorkspaceSettingsDto {
+  /** 외근 체크인 시 업무 일지 자동 생성 여부 */
+  @IsOptional()
+  @IsBoolean()
+  fieldVisitAutoTask?: boolean;
+
+  /** 자동 생성 업무 일지 제목 템플릿 ({{location}} 치환 가능) */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  fieldVisitTaskTitle?: string | null;
 }

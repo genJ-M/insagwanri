@@ -36,6 +36,23 @@ api.interceptors.response.use(
     const originalRequest = error.config as any;
 
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // 다른 기기 로그인으로 세션이 교체된 경우 — refresh 없이 즉시 로그아웃
+      const responseData = error.response.data as any;
+      const errorCode =
+        responseData?.code ||
+        responseData?.message?.code ||
+        (typeof responseData?.message === 'object' ? responseData.message?.code : null);
+
+      if (errorCode === 'SESSION_REPLACED') {
+        localStorage.clear();
+        toast.error(
+          '다른 기기에서 로그인하여 현재 세션이 종료되었습니다.',
+          { id: 'session-replaced', duration: 5000 },
+        );
+        setTimeout(() => { window.location.href = '/login'; }, 1500);
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });

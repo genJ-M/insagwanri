@@ -7,7 +7,7 @@ import {
   Calendar, MessageSquare, Sparkles, LogOut,
   Users, Settings, Banknote, Umbrella, FilePen, FileSignature, Award,
   ClipboardCheck, BarChart2, GraduationCap, ChevronRight, ShieldCheck,
-  Pencil, CalendarDays, SlidersHorizontal, Link2,
+  Pencil, CalendarDays, SlidersHorizontal, Link2, Building2, ArrowLeftRight,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useQuery } from '@tanstack/react-query';
@@ -76,7 +76,8 @@ const NAV: NavEntry[] = [
       { href: '/tasks', icon: ClipboardList, label: '업무 관리', pageKey: '/tasks', matchPattern: /^\/tasks(\/(?!reports)[^/]+)?$/ },
       { href: '/tasks/reports', icon: FileText,     label: '업무 보고',  pageKey: '/tasks/reports' },
       { href: '/schedule',       icon: Calendar,     label: '스케줄',     pageKey: '/schedule' },
-      { href: '/shift-schedule', icon: CalendarDays, label: '팀 근무표',  pageKey: '/shift-schedule' },
+      { href: '/shift-schedule', icon: CalendarDays,     label: '팀 근무표',  pageKey: '/shift-schedule' },
+      { href: '/shift-swap',     icon: ArrowLeftRight,  label: '근무 교환',  pageKey: '/shift-swap' },
     ],
   },
   {
@@ -99,6 +100,7 @@ const NAV: NavEntry[] = [
       { href: '/salary',     icon: Banknote,       label: '급여 관리', pageKey: '/salary',     roles: ['owner', 'manager'] },
       { href: '/contracts',    icon: FileSignature, label: '계약 관리',   pageKey: '/contracts',    roles: ['owner', 'manager'] },
       { href: '/invitations',  icon: Link2,         label: '초대 링크',   pageKey: '/invitations',  roles: ['owner', 'manager'] },
+      { href: '/locations',    icon: Building2,     label: '지점 관리',   pageKey: '/locations',    roles: ['owner', 'manager'] },
     ],
   },
   {

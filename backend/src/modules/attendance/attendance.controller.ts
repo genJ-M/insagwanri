@@ -9,7 +9,7 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole, AuthenticatedUser } from '../../common/types/jwt-payload.type';
 import {
   ClockInDto, ClockOutDto, UpdateAttendanceDto,
-  AttendanceQueryDto, AttendanceReportQueryDto,
+  AttendanceQueryDto, AttendanceReportQueryDto, AuditLogQueryDto,
 } from './dto/attendance.dto';
 
 @Controller('attendance')
@@ -114,6 +114,33 @@ export class AttendanceController {
   }
 
   /**
+   * GET /api/v1/attendance/audit-log
+   * 감사 대비 출퇴근 원본 로그 (owner, manager — 공공기관 특화)
+   *
+   * Example:
+   * GET /api/v1/attendance/audit-log?start_date=2026-01-01&end_date=2026-03-31&user_id=uuid
+   */
+  @Roles(UserRole.OWNER, UserRole.MANAGER)
+  @Get('audit-log')
+  async getAuditLog(
+    @GetUser() user: AuthenticatedUser,
+    @Query() query: AuditLogQueryDto,
+  ) {
+    const data = await this.attendanceService.getAuditLog(user, query);
+    return { success: true, data };
+  }
+
+  /**
+   * GET /api/v1/attendance/weekly-hours
+   * 이번 주 누적 근무시간 (52시간 위젯용) — 전 직원 본인 조회 가능
+   */
+  @Get('weekly-hours')
+  async getWeeklyHours(@GetUser() user: AuthenticatedUser) {
+    const data = await this.attendanceService.getWeeklyHours(user);
+    return { success: true, data };
+  }
+
+  /**
    * GET /api/v1/attendance/me
    * 내 근태 조회
    *
@@ -126,6 +153,50 @@ export class AttendanceController {
     @Query() query: AttendanceQueryDto,
   ) {
     return this.attendanceService.getMyAttendance(user, query);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 사업주 현황판 — :id 라우트보다 반드시 앞에 위치
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * GET /api/v1/attendance/board
+   * 오늘 현황 요약 + 현재 근무 중 직원 (owner/manager)
+   */
+  @Roles(UserRole.OWNER, UserRole.MANAGER)
+  @Get('board')
+  async getOwnerBoard(@GetUser() user: AuthenticatedUser) {
+    const data = await this.attendanceService.getOwnerBoard(user);
+    return { success: true, data };
+  }
+
+  /**
+   * GET /api/v1/attendance/who-was-there?date=YYYY-MM-DD&time=HH:mm
+   * 특정 날짜·시각에 근무 중이었던 직원 조회 (owner/manager)
+   */
+  @Roles(UserRole.OWNER, UserRole.MANAGER)
+  @Get('who-was-there')
+  async whoWasThere(
+    @GetUser() user: AuthenticatedUser,
+    @Query('date') date: string,
+    @Query('time') time: string,
+  ) {
+    const data = await this.attendanceService.whoWasThere(user, date, time);
+    return { success: true, data };
+  }
+
+  /**
+   * GET /api/v1/attendance/trend?days=30
+   * 일별 출근 추이 (owner/manager)
+   */
+  @Roles(UserRole.OWNER, UserRole.MANAGER)
+  @Get('trend')
+  async getDailyTrend(
+    @GetUser() user: AuthenticatedUser,
+    @Query('days') days?: string,
+  ) {
+    const data = await this.attendanceService.getDailyTrend(user, days ? Number(days) : 30);
+    return { success: true, data };
   }
 
   /**
@@ -149,6 +220,31 @@ export class AttendanceController {
     @Body() dto: UpdateAttendanceDto,
   ) {
     const data = await this.attendanceService.updateAttendance(id, user, dto);
+    return { success: true, data };
+  }
+
+  /**
+   * GET /api/v1/attendance/wage-report
+   * 파트타임 임금 리포트 (기간별 분 단위 임금 계산)
+   * - 본인 조회 또는 관리자 타인 조회 가능
+   * - 주휴수당 발생 여부 포함
+   *
+   * Example:
+   * GET /api/v1/attendance/wage-report?start_date=2026-04-07&end_date=2026-04-13
+   * GET /api/v1/attendance/wage-report?user_id=uuid&start_date=2026-04-01&end_date=2026-04-30
+   */
+  @Get('wage-report')
+  async getWageReport(
+    @GetUser() user: AuthenticatedUser,
+    @Query('user_id') userId: string | undefined,
+    @Query('start_date') startDate: string,
+    @Query('end_date')   endDate:   string,
+  ) {
+    const data = await this.attendanceService.getWageReport(user, {
+      user_id:    userId,
+      start_date: startDate,
+      end_date:   endDate,
+    });
     return { success: true, data };
   }
 }

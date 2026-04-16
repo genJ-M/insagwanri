@@ -1,5 +1,5 @@
 import {
-  IsEmail, IsEnum, IsOptional, IsString, IsBoolean,
+  IsEmail, IsEnum, IsOptional, IsString, IsBoolean, IsNumber,
   MinLength, MaxLength, IsDateString, IsInt, Min, Max,
   IsUUID, IsArray, IsIn,
 } from 'class-validator';
@@ -92,6 +92,15 @@ export class UpdateUserDto {
   @IsOptional()
   @IsDateString()
   birthday?: string;
+
+  /**
+   * 시급 (파트타임 전용, 원 단위)
+   * 분 단위 임금 자동 계산 및 주휴수당 계산 기준
+   */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  hourlyRate?: number | null;
 
   @IsOptional()
   @IsString()

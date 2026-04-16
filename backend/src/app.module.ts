@@ -94,6 +94,17 @@ import { InvitationsModule } from './modules/invitations/invitations.module';
 import { TeamsModule } from './modules/teams/teams.module';
 import { Team } from './database/entities/team.entity';
 import { TeamMember } from './database/entities/team-member.entity';
+import { FieldVisitsModule } from './modules/field-visits/field-visits.module';
+import { FieldLocation } from './database/entities/field-location.entity';
+import { FieldVisit } from './database/entities/field-visit.entity';
+import { CareWorkerModule } from './modules/care-worker/care-worker.module';
+import { CareLicense } from './database/entities/care-license.entity';
+import { CareSession } from './database/entities/care-session.entity';
+import { LocationsModule } from './modules/locations/locations.module';
+import { BusinessLocation } from './database/entities/business-location.entity';
+import { UserLocation } from './database/entities/user-location.entity';
+import { ShiftSwapModule } from './modules/shift-swap/shift-swap.module';
+import { ShiftSwapRequest } from './database/entities/shift-swap-request.entity';
 
 @Module({
   imports: [
@@ -180,6 +191,13 @@ import { TeamMember } from './database/entities/team-member.entity';
             ShiftAssignment,
             Team,
             TeamMember,
+            FieldLocation,
+            FieldVisit,
+            CareLicense,
+            CareSession,
+            BusinessLocation,
+            UserLocation,
+            ShiftSwapRequest,
           ],
           synchronize: false, // Migration으로 스키마 관리
           logging: config.get<string>('NODE_ENV') === 'development',
@@ -235,6 +253,10 @@ import { TeamMember } from './database/entities/team-member.entity';
     CustomTemplatesModule,
     InvitationsModule,
     TeamsModule,
+    FieldVisitsModule,
+    CareWorkerModule,
+    LocationsModule,
+    ShiftSwapModule,
 
     // 활동 로그 (통신비밀보호법, 전역)
     ActivityLogModule,

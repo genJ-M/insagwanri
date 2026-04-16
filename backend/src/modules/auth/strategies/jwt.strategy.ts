@@ -35,7 +35,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       select: [
         'id', 'companyId', 'role', 'email', 'name',
         'department', 'managedDepartments', 'permissions',
-        'status', 'deletedAt',
+        'status', 'deletedAt', 'currentSessionId',
       ],
     });
 
@@ -49,6 +49,14 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 
     if (user.status === UserStatus.INACTIVE) {
       throw new UnauthorizedException('비활성화된 계정입니다. 관리자에게 문의하세요.');
+    }
+
+    // 단일 기기 세션 강제: JWT의 sessionId가 DB의 currentSessionId와 다르면 다른 기기에서 로그인된 것
+    if (payload.sessionId && user.currentSessionId && payload.sessionId !== user.currentSessionId) {
+      throw new UnauthorizedException({
+        code: 'SESSION_REPLACED',
+        message: '다른 기기에서 로그인되어 현재 세션이 종료되었습니다.',
+      });
     }
 
     return {

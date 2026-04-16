@@ -126,3 +126,47 @@ export class AvailabilityQueryDto {
   @IsOptional() @IsDateString()
   to?: string;
 }
+
+// ── 교대 인수인계 (현장직 특화) ───────────────────────────────────────────────
+export class CreateHandoverDto {
+  @IsString()
+  from_user_id: string;
+
+  @IsString()
+  to_user_id: string;
+
+  @IsDateString()
+  shift_date: string;
+
+  @IsOptional() @IsString()
+  assignment_id?: string;
+
+  /** 교대 시간 HH:mm */
+  @IsOptional() @Matches(TIME_RE)
+  handover_time?: string;
+
+  /** 인계 메모 (인계자 작성) */
+  @IsOptional() @IsString()
+  from_note?: string;
+}
+
+export class SignHandoverDto {
+  /** 서명 메모 */
+  @IsOptional() @IsString()
+  note?: string;
+
+  /** true = 이의 제기 (인수자 전용) */
+  @IsOptional() @IsBoolean()
+  dispute?: boolean;
+}
+
+export class HandoverQueryDto {
+  @IsOptional() @IsDateString()
+  start_date?: string;
+
+  @IsOptional() @IsDateString()
+  end_date?: string;
+
+  @IsOptional() @IsString()
+  status?: string;
+}

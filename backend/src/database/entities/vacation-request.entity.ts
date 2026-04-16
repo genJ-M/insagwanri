@@ -7,14 +7,16 @@ import { Company } from './company.entity';
 import { User } from './user.entity';
 
 export enum VacationType {
-  ANNUAL       = 'annual',        // 연차
-  HALF_DAY_AM  = 'half_day_am',   // 오전 반차
-  HALF_DAY_PM  = 'half_day_pm',   // 오후 반차
-  SICK         = 'sick',          // 병가
-  EVENT        = 'event',         // 경조사
-  MATERNITY    = 'maternity',     // 출산휴가
-  PATERNITY    = 'paternity',     // 육아휴직
-  OTHER        = 'other',         // 기타
+  ANNUAL            = 'annual',             // 연차
+  HALF_DAY_AM       = 'half_day_am',        // 오전 반차
+  HALF_DAY_PM       = 'half_day_pm',        // 오후 반차
+  SICK              = 'sick',               // 병가
+  EVENT             = 'event',              // 경조사
+  MATERNITY         = 'maternity',          // 출산휴가
+  PATERNITY         = 'paternity',          // 육아휴직
+  BUSINESS_TRIP     = 'business_trip',      // 출장 (복무처리 자동)
+  EXTERNAL_TRAINING = 'external_training',  // 외부교육 (복무처리 자동)
+  OTHER             = 'other',              // 기타
 }
 
 export enum VacationStatus {

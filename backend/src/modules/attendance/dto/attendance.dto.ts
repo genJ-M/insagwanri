@@ -4,6 +4,10 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+/** 유연근무 유형 */
+export type FlexType = 'regular' | 'staggered' | 'discretionary' | 'intensive';
+export const FLEX_TYPES: FlexType[] = ['regular', 'staggered', 'discretionary', 'intensive'];
+
 /** 지원하는 출퇴근 연동 방식 */
 export type AttendanceMethod = 'manual' | 'gps' | 'wifi' | 'qr' | 'face';
 export const ATTENDANCE_METHODS: AttendanceMethod[] = ['manual', 'gps', 'wifi', 'qr', 'face'];
@@ -25,6 +29,22 @@ export class ClockInDto {
   /** WiFi 방식: 현재 연결된 WiFi SSID */
   @IsOptional() @IsString()
   wifiSsid?: string;
+
+  /** 유연근무 유형 (공공기관) — 미입력 시 'regular' */
+  @IsOptional()
+  @IsIn(FLEX_TYPES)
+  flexType?: FlexType;
+}
+
+export class AuditLogQueryDto {
+  @IsOptional() @IsUUID()
+  user_id?: string;
+
+  @IsDateString()
+  start_date: string;
+
+  @IsDateString()
+  end_date: string;
 }
 
 export class ClockOutDto {

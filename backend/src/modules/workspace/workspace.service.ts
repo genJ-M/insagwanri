@@ -5,7 +5,8 @@ import { Company } from '../../database/entities/company.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import {
   UpdateWorkspaceDto, UpdateWorkSettingsDto, UpdateGpsSettingsDto, UpdateBrandingDto,
-  UpdateAttendanceMethodsDto,
+  UpdateAttendanceMethodsDto, UpdateItSettingsDto, UpdatePublicSectorSettingsDto,
+  UpdateShiftWorkerSettingsDto, UpdatePartTimeSettingsDto, UpdateFieldVisitWorkspaceSettingsDto,
 } from './dto/workspace.dto';
 import { INDUSTRY_PRESETS } from './industry-presets.constant';
 
@@ -84,6 +85,58 @@ export class WorkspaceService {
         ...(dto.wifi && { wifi: { ssids: dto.wifi.ssids } }),
         ...(dto.qr   && { qr: { windowMinutes: dto.qr.windowMinutes ?? 5 } }),
       },
+    });
+    return this.getSettings(currentUser);
+  }
+
+  async updateItSettings(currentUser: AuthenticatedUser, dto: UpdateItSettingsDto) {
+    this.requireOwner(currentUser);
+    await this.companyRepo.update(currentUser.companyId, {
+      ...(dto.lateNightExemptionEnabled !== undefined && { lateNightExemptionEnabled: dto.lateNightExemptionEnabled }),
+      ...(dto.lateNightThresholdHour    !== undefined && { lateNightThresholdHour:    dto.lateNightThresholdHour }),
+      ...(dto.lateNightGraceMinutes     !== undefined && { lateNightGraceMinutes:     dto.lateNightGraceMinutes }),
+      ...(dto.overtimeApprovalRequired  !== undefined && { overtimeApprovalRequired:  dto.overtimeApprovalRequired }),
+    });
+    return this.getSettings(currentUser);
+  }
+
+  async updatePublicSectorSettings(currentUser: AuthenticatedUser, dto: UpdatePublicSectorSettingsDto) {
+    this.requireOwner(currentUser);
+    await this.companyRepo.update(currentUser.companyId, {
+      ...(dto.flexWorkEnabled           !== undefined && { flexWorkEnabled:           dto.flexWorkEnabled }),
+      ...(dto.annualLeaveForceEnabled   !== undefined && { annualLeaveForceEnabled:   dto.annualLeaveForceEnabled }),
+      ...(dto.annualLeaveForceThreshold !== undefined && { annualLeaveForceThreshold: dto.annualLeaveForceThreshold }),
+    });
+    return this.getSettings(currentUser);
+  }
+
+  async updateShiftWorkerSettings(currentUser: AuthenticatedUser, dto: UpdateShiftWorkerSettingsDto) {
+    this.requireOwner(currentUser);
+    await this.companyRepo.update(currentUser.companyId, {
+      ...(dto.shiftLongWorkThresholdHours !== undefined && { shiftLongWorkThresholdHours: dto.shiftLongWorkThresholdHours }),
+      ...(dto.nightWorkStartHour          !== undefined && { nightWorkStartHour:          dto.nightWorkStartHour }),
+      ...(dto.nightWorkEndHour            !== undefined && { nightWorkEndHour:            dto.nightWorkEndHour }),
+      ...(dto.nightPayRate                !== undefined && { nightPayRate:                dto.nightPayRate }),
+    });
+    return this.getSettings(currentUser);
+  }
+
+  async updatePartTimeSettings(currentUser: AuthenticatedUser, dto: UpdatePartTimeSettingsDto) {
+    this.requireOwner(currentUser);
+    await this.companyRepo.update(currentUser.companyId, {
+      ...(dto.partTimeRoundingUnit   !== undefined && { partTimeRoundingUnit:   dto.partTimeRoundingUnit }),
+      ...(dto.partTimeRoundingPolicy !== undefined && { partTimeRoundingPolicy: dto.partTimeRoundingPolicy }),
+      ...(dto.partTimeDeductionUnit  !== undefined && { partTimeDeductionUnit:  dto.partTimeDeductionUnit }),
+      ...(dto.workConfirmSmsEnabled  !== undefined && { workConfirmSmsEnabled:  dto.workConfirmSmsEnabled }),
+    });
+    return this.getSettings(currentUser);
+  }
+
+  async updateFieldVisitSettings(currentUser: AuthenticatedUser, dto: UpdateFieldVisitWorkspaceSettingsDto) {
+    this.requireOwner(currentUser);
+    await this.companyRepo.update(currentUser.companyId, {
+      ...(dto.fieldVisitAutoTask  !== undefined && { fieldVisitAutoTask:  dto.fieldVisitAutoTask }),
+      ...(dto.fieldVisitTaskTitle !== undefined && { fieldVisitTaskTitle: dto.fieldVisitTaskTitle }),
     });
     return this.getSettings(currentUser);
   }

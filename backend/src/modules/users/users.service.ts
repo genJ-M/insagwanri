@@ -180,6 +180,7 @@ export class UsersService {
         ...(dto.position   && { position: dto.position }),
         ...(dto.joinedAt   && { joinedAt: new Date(dto.joinedAt) }),
         ...(dto.birthday !== undefined && { birthday: dto.birthday ? new Date(dto.birthday) : null }),
+        ...(dto.hourlyRate !== undefined && { hourlyRate: dto.hourlyRate }),
       },
     );
     return this.findOne(currentUser, targetId);
