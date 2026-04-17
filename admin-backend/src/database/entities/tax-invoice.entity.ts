@@ -39,30 +39,30 @@ export class TaxInvoice {
   status: TaxInvoiceStatus;
 
   // 공급자 (우리 회사)
-  @Column({ name: 'supplier_name', length: 200, nullable: true })
+  @Column({ name: 'supplier_name', type: 'varchar', length: 200, nullable: true })
   supplierName: string | null;
 
-  @Column({ name: 'supplier_business_number', length: 20, nullable: true })
+  @Column({ name: 'supplier_business_number', type: 'varchar', length: 20, nullable: true })
   supplierBusinessNumber: string | null;
 
-  @Column({ name: 'supplier_representative', length: 100, nullable: true })
+  @Column({ name: 'supplier_representative', type: 'varchar', length: 100, nullable: true })
   supplierRepresentative: string | null;
 
   // 공급받는자 (고객사)
-  @Column({ name: 'recipient_name', length: 200, nullable: true })
+  @Column({ name: 'recipient_name', type: 'varchar', length: 200, nullable: true })
   recipientName: string | null;
 
-  @Column({ name: 'recipient_business_number', length: 20, nullable: true })
+  @Column({ name: 'recipient_business_number', type: 'varchar', length: 20, nullable: true })
   recipientBusinessNumber: string | null;
 
-  @Column({ name: 'recipient_email', length: 255, nullable: true })
+  @Column({ name: 'recipient_email', type: 'varchar', length: 255, nullable: true })
   recipientEmail: string | null;
 
   // 공급 내역
   @Column({ name: 'supply_date', type: 'date', nullable: true })
   supplyDate: string | null;
 
-  @Column({ name: 'item_name', length: 200, nullable: true })
+  @Column({ name: 'item_name', type: 'varchar', length: 200, nullable: true })
   itemName: string | null;
 
   @Column({ name: 'supply_amount_krw', type: 'decimal', precision: 12, scale: 2, default: 0 })
@@ -75,10 +75,10 @@ export class TaxInvoice {
   totalAmountKrw: number;
 
   // 국세청
-  @Column({ name: 'e_invoice_provider', length: 30, nullable: true })
+  @Column({ name: 'e_invoice_provider', type: 'varchar', length: 30, nullable: true })
   eInvoiceProvider: string | null;
 
-  @Column({ name: 'nts_confirmation_number', length: 50, nullable: true })
+  @Column({ name: 'nts_confirmation_number', type: 'varchar', length: 50, nullable: true })
   ntsConfirmationNumber: string | null; // 24자리 승인번호
 
   @Column({ name: 'nts_submitted_at', type: 'timestamptz', nullable: true })

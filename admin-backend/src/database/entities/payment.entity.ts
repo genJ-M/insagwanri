@@ -72,10 +72,10 @@ export class Payment {
   pgProvider: string; // toss_payments|bank_transfer|admin_manual
 
   @Index({ unique: true })
-  @Column({ name: 'pg_transaction_id', length: 200, nullable: true })
+  @Column({ name: 'pg_transaction_id', type: 'varchar', length: 200, nullable: true })
   pgTransactionId: string | null;
 
-  @Column({ name: 'pg_order_id', length: 200, nullable: true })
+  @Column({ name: 'pg_order_id', type: 'varchar', length: 200, nullable: true })
   pgOrderId: string | null;
 
   @Column({ name: 'pg_raw_response', type: 'jsonb', nullable: true })
@@ -84,7 +84,7 @@ export class Payment {
   @Column({ name: 'paid_at', type: 'timestamptz', nullable: true })
   paidAt: Date | null;
 
-  @Column({ name: 'failure_code', length: 100, nullable: true })
+  @Column({ name: 'failure_code', type: 'varchar', length: 100, nullable: true })
   failureCode: string | null;
 
   @Column({ name: 'failure_reason', type: 'text', nullable: true })
@@ -103,10 +103,10 @@ export class Payment {
   @Column({ name: 'refund_reason', type: 'text', nullable: true })
   refundReason: string | null;
 
-  @Column({ name: 'refund_type', length: 30, nullable: true })
+  @Column({ name: 'refund_type', type: 'varchar', length: 30, nullable: true })
   refundType: string | null; // full|partial|adjustment
 
-  @Column({ name: 'refund_pg_transaction_id', length: 200, nullable: true })
+  @Column({ name: 'refund_pg_transaction_id', type: 'varchar', length: 200, nullable: true })
   refundPgTransactionId: string | null;
 
   @Column({ name: 'tax_invoice_id', type: 'uuid', nullable: true })

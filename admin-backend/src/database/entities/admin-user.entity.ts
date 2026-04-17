@@ -43,7 +43,7 @@ export class AdminUser {
   isActive: boolean;
 
   // TOTP MFA
-  @Column({ name: 'totp_secret', length: 64, nullable: true })
+  @Column({ name: 'totp_secret', type: 'varchar', length: 64, nullable: true })
   totpSecret: string | null;
 
   @Column({ name: 'totp_enabled', default: false })
