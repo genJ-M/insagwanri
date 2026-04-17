@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository, Between, In } from 'typeorm';
 import { AttendanceRecord } from '../../database/entities/attendance-record.entity';
 import { User } from '../../database/entities/user.entity';
 import { Company } from '../../database/entities/company.entity';
@@ -79,8 +79,8 @@ export class WeeklyHolidayPayCronService {
     const companyIds = [...new Set(qualified.map(r => r.a_company_id))];
 
     const [users, companies] = await Promise.all([
-      this.userRepo.findByIds(userIds, { select: ['id', 'name', 'hourlyRate', 'phone'] as any }),
-      this.companyRepo.findByIds(companyIds, { select: ['id', 'name', 'workConfirmSmsEnabled'] as any }),
+      this.userRepo.find({ where: { id: In(userIds) }, select: ['id', 'name', 'hourlyRate', 'phone'] as any }),
+      this.companyRepo.find({ where: { id: In(companyIds) }, select: ['id', 'name', 'workConfirmSmsEnabled'] as any }),
     ]);
 
     const userMap    = new Map(users.map(u => [u.id, u]));
