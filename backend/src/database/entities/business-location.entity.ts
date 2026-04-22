@@ -18,10 +18,10 @@ export class BusinessLocation {
   @Column({ length: 100 })
   name: string;
 
-  @Column({ length: 300, nullable: true })
+  @Column({ type: 'varchar', length: 300, nullable: true })
   address: string | null;
 
-  @Column({ length: 20, nullable: true })
+  @Column({ type: 'varchar', length: 20, nullable: true })
   phone: string | null;
 
   /** 지점 담당자 (없으면 null) */

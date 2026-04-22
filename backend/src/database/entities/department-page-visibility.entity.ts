@@ -24,7 +24,7 @@ export class DepartmentPageVisibility {
   @Column({ name: 'is_visible', default: true })
   isVisible: boolean;
 
-  @Column({ name: 'updated_by_id', nullable: true })
+  @Column({ name: 'updated_by_id', type: 'uuid', nullable: true })
   updatedById: string | null;
 
   @ManyToOne(() => Company) @JoinColumn({ name: 'company_id' }) company: Company;

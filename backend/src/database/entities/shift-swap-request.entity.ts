@@ -42,7 +42,7 @@ export class ShiftSwapRequest {
   requesterId: string;
 
   /** A가 내놓는 시프트 */
-  @Column({ name: 'requester_assignment_id', nullable: true })
+  @Column({ name: 'requester_assignment_id', type: 'uuid', nullable: true })
   requesterAssignmentId: string | null;
 
   /** A의 시프트 정보 스냅샷 (삭제 대비) */
@@ -55,11 +55,11 @@ export class ShiftSwapRequest {
   } | null;
 
   // ── 대상(B) — swap은 지정, cover는 자원자가 채움 ──────
-  @Column({ name: 'target_user_id', nullable: true })
+  @Column({ name: 'target_user_id', type: 'uuid', nullable: true })
   targetUserId: string | null;
 
   /** B가 내놓는 시프트 (cover이면 null) */
-  @Column({ name: 'target_assignment_id', nullable: true })
+  @Column({ name: 'target_assignment_id', type: 'uuid', nullable: true })
   targetAssignmentId: string | null;
 
   /** B의 시프트 정보 스냅샷 */
@@ -85,7 +85,7 @@ export class ShiftSwapRequest {
   @Column({ name: 'peer_note', type: 'text', nullable: true })
   peerNote: string | null;
 
-  @Column({ name: 'approver_id', nullable: true })
+  @Column({ name: 'approver_id', type: 'uuid', nullable: true })
   approverId: string | null;
 
   @Column({ name: 'approver_note', type: 'text', nullable: true })

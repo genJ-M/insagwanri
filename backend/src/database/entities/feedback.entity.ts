@@ -37,14 +37,14 @@ export class Feedback {
   @Column({ type: 'varchar', length: 20, default: FeedbackStatus.OPEN })
   status: FeedbackStatus;
 
-  @Column({ name: 'company_id', nullable: true })
+  @Column({ name: 'company_id', type: 'uuid', nullable: true })
   companyId: string | null;
 
   @ManyToOne(() => Company, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'company_id' })
   company: Company | null;
 
-  @Column({ name: 'user_id', nullable: true })
+  @Column({ name: 'user_id', type: 'uuid', nullable: true })
   userId: string | null;
 
   @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
