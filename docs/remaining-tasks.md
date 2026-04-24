@@ -30,6 +30,19 @@
 
 > ⚠️ Render 무료 Web Service는 15분 비활성 시 슬립됩니다. 실제 고객용 프로덕션에는 Starter 플랜 이상을 사용하세요.
 
+### 0-1-1. Vercel 환경변수 설정
+
+| 환경변수 | 상태 | 비고 |
+|----------|------|------|
+| `NEXT_PUBLIC_API_URL` | [DONE] | `vercel.json`에 `/api/v1` 고정 |
+| `SENTRY_AUTH_TOKEN` | [ ] | 미설정 시 Sentry 래핑 자동 비활성화 (조건부 처리 완료) |
+| `SENTRY_ORG` | [ ] | sentry.io 조직 슬러그 |
+| `SENTRY_PROJECT` | [ ] | sentry.io 프로젝트 슬러그 |
+
+> Sentry를 실제로 사용하려면 3개 모두 Vercel 환경변수에 추가. 미설정 시 빌드는 정상 진행 (`next.config.mjs` 조건부 처리).
+
+---
+
 ### 0-2. Render 환경변수 설정
 
 | 환경변수 | 상태 | 비고 |
@@ -352,7 +365,7 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | TypeORM Migration 파일 | [CODE] | 작성 완료, 프로덕션 실행 필요 (섹션 0-3) |
 | Winston 구조화 로깅 | [CODE] | |
 | GitHub Actions CI/CD | [CODE] | 로컬 작성, 미검증 |
-| Sentry (Backend + Frontend) | [CODE] | SENTRY_AUTH_TOKEN 미설정 |
+| Sentry (Backend + Frontend) | [CODE] | Vercel 환경변수 3개 추가 시 활성화 (`SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`) |
 | Vercel 배포 | [DONE] | |
 | Render 배포 | [DONE] | health 응답 확인 |
 
@@ -371,6 +384,7 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | @Cron 미작동 | [DONE] | ScheduleModule 누락 | `ScheduleModule.forRoot()` 추가 |
 | data-source.prod.ts 없음 | [DONE] | 파일 미생성 | 신규 생성 |
 | CryptoModule 초기화 순서 | [DONE] | ConfigModule 이전 등록 | 순서 변경 |
+| Vercel 빌드 오류 (`page_client-reference-manifest.js`) | [DONE] | `SENTRY_AUTH_TOKEN` 미설정 시 `withSentryConfig`가 빌드 실패시킴 | `next.config.mjs` 조건부 래핑 (`process.env.SENTRY_AUTH_TOKEN ? withSentryConfig(...) : nextConfig`) |
 
 ---
 
@@ -429,7 +443,7 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 - 월별 캘린더 출퇴근 뷰 (직원×날짜 교차)
 - 전자서명 연동 (계약서)
 - e-세금계산서 API 연동
-- Sentry 오류 모니터링 설정
+- Sentry 오류 모니터링 설정 (Vercel 환경변수 3개 추가: `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`)
 - 로드 테스트
 - Kakao 소셜 로그인 (SocialStrategy 확장)
 - PIPA 정식 컨설팅 + 처리방침 법무 검토
