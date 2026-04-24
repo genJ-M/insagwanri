@@ -101,7 +101,19 @@
       "Bash(node_modules/.bin/tsc --noEmit --skipLibCheck)",
       "Bash(cmd:*)",
       "Bash(node_modules/.bin/tsc --noEmit)",
-      "Bash(npx --prefix backend tsc --noEmit -p backend/tsconfig.json)"
+      "Bash(npx --prefix backend tsc --noEmit -p backend/tsconfig.json)",
+      "Bash(sed -n '17,25p' \"C:/Users/coghd/gwanri_wang/backend/src/modules/tasks/tasks.service.ts\")",
+      "Bash(sed -n '380,460p' \"C:/Users/coghd/gwanri_wang/backend/src/modules/tasks/tasks.service.ts\")",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(echo \"BE:$?\")",
+      "Bash(echo \"WEB:$?\")",
+      "Bash(echo \"exit: $?\")",
+      "Bash(echo \"backend exit: $?\")",
+      "Bash(echo \"web exit: $?\")",
+      "Bash(echo \"backend: $?\")",
+      "Bash(echo \"web: $?\")",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(python3 *)"
     ]
   }
 }
