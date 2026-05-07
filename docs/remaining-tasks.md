@@ -394,12 +394,12 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 |------|------|------|
 | e-세금계산서 연동 | [MANUAL] | 케이세인/아이스크림/비즈인포 — 영업 계약 |
 | 전자서명 | [ ] | 계약관리 고도화 시 결정 |
-| 최저시급 위반 감지 | [ ] | 급여 모듈 추가 기능 |
-| 부서 트리 사이드바 | [ ] | `/team` — 현재 탭 필터 방식 |
-| Rich Text 에디터 | [ ] | 결재문서, 퇴직/휴직 사유 등 |
+| 최저시급 위반 감지 | [DONE] | `salary.service.ts` MIN_WAGE_TABLE + 폼 실시간 경고 배너 |
+| 부서 트리 사이드바 | [DONE] | `/team` DeptTree 컴포넌트 (PC 세로 / 모바일 가로) |
+| Rich Text 에디터 | [DONE] | `RichTextEditor` (Tiptap) — 결재문서 적용 |
 | 팀별 주간 스케줄 카드 뷰 | [CODE] | `/schedule` 주간/목록 뷰 전환 토글, 요일별 색상 카드 |
 | 월별 캘린더 출퇴근 뷰 | [CODE] | `/attendance` 월간 뷰 탭, 직원×날짜 교차 테이블, 상태 뱃지 |
-| 개인 배경 설정 (내 프로필) | [ ] | "회사 기본으로 되돌리기" 포함 |
+| 개인 배경 설정 (내 프로필) | [DONE] | `PersonalCoverCard` (`/settings`) — "회사 기본으로 되돌리기" 포함 |
 | 모바일 전용 이미지 별도 업로드 | [CODE] | 방식 B 구현 완료 — 브랜딩 탭 "영역 선택/별도 업로드" 토글 |
 | 로드 테스트 | [MANUAL] | 피크 시간대 시뮬레이션 |
 | DB 인덱스 실제 생성 확인 | [MANUAL] | migration:run 후 DB 직접 확인 |
@@ -427,12 +427,16 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 
 | 순위 | 항목 | 규모 |
 |------|------|------|
-| 1 | **최저시급 위반 감지** | [CODE] — 급여 폼 실시간 경고 배너, 연도별 시급 테이블 |
-| 2 | **개인 배경 설정** (내 프로필) | [CODE] — 설정>내 프로필 하단 PersonalCoverCard |
-| 3 | **부서 트리 사이드바** (`/team`) | [CODE] — DeptTree 컴포넌트, 부서별 인원 수 표시 |
-| 4 | **Rich Text 에디터** (결재문서) | [CODE] — Tiptap 기반 RichTextEditor 공통 컴포넌트, 전자결재 적용 |
-| 5 | **Admin 배포** | Render + Vercel 서비스 생성 — 수동 |
-| 6 | **모바일 EAS Build** | 앱 아이콘 + eas init 후 |
+| 1 | **팀별 주간 스케줄 카드 뷰** | [CODE] — `/calendar` 주간 뷰 토글, 요일별 색상 카드 |
+| 2 | **월별 캘린더 출퇴근 뷰** | [CODE] — `/attendance` 월간 뷰 탭, 직원×날짜 교차 테이블 |
+| 3 | **Admin 배포** | Render + Vercel 서비스 생성 — 수동 |
+| 4 | **모바일 EAS Build** | 앱 아이콘 + eas init 후 |
+
+> 이전 코드 구현 우선순위(최저시급/부서트리/Rich Text/PersonalCover)는 모두 완료되어
+> §9 미결 의사결정 표에서 [DONE] 으로 표기됨. (2026-05 기준 정정)
+>
+> 부수 정합성 작업 (커밋됨):
+> - **credits cron expired 회사 차단** — `grantMonthlyCredits` 가 active/trialing/free 상태만 충전 (`credit.service.ts`)
 
 ### 선택적 개선 (MVP 이후 / 2단계~3단계)
 

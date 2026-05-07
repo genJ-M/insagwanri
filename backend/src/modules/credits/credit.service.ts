@@ -130,16 +130,24 @@ export class CreditService {
   }
 
   // ─── 월 크레딧 자동 지급 (매월 1일 9시) ─────────────
+  // 활성 구독(active/trialing/free)인 회사만 충전 — expired/canceled/suspended/past_due 제외
+  // (SubscriptionStatusGuard 가 기능 차단을 하더라도 cron 별도 정합 필요)
   @Cron('0 9 1 * *')
   async grantMonthlyCredits() {
     this.logger.log('월 크레딧 자동 지급 시작');
-    const credits = await this.creditRepo.find();
-    for (const c of credits) {
+    const rows = await this.dataSource.query(`
+      SELECT c.company_id AS "companyId",
+             c.monthly_grant AS "monthlyGrant"
+        FROM credits c
+        JOIN subscriptions s ON s.company_id = c.company_id
+       WHERE s.status IN ('active', 'trialing', 'free')
+    `);
+    for (const c of rows) {
       await this.charge(
         c.companyId, c.monthlyGrant,
         'monthly_grant', `월 무료 크레딧 ${c.monthlyGrant}크레딧 지급`,
       );
     }
-    this.logger.log(`${credits.length}개 회사에 월 크레딧 지급 완료`);
+    this.logger.log(`${rows.length}개 활성 회사에 월 크레딧 지급 완료`);
   }
 }
