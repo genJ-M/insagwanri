@@ -102,29 +102,11 @@ interface ShareRequest {
   event: { id: string; title: string; targetDepartment: string | null };
 }
 
-interface AttendanceCell {
-  status: string;
-  isLate: boolean;
-  clockIn: string | null;
-  clockOut: string | null;
-  totalMin: number | null;
-}
-
 // ─── 상수 ────────────────────────────────────────────
 const SCOPE_CONFIG: Record<EventScope, { label: string; color: string; bg: string; Icon: any }> = {
   company:  { label: '전사',   color: 'text-blue-700',    bg: 'bg-blue-500',    Icon: Building2 },
   team:     { label: '팀',     color: 'text-teal-700',    bg: 'bg-teal-500',    Icon: Users },
   personal: { label: '개인',   color: 'text-violet-700',  bg: 'bg-violet-500',  Icon: UserIcon },
-};
-
-const ATT_STATUS_STYLE: Record<string, { bg: string; label: string }> = {
-  normal:      { bg: 'bg-emerald-400', label: '정상' },
-  late:        { bg: 'bg-amber-400',   label: '지각' },
-  early_leave: { bg: 'bg-orange-400',  label: '조퇴' },
-  absent:      { bg: 'bg-red-400',     label: '결근' },
-  half_day:    { bg: 'bg-sky-400',     label: '반차' },
-  vacation:    { bg: 'bg-blue-400',    label: '휴가' },
-  pending:     { bg: 'bg-gray-300',    label: '대기' },
 };
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -646,7 +628,7 @@ export default function CalendarPage() {
   const year  = currentDate.getFullYear();
   const month = currentDate.getMonth() + 1;
 
-  const [view, setView] = useState<'events' | 'week' | 'attendance'>('events');
+  const [view, setView] = useState<'events' | 'week'>('events');
   const [deptFilter, setDeptFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editEvent, setEditEvent] = useState<CalendarEvent | undefined>();
@@ -668,14 +650,6 @@ export default function CalendarPage() {
     queryKey: ['calendar', 'events', year, month, deptFilter],
     queryFn: () =>
       api.get(`/calendar/events?year=${year}&month=${month}${deptFilter ? `&department=${deptFilter}` : ''}`).then(r => r.data.data),
-  });
-
-  // 근태 캘린더 (관리자)
-  const { data: attData } = useQuery({
-    queryKey: ['calendar', 'attendance', year, month, deptFilter],
-    queryFn: () =>
-      api.get(`/calendar/attendance?year=${year}&month=${month}${deptFilter ? `&department=${deptFilter}` : ''}`).then(r => r.data.data),
-    enabled: isAdmin && view === 'attendance',
   });
 
   // 대기 중인 공유 요청 수 (팀장용)
@@ -786,10 +760,9 @@ export default function CalendarPage() {
             {/* 뷰 전환 — events/week 전체 노출, attendance만 관리자 */}
             <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
               {([
-                { id: 'events',     label: '월',   Icon: CalendarDays },
-                { id: 'week',       label: '주',   Icon: Columns3 },
-                ...(isAdmin ? [{ id: 'attendance', label: '근태', Icon: Table2 }] : []),
-              ] as { id: 'events' | 'week' | 'attendance'; label: string; Icon: any }[]).map(v => (
+                { id: 'events', label: '월', Icon: CalendarDays },
+                { id: 'week',   label: '주', Icon: Columns3 },
+              ] as { id: 'events' | 'week'; label: string; Icon: any }[]).map(v => (
                 <button
                   key={v.id}
                   onClick={() => setView(v.id)}
@@ -1038,122 +1011,7 @@ export default function CalendarPage() {
           </div>
         )}
 
-        {/* ── 근태 캘린더 뷰 (관리자) ── */}
-        {view === 'attendance' && isAdmin && (
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-            {!attData ? (
-              <div className="py-16 text-center text-[13px] text-gray-400">근태 데이터를 불러오는 중...</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="text-[11px] border-collapse w-full min-w-[900px]">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="px-3 py-2.5 text-left text-[12px] font-semibold text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[120px] border-r border-gray-100">
-                        직원
-                      </th>
-                      {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => {
-                        const date = new Date(year, month - 1, d);
-                        const dow = date.getDay();
-                        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                        const isToday = dateStr === new Date().toISOString().split('T')[0];
-                        const eventsOnDay = eventsByDate.get(dateStr) ?? [];
-                        const isHolidayCell = holidayMap.has(dateStr);
-                        return (
-                          <th key={d} className={clsx(
-                            'py-1 text-center font-semibold relative border-l border-gray-50 min-w-[36px]',
-                            isToday && 'bg-primary-50',
-                            isHolidayCell && 'bg-red-50/60',
-                            (isHolidayCell || dow === 0) ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-gray-500',
-                          )}>
-                            <div>{d}</div>
-                            <div className="text-[9px] font-normal">{WEEKDAYS[dow]}</div>
-                            {/* 이벤트 도트 */}
-                            {eventsOnDay.length > 0 && (
-                              <div className="flex justify-center gap-0.5 mt-0.5">
-                                {eventsOnDay.slice(0, 2).map(ev => {
-                                  const c = ev.color ?? (ev.scope === 'company' ? '#3b82f6' : ev.scope === 'team' ? '#14b8a6' : '#8b5cf6');
-                                  return <div key={ev.id} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: c }} title={ev.title} />;
-                                })}
-                              </div>
-                            )}
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {(attData.users as any[]).map((emp: any) => {
-                      const empRecords: Record<string, AttendanceCell> = attData.records[emp.id] ?? {};
-                      return (
-                        <tr key={emp.id} className="hover:bg-gray-50/80">
-                          <td className="px-3 py-1.5 sticky left-0 bg-white z-10 border-r border-gray-100">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-primary-100 flex items-center justify-center text-[10px] font-bold text-primary-600 flex-shrink-0">
-                                {emp.name.charAt(0)}
-                              </div>
-                              <div>
-                                <p className="font-semibold text-gray-900 text-[12px]">{emp.name}</p>
-                                <p className="text-[10px] text-gray-400">{emp.department ?? '—'}</p>
-                              </div>
-                            </div>
-                          </td>
-                          {Array.from({ length: daysInMonth }, (_, i) => {
-                            const d = i + 1;
-                            const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                            const rec = empRecords[dateStr];
-                            const date = new Date(year, month - 1, d);
-                            const dow = date.getDay();
-                            const isWeekend = dow === 0 || dow === 6;
-                            const isToday = dateStr === new Date().toISOString().split('T')[0];
-                            const isHolidayTd = holidayMap.has(dateStr);
-
-                            const statusStyle = rec ? (ATT_STATUS_STYLE[rec.status] ?? ATT_STATUS_STYLE.pending) : null;
-
-                            return (
-                              <td key={d} className={clsx(
-                                'text-center py-1.5 border-l border-gray-50',
-                                isHolidayTd ? 'bg-red-50/50' : isWeekend && 'bg-gray-50/40',
-                                isToday && 'bg-primary-50/30',
-                              )}>
-                                {rec ? (
-                                  <div className="flex flex-col items-center gap-0.5" title={`${rec.clockIn ?? ''} ~ ${rec.clockOut ?? ''}`}>
-                                    <div className={clsx('w-3 h-3 rounded-full mx-auto', statusStyle?.bg)} />
-                                    {rec.isLate && (
-                                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400" title="지각" />
-                                    )}
-                                  </div>
-                                ) : isWeekend ? (
-                                  <span className="text-[9px] text-gray-200">—</span>
-                                ) : null}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                    {(attData.users as any[]).length === 0 && (
-                      <tr>
-                        <td colSpan={daysInMonth + 1} className="py-10 text-center text-[13px] text-gray-400">
-                          직원이 없습니다.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-
-                {/* 근태 범례 */}
-                <div className="flex items-center gap-3 px-4 py-3 border-t border-gray-100 flex-wrap">
-                  {Object.entries(ATT_STATUS_STYLE).map(([k, v]) => (
-                    <div key={k} className="flex items-center gap-1.5">
-                      <div className={clsx('w-3 h-3 rounded-full', v.bg)} />
-                      <span className="text-[11px] text-gray-500">{v.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {/* 근태 월간 뷰는 /attendance 의 '월간 뷰' 탭으로 통합됨 */}
 
         {/* 이벤트 목록 사이드 패널 (이번 달 전체) */}
         {view === 'events' && events.length > 0 && (

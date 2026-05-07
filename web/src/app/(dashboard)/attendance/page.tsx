@@ -25,6 +25,7 @@ import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { AttendanceRecord } from '@/types';
 import { OvertimeRequestModal } from '@/components/templates/OvertimeRequestModal';
+import { getHolidayMap } from '@/lib/korean-holidays';
 
 const STATUS_KO: Record<string, string> = {
   pending: '대기', normal: '정상', late: '지각',
@@ -1064,6 +1065,7 @@ const CELL_SHORT: Record<string, string> = {
 
 function MonthlyGridTab() {
   const [month, setMonth] = useState(new Date());
+  const [filterDept, setFilterDept] = useState<string>('');
   const year = month.getFullYear();
   const mon  = month.getMonth() + 1;
   const daysInMonth = getDaysInMonth(month);
@@ -1086,6 +1088,21 @@ function MonthlyGridTab() {
     queryFn: async () => { const { data } = await api.get('/users'); return data.data ?? data; },
   });
 
+  // 부서 옵션
+  const departments = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of (members as any[])) {
+      if (m.department) set.add(m.department);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'));
+  }, [members]);
+
+  // 부서 필터된 멤버
+  const filteredMembers = useMemo(
+    () => filterDept ? (members as any[]).filter(m => m.department === filterDept) : (members as any[]),
+    [members, filterDept],
+  );
+
   // userId → (day → status) 맵
   const grid = useMemo(() => {
     const map = new Map<string, Map<number, string>>();
@@ -1099,12 +1116,27 @@ function MonthlyGridTab() {
     return map;
   }, [records]);
 
+  // 통계 요약 — 필터된 직원만 집계
+  const stats = useMemo(() => {
+    const memberIds = new Set(filteredMembers.map((m: any) => m.id));
+    const counts: Record<string, number> = { normal: 0, late: 0, absent: 0, early_leave: 0, vacation: 0 };
+    for (const r of (records as any[])) {
+      const uid = r.userId ?? r.user_id;
+      if (!memberIds.has(uid)) continue;
+      counts[r.status] = (counts[r.status] ?? 0) + 1;
+    }
+    return counts;
+  }, [records, filteredMembers]);
+
+  // 공휴일
+  const holidayMap = useMemo(() => getHolidayMap(year, mon), [year, mon]);
+
   const isFuture = month > new Date();
 
   return (
     <div className="space-y-4">
-      {/* 월 네비 */}
-      <div className="flex items-center gap-3">
+      {/* 월 네비 + 부서 필터 */}
+      <div className="flex items-center gap-3 flex-wrap">
         <button
           onClick={() => setMonth((m) => subMonths(m, 1))}
           className="w-8 h-8 rounded-lg border border-border flex items-center justify-center hover:bg-gray-50 text-text-secondary transition-colors"
@@ -1121,6 +1153,37 @@ function MonthlyGridTab() {
         >
           <ChevronRight className="h-4 w-4" />
         </button>
+
+        {departments.length > 0 && (
+          <select
+            value={filterDept}
+            onChange={(e) => setFilterDept(e.target.value)}
+            className="ml-2 input w-40 text-xs"
+          >
+            <option value="">전체 부서</option>
+            {departments.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        )}
+
+        <span className="ml-auto text-xs text-text-muted">
+          {filteredMembers.length}명 · 총 {Object.values(stats).reduce((a, b) => a + b, 0)}건
+        </span>
+      </div>
+
+      {/* 통계 요약 */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        {[
+          { key: 'normal',      label: '정상',  color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { key: 'late',        label: '지각',  color: 'text-amber-600',   bg: 'bg-amber-50' },
+          { key: 'early_leave', label: '조퇴',  color: 'text-orange-600',  bg: 'bg-orange-50' },
+          { key: 'absent',      label: '결근',  color: 'text-red-600',     bg: 'bg-red-50' },
+          { key: 'vacation',    label: '휴가',  color: 'text-blue-600',    bg: 'bg-blue-50' },
+        ].map(({ key, label, color, bg }) => (
+          <div key={key} className={clsx('rounded-xl px-3 py-2', bg)}>
+            <p className={clsx('text-lg font-bold tabular-nums', color)}>{stats[key] ?? 0}</p>
+            <p className="text-[11px] text-text-muted">{label}</p>
+          </div>
+        ))}
       </div>
 
       {/* 범례 */}
@@ -1144,12 +1207,17 @@ function MonthlyGridTab() {
                 {days.map((d) => {
                   const date = new Date(year, mon - 1, d);
                   const dow = getDay(date);
+                  const dateStr = format(date, 'yyyy-MM-dd');
+                  const holiday = holidayMap.get(dateStr);
+                  const isHoliday = !!holiday;
                   return (
                     <th
                       key={d}
+                      title={holiday ?? undefined}
                       className={clsx(
                         'w-8 min-w-[32px] py-2 text-center font-semibold border-b border-border',
-                        dow === 0 ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-gray-500',
+                        isHoliday && 'bg-red-50/60',
+                        isHoliday || dow === 0 ? 'text-red-500' : dow === 6 ? 'text-blue-500' : 'text-gray-500',
                       )}
                     >
                       {d}
@@ -1159,7 +1227,7 @@ function MonthlyGridTab() {
               </tr>
             </thead>
             <tbody>
-              {(members as any[]).map((m) => {
+              {filteredMembers.map((m: any) => {
                 const dayMap = grid.get(m.id);
                 return (
                   <tr key={m.id} className="border-b border-gray-50 hover:bg-primary-50/30 transition-colors">
@@ -1173,12 +1241,14 @@ function MonthlyGridTab() {
                       const status = dayMap?.get(d);
                       const date = new Date(year, mon - 1, d);
                       const isWeekend = [0, 6].includes(getDay(date));
+                      const dateStr = format(date, 'yyyy-MM-dd');
+                      const isHoliday = holidayMap.has(dateStr);
                       return (
                         <td
                           key={d}
                           className={clsx(
                             'text-center py-1.5 border-r border-gray-50',
-                            isWeekend && 'bg-gray-50/60',
+                            isHoliday ? 'bg-red-50/40' : isWeekend && 'bg-gray-50/60',
                           )}
                         >
                           {status ? (

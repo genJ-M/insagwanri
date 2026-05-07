@@ -397,8 +397,8 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 | 최저시급 위반 감지 | [DONE] | `salary.service.ts` MIN_WAGE_TABLE + 폼 실시간 경고 배너 |
 | 부서 트리 사이드바 | [DONE] | `/team` DeptTree 컴포넌트 (PC 세로 / 모바일 가로) |
 | Rich Text 에디터 | [DONE] | `RichTextEditor` (Tiptap) — 결재문서 적용 |
-| 팀별 주간 스케줄 카드 뷰 | [CODE] | `/schedule` 주간/목록 뷰 전환 토글, 요일별 색상 카드 |
-| 월별 캘린더 출퇴근 뷰 | [CODE] | `/attendance` 월간 뷰 탭, 직원×날짜 교차 테이블, 상태 뱃지 |
+| 팀별 주간 스케줄 카드 뷰 | [DONE] | `/calendar` `view='week'` — 7일 카드 grid, 시간단위 prefix, 인접월 자동 fetch |
+| 월별 캘린더 출퇴근 뷰 | [DONE] | `/attendance` `tab='grid'` — `MonthlyGridTab` (직원×날짜, 부서 필터, 통계 요약, 공휴일 표시) |
 | 개인 배경 설정 (내 프로필) | [DONE] | `PersonalCoverCard` (`/settings`) — "회사 기본으로 되돌리기" 포함 |
 | 모바일 전용 이미지 별도 업로드 | [CODE] | 방식 B 구현 완료 — 브랜딩 탭 "영역 선택/별도 업로드" 토글 |
 | 로드 테스트 | [MANUAL] | 피크 시간대 시뮬레이션 |
@@ -425,18 +425,22 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 
 ### 코드 구현 (다음 세션 추천)
 
-| 순위 | 항목 | 규모 |
-|------|------|------|
-| 1 | **팀별 주간 스케줄 카드 뷰** | [CODE] — `/calendar` 주간 뷰 토글, 요일별 색상 카드 |
-| 2 | **월별 캘린더 출퇴근 뷰** | [CODE] — `/attendance` 월간 뷰 탭, 직원×날짜 교차 테이블 |
-| 3 | **Admin 배포** | Render + Vercel 서비스 생성 — 수동 |
-| 4 | **모바일 EAS Build** | 앱 아이콘 + eas init 후 |
-
-> 이전 코드 구현 우선순위(최저시급/부서트리/Rich Text/PersonalCover)는 모두 완료되어
-> §9 미결 의사결정 표에서 [DONE] 으로 표기됨. (2026-05 기준 정정)
+> **§10 코드 구현 우선순위 모두 완료 (2026-05 기준)**
+>
+> 완료 항목 — 최저시급 위반 감지 / 부서 트리 사이드바 / Rich Text 에디터 (Tiptap) /
+> 개인 배경 설정 / 팀별 주간 스케줄 카드 뷰 / 월별 출퇴근 뷰
 >
 > 부수 정합성 작업 (커밋됨):
-> - **credits cron expired 회사 차단** — `grantMonthlyCredits` 가 active/trialing/free 상태만 충전 (`credit.service.ts`)
+> - credits cron expired 회사 차단 — `grantMonthlyCredits`가 active/trialing/free 상태만 충전
+> - `/calendar`의 attendance 뷰 제거 — `/attendance` `tab='grid'`로 통합 (중복 제거)
+> - MonthlyGridTab 보강 — 부서 필터 / 통계 요약 카드 / 공휴일 표시
+
+| 순위 | 항목 | 규모 |
+|------|------|------|
+| 1 | **Admin 배포** | Render + Vercel 서비스 생성 — 수동 |
+| 2 | **모바일 EAS Build** | 앱 아이콘 + eas init 후 |
+| 3 | **DB 마이그레이션 운영 적용** | 누적 50개 — Render Shell `npm run migration:run` |
+| 4 | **(선택) `/calendar/attendance` 백엔드 endpoint 제거** | calendar 모듈에서 attendance 코드 cleanup — 호출처 없음 확인됨 |
 
 ### 선택적 개선 (MVP 이후 / 2단계~3단계)
 
