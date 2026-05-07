@@ -6,7 +6,6 @@ import { Schedule } from '../../database/entities/schedule.entity';
 import { ScheduleShare } from '../../database/entities/schedule-share.entity';
 import { ScheduleShareRequest } from '../../database/entities/schedule-share-request.entity';
 import { User } from '../../database/entities/user.entity';
-import { AttendanceRecord } from '../../database/entities/attendance-record.entity';
 
 @Module({
   imports: [
@@ -15,7 +14,6 @@ import { AttendanceRecord } from '../../database/entities/attendance-record.enti
       ScheduleShare,
       ScheduleShareRequest,
       User,
-      AttendanceRecord,
     ]),
   ],
   controllers: [CalendarController],

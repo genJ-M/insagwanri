@@ -425,6 +425,9 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 
 ### 코드 구현 (다음 세션 추천)
 
+> 📌 **수동 작업 핸드오프**: 사용자가 직접 수행해야 하는 모든 영역(환경변수/마이그레이션/배포/EAS)은
+> [`manual-handoff-checklist.md`](./manual-handoff-checklist.md) 에 단계별로 정리됨. 이 §10은 코드 작업만 다룸.
+
 > **§10 코드 구현 우선순위 모두 완료 (2026-05 기준)**
 >
 > 완료 항목 — 최저시급 위반 감지 / 부서 트리 사이드바 / Rich Text 에디터 (Tiptap) /
@@ -437,10 +440,10 @@ Render Shell에서 `npm run migration:run` 또는 배포 후 자동 실행 (star
 
 | 순위 | 항목 | 규모 |
 |------|------|------|
-| 1 | **Admin 배포** | Render + Vercel 서비스 생성 — 수동 |
-| 2 | **모바일 EAS Build** | 앱 아이콘 + eas init 후 |
-| 3 | **DB 마이그레이션 운영 적용** | 누적 50개 — Render Shell `npm run migration:run` |
-| 4 | **(선택) `/calendar/attendance` 백엔드 endpoint 제거** | calendar 모듈에서 attendance 코드 cleanup — 호출처 없음 확인됨 |
+| 1 | **Admin 배포** | Render + Vercel 서비스 생성 — 수동 (manual-handoff §6) |
+| 2 | **모바일 EAS Build** | 앱 아이콘 + eas init 후 (manual-handoff §7) |
+| 3 | **DB 마이그레이션 운영 적용** | 누적 50개 (manual-handoff §2) |
+| ~~4~~ | ~~`/calendar/attendance` 백엔드 cleanup~~ | [DONE] 2026-05 — endpoint/method/AttendanceRecord 의존성 모두 제거 |
 
 ### 선택적 개선 (MVP 이후 / 2단계~3단계)
 

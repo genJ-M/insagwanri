@@ -40,13 +40,6 @@ export class CalendarController {
     return this.svc.getEvents(user, query);
   }
 
-  /** 근태 캘린더 데이터 (관리자) */
-  @Get('attendance')
-  @Roles(UserRole.OWNER, UserRole.MANAGER)
-  getAttendanceCalendar(@CurrentUser() user: AuthenticatedUser, @Query() query: CalendarQueryDto) {
-    return this.svc.getAttendanceCalendar(user, query);
-  }
-
   /** 부서 목록 */
   @Get('departments')
   getDepartments(@CurrentUser() user: AuthenticatedUser) {

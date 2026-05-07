@@ -13,7 +13,6 @@ import {
   ScheduleShareRequest, ScheduleShareRequestStatus,
 } from '../../database/entities/schedule-share-request.entity';
 import { User } from '../../database/entities/user.entity';
-import { AttendanceRecord } from '../../database/entities/attendance-record.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import {
   CreateCalendarEventDto, UpdateCalendarEventDto, CalendarQueryDto,
@@ -31,7 +30,6 @@ export class CalendarService {
     @InjectRepository(ScheduleShare)        private shareRepo: Repository<ScheduleShare>,
     @InjectRepository(ScheduleShareRequest) private shareRequestRepo: Repository<ScheduleShareRequest>,
     @InjectRepository(User)                 private userRepo: Repository<User>,
-    @InjectRepository(AttendanceRecord)     private attendanceRepo: Repository<AttendanceRecord>,
   ) {}
 
   // ─── 이벤트 목록 (프라이버시 강화: 팀 격리) ──────────
@@ -111,61 +109,6 @@ export class CalendarService {
     );
 
     return events.map(e => this.toResponse(e, currentUser.id, sharedEventIds, sharesByEventId[e.id] ?? []));
-  }
-
-  // ─── 근태 캘린더 데이터 (관리자) ───────────────────
-  async getAttendanceCalendar(currentUser: AuthenticatedUser, query: CalendarQueryDto) {
-    if (![UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role)) {
-      throw new ForbiddenException();
-    }
-    const { startDate, endDate } = this.monthRange(query.year, query.month);
-
-    const userQb = this.userRepo.createQueryBuilder('u')
-      .where('u.company_id = :cid', { cid: currentUser.companyId })
-      .andWhere('u.deleted_at IS NULL')
-      .select(['u.id', 'u.name', 'u.department', 'u.position', 'u.employee_number']);
-
-    if (query.department) {
-      userQb.andWhere('u.department = :dept', { dept: query.department });
-    }
-    const users = await userQb.getMany();
-
-    const records = await this.attendanceRepo.createQueryBuilder('a')
-      .where('a.company_id = :cid', { cid: currentUser.companyId })
-      .andWhere('a.work_date >= :start', { start: startDate })
-      .andWhere('a.work_date <= :end', { end: endDate })
-      .select(['a.id', 'a.user_id', 'a.work_date', 'a.status', 'a.clock_in_at', 'a.clock_out_at', 'a.total_work_minutes', 'a.is_late'])
-      .getMany();
-
-    const recordMap = new Map<string, Record<string, typeof records[0]>>();
-    for (const r of records) {
-      if (!recordMap.has(r.userId)) recordMap.set(r.userId, {});
-      recordMap.get(r.userId)![r.workDate] = r;
-    }
-
-    return {
-      users: users.map(u => ({
-        id: u.id, name: u.name,
-        department: u.department, position: u.position,
-        employeeNumber: u.employeeNumber,
-      })),
-      records: Object.fromEntries(
-        users.map(u => {
-          const byDate = recordMap.get(u.id) ?? {};
-          return [u.id, Object.fromEntries(
-            Object.entries(byDate).map(([date, rec]) => [date, {
-              status: rec.status,
-              isLate: rec.isLate,
-              clockIn: rec.clockInAt ? new Date(rec.clockInAt).toTimeString().slice(0, 5) : null,
-              clockOut: rec.clockOutAt ? new Date(rec.clockOutAt).toTimeString().slice(0, 5) : null,
-              totalMin: rec.totalWorkMinutes,
-            }]),
-          )];
-        }),
-      ),
-      year: query.year,
-      month: query.month,
-    };
   }
 
   // ─── 이벤트 생성 ────────────────────────────────────
