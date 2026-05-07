@@ -16,9 +16,6 @@ export type NotificationType =
   | 'task_completed'
   | 'task_urgent'
   | 'report_feedback'
-  | 'message_mention'
-  | 'message_dm'
-  | 'channel_announcement'
   | 'schedule_reminder'
   | 'schedule_new'
   | 'attendance_late'
@@ -54,12 +51,12 @@ export type NotificationType =
   | 'subscription_renewed'          // 자동결제 성공 알림
   | 'subscription_renewal_failed'   // 자동결제 실패 알림
   | 'trial_ending_soon'             // 체험 기간 만료 임박 D-3/D-1
+  | 'trial_expired'                 // 체험 종료 → 서비스 일시 정지
   | 'subscription_payment_method_expiring'; // 카드 유효기간 만료 임박
 
 export type NotificationRefType =
   | 'task'
   | 'task_report'
-  | 'message'
   | 'schedule'
   | 'payment'
   | 'subscription'
@@ -69,7 +66,12 @@ export type NotificationRefType =
   | 'field_visit'
   | 'field_location'
   | 'care_license'
-  | 'care_session';
+  | 'care_session'
+  | 'approval'
+  | 'vacation'
+  | 'salary'
+  | 'attendance'
+  | 'contract';
 
 @Entity('notifications')
 @Index(['userId', 'isRead'])

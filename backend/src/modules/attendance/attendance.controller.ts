@@ -11,7 +11,9 @@ import {
   ClockInDto, ClockOutDto, UpdateAttendanceDto,
   AttendanceQueryDto, AttendanceReportQueryDto, AuditLogQueryDto,
 } from './dto/attendance.dto';
+import { RequireModule } from '../../common/decorators/require-module.decorator';
 
+@RequireModule('attendance')
 @Controller('attendance')
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}

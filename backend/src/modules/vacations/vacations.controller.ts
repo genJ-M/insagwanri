@@ -7,7 +7,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import {
-  CreateVacationDto, RejectVacationDto, VacationQueryDto, SetBalanceDto,
+  CreateVacationDto, ApproveVacationDto, RejectVacationDto, VacationQueryDto, SetBalanceDto,
 } from './dto/vacation.dto';
 
 @Controller('vacations')
@@ -64,9 +64,10 @@ export class VacationsController {
   @Patch(':id/approve')
   approve(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ApproveVacationDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.svc.approve(id, user);
+    return this.svc.approve(id, dto, user);
   }
 
   /** 반려 (관리자 또는 팀장) */

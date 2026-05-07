@@ -15,6 +15,10 @@ import { SubscriptionsService } from './subscriptions.service';
 import {
   UpgradeSubscriptionDto, IssueBillingKeyDto, CancelSubscriptionDto,
   ToggleAutoRenewDto, PurchaseAddonDto,
+  PreviewSeatChangeDto, AddSeatsDto,
+  PreviewLocationChangeDto, AddLocationsDto,
+  ScheduleSeatDecreaseDto, ScheduleLocationDecreaseDto,
+  SetBillingDelegateDto,
 } from './dto/subscription.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../auth/decorators/get-user.decorator';
@@ -101,5 +105,75 @@ export class SubscriptionsController {
     @GetUser() user: AuthenticatedUser,
   ) {
     return this.subscriptionsService.deletePaymentMethod(id, user);
+  }
+
+  // ── Per-seat: 인원 추가 (일할 계산) ─────────────────────────────
+  @Post('seats/preview')
+  @HttpCode(HttpStatus.OK)
+  previewSeatChange(@Body() dto: PreviewSeatChangeDto, @GetUser() user: AuthenticatedUser) {
+    return this.subscriptionsService.previewSeatChange(dto.newSeatCount, user);
+  }
+
+  @Post('seats/add')
+  @HttpCode(HttpStatus.OK)
+  addSeats(@Body() dto: AddSeatsDto, @GetUser() user: AuthenticatedUser) {
+    return this.subscriptionsService.addSeats(dto, user);
+  }
+
+  // ── Per-seat: 지점 추가 (일할 계산) ─────────────────────────────
+  @Post('locations/preview')
+  @HttpCode(HttpStatus.OK)
+  previewLocationChange(@Body() dto: PreviewLocationChangeDto, @GetUser() user: AuthenticatedUser) {
+    return this.subscriptionsService.previewLocationChange(dto.newExtraLocations, user);
+  }
+
+  @Post('locations/add')
+  @HttpCode(HttpStatus.OK)
+  addLocations(@Body() dto: AddLocationsDto, @GetUser() user: AuthenticatedUser) {
+    return this.subscriptionsService.addLocations(dto, user);
+  }
+
+  // ── 감소 예약 (다음 청구주기에 자동 적용) ──────────────────────
+  @Post('seats/schedule-decrease')
+  @HttpCode(HttpStatus.OK)
+  scheduleSeatDecrease(@Body() dto: ScheduleSeatDecreaseDto, @GetUser() user: AuthenticatedUser) {
+    return this.subscriptionsService.scheduleSeatDecrease(dto.newSeatCount, user);
+  }
+
+  @Post('locations/schedule-decrease')
+  @HttpCode(HttpStatus.OK)
+  scheduleLocationDecrease(@Body() dto: ScheduleLocationDecreaseDto, @GetUser() user: AuthenticatedUser) {
+    return this.subscriptionsService.scheduleLocationDecrease(dto.newExtraLocations, user);
+  }
+
+  @Delete('scheduled-changes')
+  @HttpCode(HttpStatus.OK)
+  cancelScheduledChanges(@GetUser() user: AuthenticatedUser) {
+    return this.subscriptionsService.cancelScheduledChanges(user);
+  }
+
+  // ── Free 플랜 다운그레이드 (카드 없이 가능) ──────────────────
+  @Post('downgrade-to-free')
+  @HttpCode(HttpStatus.OK)
+  downgradeToFree(@GetUser() user: AuthenticatedUser) {
+    return this.subscriptionsService.downgradeToFree(user);
+  }
+
+  // ── 결제 위임 계정 (OWNER 전용 지정/해제) ──────────────────────
+  @Get('billing-delegate')
+  getBillingDelegate(@GetUser() user: AuthenticatedUser) {
+    return this.subscriptionsService.getBillingDelegate(user);
+  }
+
+  @Post('billing-delegate')
+  @HttpCode(HttpStatus.OK)
+  setBillingDelegate(@Body() dto: SetBillingDelegateDto, @GetUser() user: AuthenticatedUser) {
+    return this.subscriptionsService.setBillingDelegate(dto.userId ?? null, user);
+  }
+
+  @Delete('billing-delegate')
+  @HttpCode(HttpStatus.OK)
+  clearBillingDelegate(@GetUser() user: AuthenticatedUser) {
+    return this.subscriptionsService.setBillingDelegate(null, user);
   }
 }

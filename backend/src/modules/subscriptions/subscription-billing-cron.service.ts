@@ -8,6 +8,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../notifications/email.service';
 import { format, addMonths, addYears } from 'date-fns';
 import { ko } from 'date-fns/locale';
+import { calcMonthlyTotal, type PlanName } from './pricing.constant';
 
 /**
  * 자동결제 실행 Cron
@@ -48,7 +49,12 @@ export class SubscriptionBillingCronService {
         s.next_billing_at,
         s.current_period_end,
         s.quantity,
+        s.seat_count,
+        s.extra_locations,
+        s.pending_seat_count,
+        s.pending_extra_locations,
         COALESCE(s.renewal_retry_count, 0) AS renewal_retry_count,
+        p.name         AS plan_internal_name,
         p.display_name AS plan_name,
         p.price_monthly_krw,
         p.price_yearly_krw,
@@ -81,84 +87,172 @@ export class SubscriptionBillingCronService {
   }
 
   private async processRenewal(sub: any): Promise<void> {
-    const amount = sub.billing_cycle === 'yearly'
-      ? Number(sub.price_yearly_krw)
-      : Number(sub.price_monthly_krw);
-    const taxAmount    = Math.round(amount * 0.1);
-    const totalAmount  = amount + taxAmount;
+    // FOR UPDATE NOWAIT으로 락 시도 — 다른 결제 트랜잭션이 점유 중이면 이번 사이클은 skip
+    let lockedSub: any = null;
+    try {
+      await this.dataSource.transaction(async (em) => {
+        const [row] = await em.query(`
+          SELECT s.id, s.status, s.next_billing_at,
+                 s.seat_count, s.extra_locations,
+                 s.pending_seat_count, s.pending_extra_locations
+            FROM subscriptions s
+           WHERE s.id = $1
+           FOR UPDATE NOWAIT
+        `, [sub.id]);
+        if (!row) {
+          this.logger.warn(`구독 없음 subscriptionId=${sub.id} — skip`);
+          return;
+        }
+        // 락 안에서 최신 상태 재확인 (다른 트랜잭션이 next_billing_at을 이미 갱신했을 수 있음)
+        if (new Date(row.next_billing_at).getTime() > Date.now()) {
+          this.logger.log(`이미 갱신됨 companyId=${sub.company_id} — skip`);
+          return;
+        }
+        // 1) Pending 변경사항이 있으면 이번 갱신부터 적용
+        const effectiveSeatCount = row.pending_seat_count != null
+          ? Number(row.pending_seat_count)
+          : Number(row.seat_count);
+        const effectiveExtraLocations = row.pending_extra_locations != null
+          ? Number(row.pending_extra_locations)
+          : Number(row.extra_locations);
 
-    const now      = new Date();
-    const orderId  = `RENEW-${Date.now()}-${sub.company_id.slice(0, 8)}`;
-    const invoiceNumber = `INV-${now.toISOString().slice(0, 7)}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+        // 2) per-seat 가격 모델로 청구 금액 계산
+        const planName = sub.plan_internal_name as PlanName;
+        const monthly = calcMonthlyTotal(
+          planName,
+          effectiveSeatCount,
+          effectiveExtraLocations,
+          Number(sub.price_monthly_krw) || undefined,
+        );
+        const billingMultiplier = sub.billing_cycle === 'yearly' ? 12 * 0.83 : 1;
+        const baseFeeKrw     = Math.round(monthly.baseFeeKrw * billingMultiplier);
+        const seatFeeKrw     = Math.round(monthly.seatFeeKrw * billingMultiplier);
+        const locationFeeKrw = Math.round(monthly.locationFeeKrw * billingMultiplier);
+        const amount         = baseFeeKrw + seatFeeKrw + locationFeeKrw;
+        const taxAmount      = Math.round(amount * 0.1);
+        const totalAmount    = amount + taxAmount;
 
-    // Toss 결제
-    const billingKey = this.decryptBillingKey(sub.pg_billing_key);
-    const tossResult = await this.chargeToss({
-      billingKey,
-      customerKey: sub.company_id,
-      orderId,
-      orderName: `관리왕 ${sub.plan_name} 구독 자동갱신`,
-      amount: totalAmount,
-    });
+        const now      = new Date();
+        const orderId  = `RENEW-${Date.now()}-${sub.company_id.slice(0, 8)}`;
+        const invoiceNumber = `INV-${now.toISOString().slice(0, 7)}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
-    if (tossResult.success) {
-      await this.handleSuccess(sub, { orderId, invoiceNumber, amount, taxAmount, totalAmount, tossResult, now });
-    } else {
-      await this.handleFailure(sub, tossResult.failureReason ?? '결제 실패');
+        // Toss 결제 — 트랜잭션 안에서 호출 (실패 시 자동 롤백)
+        let tossResult: { success: boolean; transactionId?: string; failureReason?: string; rawResponse?: any };
+        if (totalAmount === 0) {
+          tossResult = { success: true, transactionId: 'free-renewal', rawResponse: { skipped: true } };
+        } else {
+          const billingKey = this.decryptBillingKey(sub.pg_billing_key);
+          tossResult = await this.chargeToss({
+            billingKey,
+            customerKey: sub.company_id,
+            orderId,
+            orderName: `관리왕 ${sub.plan_name} 자동갱신 (${effectiveSeatCount}명${effectiveExtraLocations > 0 ? ` · 지점+${effectiveExtraLocations}` : ''})`,
+            amount: totalAmount,
+          });
+        }
+
+        if (tossResult.success) {
+          await this.handleSuccessInTransaction(em, sub, {
+            orderId, invoiceNumber, amount, taxAmount, totalAmount, tossResult, now,
+            baseFeeKrw, seatFeeKrw, locationFeeKrw,
+            effectiveSeatCount, effectiveExtraLocations,
+          });
+          lockedSub = { handled: true };
+        } else {
+          // 실패는 락 밖에서 처리 (재시도 카운터 증가)
+          throw new Error(`__TOSS_FAIL__:${tossResult.failureReason ?? '결제 실패'}`);
+        }
+      });
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      if (msg.startsWith('__TOSS_FAIL__:')) {
+        await this.handleFailure(sub, msg.replace('__TOSS_FAIL__:', ''));
+      } else if (msg.includes('could not obtain lock')) {
+        this.logger.log(`락 점유 중 — skip companyId=${sub.company_id}`);
+      } else {
+        this.logger.error(`갱신 처리 예외 companyId=${sub.company_id}: ${msg}`);
+      }
     }
   }
 
   // ──────────────────────────────────────────────
   // 결제 성공 처리
   // ──────────────────────────────────────────────
-  private async handleSuccess(sub: any, opts: {
+  /** 락이 걸린 트랜잭션 안에서 호출 — DB 업데이트만, 알림은 외부에서 별도 처리 */
+  private async handleSuccessInTransaction(em: any, sub: any, opts: {
     orderId: string; invoiceNumber: string;
     amount: number; taxAmount: number; totalAmount: number;
     tossResult: any; now: Date;
+    baseFeeKrw: number; seatFeeKrw: number; locationFeeKrw: number;
+    effectiveSeatCount: number; effectiveExtraLocations: number;
   }): Promise<void> {
-    const { orderId, invoiceNumber, amount, taxAmount, totalAmount, tossResult, now } = opts;
+    const {
+      orderId, invoiceNumber, amount, taxAmount, totalAmount, tossResult,
+      baseFeeKrw, seatFeeKrw, locationFeeKrw,
+      effectiveSeatCount, effectiveExtraLocations,
+    } = opts;
 
-    // 다음 결제일 계산
     const nextPeriodEnd = sub.billing_cycle === 'yearly'
       ? addYears(new Date(sub.current_period_end), 1)
       : addMonths(new Date(sub.current_period_end), 1);
 
-    await this.dataSource.transaction(async (em) => {
-      // Payment 레코드 생성
-      await em.query(`
-        INSERT INTO payments (
-          company_id, subscription_id, payment_method_id, invoice_number,
-          status, supply_amount_krw, tax_amount_krw, total_amount_krw,
-          billing_cycle, pg_provider, pg_transaction_id, pg_order_id,
-          pg_raw_response, paid_at, refundable_until
-        ) VALUES (
-          $1, $2, $3, $4, 'completed',
-          $5, $6, $7, $8,
-          'toss_payments', $9, $10, $11::jsonb,
-          NOW(), NOW() + INTERVAL '7 days'
-        )
-      `, [
-        sub.company_id, sub.id, sub.default_payment_method_id, invoiceNumber,
-        amount, taxAmount, totalAmount, sub.billing_cycle,
-        tossResult.transactionId, orderId, JSON.stringify(tossResult.rawResponse),
-      ]);
+    await em.query(`
+      INSERT INTO payments (
+        company_id, subscription_id, payment_method_id, invoice_number,
+        status, supply_amount_krw, tax_amount_krw, total_amount_krw,
+        billing_cycle, pg_provider, pg_transaction_id, pg_order_id,
+        pg_raw_response, paid_at, refundable_until,
+        base_fee_krw, seat_fee_krw, location_fee_krw, seat_count, payment_type
+      ) VALUES (
+        $1, $2, $3, $4, 'completed',
+        $5, $6, $7, $8,
+        'toss_payments', $9, $10, $11::jsonb,
+        NOW(), NOW() + INTERVAL '7 days',
+        $12, $13, $14, $15, 'subscription'
+      )
+    `, [
+      sub.company_id, sub.id, sub.default_payment_method_id, invoiceNumber,
+      amount, taxAmount, totalAmount, sub.billing_cycle,
+      tossResult.transactionId, orderId, JSON.stringify(tossResult.rawResponse),
+      baseFeeKrw, seatFeeKrw, locationFeeKrw, effectiveSeatCount,
+    ]);
 
-      // Subscription 기간 연장 + 재시도 카운터 초기화 + 발송 기록 초기화
-      await em.query(`
-        UPDATE subscriptions SET
-          status                = 'active',
-          current_period_start  = NOW(),
-          current_period_end    = $2,
-          next_billing_at       = $2,
-          renewal_retry_count   = 0,
-          renewal_last_failed_at = NULL,
-          renewal_notified_days  = '[]'::jsonb,
-          updated_at             = NOW()
-        WHERE id = $1
-      `, [sub.id, nextPeriodEnd]);
+    await em.query(`
+      UPDATE subscriptions SET
+        status                  = 'active',
+        current_period_start    = NOW(),
+        current_period_end      = $2,
+        next_billing_at         = $2,
+        seat_count              = $3,
+        extra_locations         = $4,
+        quantity                = $3,
+        last_billed_amount_krw  = $5,
+        pending_seat_count      = NULL,
+        pending_extra_locations = NULL,
+        pending_changes_apply_at = NULL,
+        renewal_retry_count     = 0,
+        renewal_last_failed_at  = NULL,
+        renewal_notified_days   = '[]'::jsonb,
+        updated_at              = NOW()
+      WHERE id = $1
+    `, [
+      sub.id, nextPeriodEnd,
+      effectiveSeatCount, effectiveExtraLocations, totalAmount,
+    ]);
+
+    // 알림은 트랜잭션 커밋 후 처리하기 위해 setImmediate로 비동기 실행
+    setImmediate(() => {
+      this.sendRenewedNotifications(sub, {
+        invoiceNumber, totalAmount, nextPeriodEnd,
+      }).catch((err) => this.logger.warn(`갱신 알림 발송 실패: ${err}`));
     });
+  }
 
-    // 알림
+  /** 트랜잭션 외부에서 호출되는 알림 발송 (실패해도 결제는 이미 커밋됨) */
+  private async sendRenewedNotifications(sub: any, opts: {
+    invoiceNumber: string; totalAmount: number; nextPeriodEnd: Date;
+  }): Promise<void> {
+    const { invoiceNumber, totalAmount, nextPeriodEnd } = opts;
     const billingDateStr = format(nextPeriodEnd, 'M월 d일', { locale: ko });
     const amountStr = `${totalAmount.toLocaleString('ko-KR')}원`;
     const body = `${sub.plan_name} 구독이 자동 갱신되었습니다. 청구 금액: ${amountStr}. 다음 결제일: ${billingDateStr}`;

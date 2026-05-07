@@ -8,16 +8,15 @@ export interface AddonItem {
   emoji: string;
 }
 
+/**
+ * 직원 추가(extra_employees_N)와 지점 추가(extra_location)는
+ * per-seat pricing 모델로 이동했습니다.
+ *  - 직원: subscriptions.seat_count + SEAT_TIERS (`POST /seats/add`)
+ *  - 지점: subscriptions.extra_locations (`POST /locations/add`)
+ *
+ * 여기 남은 항목은 정액 부가서비스(컴퍼니 단위 기능 토글)만.
+ */
 export const ADDON_CATALOG: AddonItem[] = [
-  {
-    code: 'extra_employees_5',
-    name: '추가 직원 (+5명)',
-    description: '직원 한도를 5명 추가합니다. 여러 개 구매 가능합니다.',
-    unit: '5명 단위',
-    priceMonthlyKrw: 5000,
-    priceYearlyKrw: 50000,
-    emoji: '👥',
-  },
   {
     code: 'extra_storage_10gb',
     name: '추가 저장공간 (+10GB)',
@@ -32,18 +31,9 @@ export const ADDON_CATALOG: AddonItem[] = [
     name: 'AI 기능 확장 (+50회/일)',
     description: 'AI 일일 사용 횟수를 50회 추가합니다.',
     unit: '50회/일 단위',
-    priceMonthlyKrw: 8000,
-    priceYearlyKrw: 80000,
-    emoji: '🤖',
-  },
-  {
-    code: 'extra_location',
-    name: '추가 지점 (+1개)',
-    description: '사업장(지점)을 1개 추가합니다. 여러 개 구매 가능합니다.',
-    unit: '지점 1개 단위',
     priceMonthlyKrw: 9900,
     priceYearlyKrw: 99000,
-    emoji: '🏢',
+    emoji: '🤖',
   },
   {
     code: 'contract',
@@ -59,8 +49,8 @@ export const ADDON_CATALOG: AddonItem[] = [
     name: '세무 자동 알림',
     description: '35일 이내 세무·노무 할 일을 자동으로 알림 발송합니다.',
     unit: '회사 단위',
-    priceMonthlyKrw: 5000,
-    priceYearlyKrw: 50000,
+    priceMonthlyKrw: 6900,
+    priceYearlyKrw: 69000,
     emoji: '📅',
   },
 ];

@@ -83,6 +83,9 @@ export class VacationRequest {
   @Column({ name: 'reject_reason', type: 'text', nullable: true })
   rejectReason: string | null;
 
+  @Column({ name: 'approver_comment', type: 'text', nullable: true })
+  approverComment: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

@@ -73,7 +73,7 @@ const MONTH_LABELS = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8
 const PAGE_LABELS: Record<string, string> = {
   '/': '대시보드', '/attendance': '출퇴근', '/vacations': '휴가 관리',
   '/calendar': '캘린더', '/tasks': '업무 관리', '/tasks/reports': '업무 보고',
-  '/schedule': '스케줄', '/shift-schedule': '팀 근무표', '/messages': '메시지',
+  '/shift-schedule': '근무표·교대', '/messages': '메시지',
   '/team': '직원 관리', '/team/notes': '인사 노트', '/team/stats': '조직 통계',
   '/salary': '급여 관리', '/contracts': '계약 관리', '/approvals': '전자결재',
   '/certificates': '증명서 발급', '/evaluations': '인사평가', '/training': '교육 관리',

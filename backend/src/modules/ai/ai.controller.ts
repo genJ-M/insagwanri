@@ -11,7 +11,9 @@ import {
   ScheduleSummaryDto, RefineDto, AiUsageQueryDto, AiHistoryQueryDto,
   TeamScopeRecommendDto,
 } from './dto/ai.dto';
+import { RequireModule } from '../../common/decorators/require-module.decorator';
 
+@RequireModule('ai')
 @Controller('ai')
 export class AiController {
   constructor(private readonly aiService: AiService) {}

@@ -347,8 +347,7 @@ export class NotificationsService {
     type: NotificationType,
   ): boolean {
     if (type.startsWith('task_')) return settings.pushTask;
-    if (type.startsWith('message_') || type === 'channel_announcement')
-      return settings.pushMessage;
+    if (type.startsWith('schedule_')) return settings.pushSchedule;
     if (type.startsWith('schedule_')) return settings.pushSchedule;
     if (type.startsWith('attendance_')) return settings.pushAttendance;
     if (type === 'birthday_upcoming') return settings.pushSchedule; // 인사 일정 계열

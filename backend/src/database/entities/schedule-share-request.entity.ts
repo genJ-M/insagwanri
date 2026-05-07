@@ -2,32 +2,32 @@ import {
   Entity, PrimaryGeneratedColumn, Column,
   CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index,
 } from 'typeorm';
-import { CalendarEvent } from './calendar-event.entity';
+import { Schedule } from './schedule.entity';
 import { User } from './user.entity';
 
-export enum ShareRequestStatus {
+export enum ScheduleShareRequestStatus {
   PENDING  = 'pending',
   APPROVED = 'approved',
   REJECTED = 'rejected',
 }
 
 /**
- * 팀 이벤트를 다른 부서와 공유하려 할 때 팀장 승인이 필요한 경우 사용.
- * 팀원이 요청 → 팀장(해당 부서 manager)이 승인/거절 → 승인 시 CalendarEventShare 자동 생성.
+ * 팀 일정을 다른 부서와 공유하려 할 때 팀장 승인이 필요한 경우 사용.
+ * 팀원이 요청 → 팀장(해당 부서 manager)이 승인/거절 → 승인 시 ScheduleShare 자동 생성.
  */
-@Entity('calendar_share_requests')
-@Index(['eventId', 'status'])
+@Entity('schedule_share_requests')
+@Index(['scheduleId', 'status'])
 @Index(['companyId', 'decidedBy'])
-export class CalendarShareRequest {
+export class ScheduleShareRequest {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'event_id' })
-  eventId: string;
+  @Column({ name: 'schedule_id' })
+  scheduleId: string;
 
-  @ManyToOne(() => CalendarEvent, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'event_id' })
-  event: CalendarEvent;
+  @ManyToOne(() => Schedule, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'schedule_id' })
+  schedule: Schedule;
 
   @Column({ name: 'company_id' })
   companyId: string;
@@ -47,9 +47,9 @@ export class CalendarShareRequest {
   @Column({
     type: 'varchar',
     length: 20,
-    default: ShareRequestStatus.PENDING,
+    default: ScheduleShareRequestStatus.PENDING,
   })
-  status: ShareRequestStatus;
+  status: ScheduleShareRequestStatus;
 
   /** 승인/거절한 팀장 */
   @Column({ name: 'decided_by', type: 'uuid', nullable: true })

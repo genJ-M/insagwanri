@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import {
   ChevronLeft, ChevronRight, Plus, X, Printer,
-  CheckCircle2, Clock, Banknote, ChevronDown, AlertTriangle,
+  CheckCircle2, Clock, Banknote, ChevronDown, AlertTriangle, CalendarDays,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import Avatar from '@/components/ui/Avatar';
@@ -18,6 +18,7 @@ import toast from 'react-hot-toast';
 
 // ── 유틸 ──────────────────────────────────────────────
 const KRW = (v: number) => v.toLocaleString('ko-KR') + '원';
+type ViewMode = 'monthly' | 'annual';
 // [유지보수] 4대보험 요율 기준 연도 — new Date().getFullYear() 이 아닌 하드코딩
 // 요율 변경 시 backend/salary.service.ts의 RATE_YEAR, RATES 와 함께 수정
 // (docs/time-sensitive-maintenance.md 참고)
@@ -501,6 +502,7 @@ export default function SalaryPage() {
   const [showForm,   setShowForm]   = useState(false);
   const [editTarget, setEditTarget] = useState<any>(null);
   const [slipTarget, setSlipTarget] = useState<any>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('monthly');
 
   const prevMonth = () => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); };
   const nextMonth = () => { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); };
@@ -578,7 +580,7 @@ export default function SalaryPage() {
     <div className="flex-1 overflow-y-auto">
       <main className="page-container space-y-6">
         {/* 월 네비게이션 */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <button onClick={prevMonth} className="p-2 rounded-lg border border-border hover:bg-gray-50 transition-colors">
               <ChevronLeft className="h-4 w-4 text-text-muted" />
@@ -590,24 +592,74 @@ export default function SalaryPage() {
               <ChevronRight className="h-4 w-4 text-text-muted" />
             </button>
           </div>
-          {isManager && (
-            <button
-              onClick={() => { setEditTarget(null); setShowForm(true); }}
-              className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors shadow-sm"
-            >
-              <Plus className="h-4 w-4" />
-              급여 등록
-            </button>
-          )}
+
+          <div className="flex items-center gap-3">
+            {/* 월급 / 연봉 토글 */}
+            <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5">
+              <button
+                onClick={() => setViewMode('monthly')}
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
+                  viewMode === 'monthly'
+                    ? 'bg-white shadow-sm text-text-primary'
+                    : 'text-text-muted hover:text-text-secondary',
+                )}
+              >
+                <Banknote className="h-3.5 w-3.5" />
+                월급
+              </button>
+              <button
+                onClick={() => setViewMode('annual')}
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
+                  viewMode === 'annual'
+                    ? 'bg-white shadow-sm text-text-primary'
+                    : 'text-text-muted hover:text-text-secondary',
+                )}
+              >
+                <CalendarDays className="h-3.5 w-3.5" />
+                연봉
+              </button>
+            </div>
+
+            {isManager && (
+              <button
+                onClick={() => { setEditTarget(null); setShowForm(true); }}
+                className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors shadow-sm"
+              >
+                <Plus className="h-4 w-4" />
+                급여 등록
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* 연봉 안내 배너 */}
+        {viewMode === 'annual' && (
+          <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+            <CalendarDays className="h-3.5 w-3.5 flex-shrink-0" />
+            <span>
+              연봉 = 이달 월 수령액 × 12 <b>추정값</b>입니다. 실제 연봉은 상여금·성과급 등에 따라 다를 수 있습니다.
+              시간제 근로자는 근무 시간에 따라 매월 달라지므로 월급 기준으로 확인하세요.
+            </span>
+          </div>
+        )}
 
         {/* 요약 카드 (관리자) */}
         {isManager && summary && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { label: '총 인원',      value: `${summary.count ?? 0}명`,   icon: '👤', color: 'bg-primary-500' },
-              { label: '총 지급 합계', value: KRW(summary.grossPay ?? 0),  icon: '💰', color: 'bg-emerald-500' },
-              { label: '총 공제 합계', value: KRW(summary.deduction ?? 0), icon: '📊', color: 'bg-amber-500' },
+              {
+                label: viewMode === 'annual' ? '연간 지급 추정' : '월 지급 합계',
+                value: KRW((summary.grossPay ?? 0) * (viewMode === 'annual' ? 12 : 1)),
+                icon: '💰', color: 'bg-emerald-500',
+              },
+              {
+                label: viewMode === 'annual' ? '연간 공제 추정' : '월 공제 합계',
+                value: KRW((summary.deduction ?? 0) * (viewMode === 'annual' ? 12 : 1)),
+                icon: '📊', color: 'bg-amber-500',
+              },
               { label: '지급 완료',    value: `${summary.paidCount ?? 0}명`, icon: '✅', color: 'bg-gray-500' },
             ].map(({ label, value, icon, color }) => (
               <div key={label} className="bg-white rounded-xl border border-border shadow-card p-5">
@@ -627,7 +679,15 @@ export default function SalaryPage() {
           <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="bg-gray-50 border-b border-border">
-                {['직원', '기본급', '수당 합계', '공제 합계', '차인지급액', '상태', ''].map((h) => (
+                {[
+                  '직원',
+                  viewMode === 'annual' ? '연 기본급 (추정)' : '월 기본급',
+                  viewMode === 'annual' ? '연 수당 합계'     : '월 수당 합계',
+                  viewMode === 'annual' ? '연 공제 합계'     : '월 공제 합계',
+                  viewMode === 'annual' ? '연 실수령액 (추정)' : '월 실수령액',
+                  '상태',
+                  '',
+                ].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
                     {h}
                   </th>
@@ -666,21 +726,48 @@ export default function SalaryPage() {
                 salaryList.map((s) => {
                   const allowances = s.overtimePay + s.holidayPay + s.bonus
                     + s.mealAllowance + s.transportAllowance + s.otherAllowance;
+                  const isHourly = !!s.user?.hourlyRate;
+                  // 시간제는 연봉 모드에서도 월급 기준 유지 (근무 시간에 따라 변동)
+                  const mult = viewMode === 'annual' && !isHourly ? 12 : 1;
                   return (
                     <tr key={s.id} className="hover:bg-gray-50/60 transition-colors">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <Avatar name={s.user?.name ?? '?'} size="sm" />
                           <div>
-                            <p className="font-medium text-text-primary">{s.user?.name ?? '—'}</p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-medium text-text-primary">{s.user?.name ?? '—'}</p>
+                              {isHourly && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 font-medium">
+                                  시간제
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-text-muted">{s.user?.department ?? '—'}</p>
+                            {isHourly && s.user?.hourlyRate && (
+                              <p className="text-[11px] text-orange-500 mt-0.5">
+                                시급 {KRW(Number(s.user.hourlyRate))}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 tabular-nums text-text-secondary">{KRW(s.baseSalary)}</td>
-                      <td className="px-4 py-3 tabular-nums text-text-secondary">{KRW(allowances)}</td>
-                      <td className="px-4 py-3 tabular-nums text-red-500">{KRW(s.totalDeduction)}</td>
-                      <td className="px-4 py-3 tabular-nums font-semibold text-text-primary">{KRW(s.netPay)}</td>
+                      <td className="px-4 py-3 tabular-nums text-text-secondary">
+                        {KRW(s.baseSalary * mult)}
+                        {viewMode === 'annual' && isHourly && (
+                          <span className="block text-[10px] text-orange-400 mt-0.5">월 기준</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 tabular-nums text-text-secondary">{KRW(allowances * mult)}</td>
+                      <td className="px-4 py-3 tabular-nums text-red-500">{KRW(s.totalDeduction * mult)}</td>
+                      <td className="px-4 py-3 tabular-nums font-semibold text-text-primary">
+                        {KRW(s.netPay * mult)}
+                        {viewMode === 'annual' && !isHourly && (
+                          <span className="block text-[10px] text-text-muted font-normal mt-0.5">
+                            월 {KRW(s.netPay)}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">

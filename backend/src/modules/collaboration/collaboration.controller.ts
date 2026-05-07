@@ -10,7 +10,9 @@ import {
   CreateChannelDto, SendMessageDto, EditMessageDto,
   ReadMessageDto, MessageQueryDto,
 } from './dto/collaboration.dto';
+import { RequireModule } from '../../common/decorators/require-module.decorator';
 
+@RequireModule('collaboration')
 @Controller()
 export class CollaborationController {
   constructor(private readonly collaborationService: CollaborationService) {}

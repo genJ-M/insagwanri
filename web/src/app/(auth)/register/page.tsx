@@ -1,6 +1,6 @@
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, EyeOff, Mail, ArrowLeft, RefreshCw, Check, X, Building, User, Briefcase } from 'lucide-react';
 
@@ -10,6 +10,13 @@ import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import Button from '@/components/ui/Button';
 import { clsx } from 'clsx';
+import {
+  loadLandingIntent,
+  intentFromSearchParams,
+  intentToQueryString,
+  type LandingIntent,
+} from '@/lib/landing-intent';
+import { BUSINESS_TYPES, PLANS } from '@/lib/landing-pricing';
 
 type Step = 'form' | 'verify';
 type CompanyType = 'none' | 'individual' | 'corporation';
@@ -28,9 +35,17 @@ const COMPANY_TYPES: { value: CompanyType; icon: typeof Building; label: string;
   { value: 'corporation', icon: Building, label: '법인', desc: '법인등록번호 보유' },
 ];
 
-export default function RegisterPage() {
+function RegisterPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const setUser = useAuthStore((s) => s.setUser);
+
+  // 랜딩 PricingWizard에서 넘어온 선택 의도 — URL 쿼리 우선, 없으면 sessionStorage
+  const landingIntent = useMemo<LandingIntent | null>(() => {
+    if (!searchParams) return loadLandingIntent();
+    const fromUrl = intentFromSearchParams(new URLSearchParams(searchParams.toString()));
+    return fromUrl ?? loadLandingIntent();
+  }, [searchParams]);
 
   const [step, setStep] = useState<Step>('form');
   const [showPw, setShowPw] = useState(false);
@@ -118,7 +133,18 @@ export default function RegisterPage() {
       if (data.access_token) {
         setUser(data.user, { access_token: data.access_token, refresh_token: data.refresh_token });
         setIsNavigating(true);
-        router.replace('/onboarding/plan');
+        // 랜딩 의도가 있으면 쿼리스트링으로 이어서 전달 — sessionStorage도 동시에 살아있음
+        const qs = landingIntent
+          ? '?' + intentToQueryString({
+              planKey:        landingIntent.planKey,
+              employees:      landingIntent.employees,
+              billingCycle:   landingIntent.billingCycle,
+              typeIds:        landingIntent.typeIds,
+              addonIds:       landingIntent.addonIds,
+              extraLocations: landingIntent.extraLocations,
+            })
+          : '';
+        router.replace(`/onboarding/plan${qs}`);
       } else {
         setRegisteredEmail(form.email);
         setStep('verify');
@@ -179,7 +205,32 @@ export default function RegisterPage() {
       {step === 'form' && (
         <div className="w-full max-w-[480px] bg-white rounded-2xl border border-border shadow-card p-8">
           <h1 className="text-[22px] font-bold text-text-primary mb-1">무료회원가입</h1>
-          <p className="text-sm text-text-muted mb-7">14일 무료 체험 · 신용카드 불필요</p>
+          <p className="text-sm text-text-muted mb-5">14일 무료 체험 · 신용카드 불필요</p>
+
+          {/* 랜딩에서 선택한 플랜 요약 — 회원가입 후에도 그대로 적용 */}
+          {landingIntent && (() => {
+            const planLabel =
+              landingIntent.planKey === 'enterprise' ? 'Enterprise'
+              : landingIntent.planKey === 'free'    ? 'Free'
+              : PLANS[landingIntent.planKey as keyof typeof PLANS]?.label ?? landingIntent.planKey;
+            const typeLabels = landingIntent.typeIds
+              .map(id => BUSINESS_TYPES.find(b => b.id === id))
+              .filter(Boolean)
+              .map(t => `${t!.icon} ${t!.label}`)
+              .join(' · ');
+            return (
+              <div className="bg-primary-50 border border-primary-100 rounded-xl px-4 py-3 mb-5 text-sm">
+                <p className="font-semibold text-primary-700">선택하신 {planLabel} 플랜으로 시작합니다</p>
+                <p className="text-xs text-primary-600 mt-0.5">
+                  {typeLabels || '업종 미선택'} · 직원 {landingIntent.employees}명
+                  {landingIntent.extraLocations > 0 && ` · 지점 +${landingIntent.extraLocations}개`}
+                </p>
+                <p className="text-[11px] text-primary-500 mt-1">
+                  가입 후에도 동일한 선택이 자동 적용됩니다 — 다시 입력할 필요 없어요.
+                </p>
+              </div>
+            );
+          })()}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* 이름 + 회사명 */}
@@ -445,5 +496,13 @@ export default function RegisterPage() {
       </p>
       <p className="text-xs text-text-muted mt-6">© 2026 관리왕. All rights reserved.</p>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense>
+      <RegisterPageContent />
+    </Suspense>
   );
 }

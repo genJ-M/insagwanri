@@ -6,6 +6,7 @@ import {
   PLANS,
   ADDONS,
   type PlanKey,
+  deriveComboPrice,
   fmt,
 } from '@/lib/landing-pricing';
 
@@ -19,13 +20,11 @@ export const metadata: Metadata = {
 function parseParams(searchParams: Record<string, string | string[] | undefined>) {
   const plan = (searchParams.plan as string) ?? 'basic';
   const employees = Math.max(1, Math.min(100, Number(searchParams.employees) || 10));
-  const typeId = (searchParams.type as string) ?? 'office';
+  const typeIds = String(searchParams.type ?? 'office').split(',').filter(Boolean);
   const addons = searchParams.addons
-    ? String(searchParams.addons)
-        .split(',')
-        .filter((s) => s.trim())
+    ? String(searchParams.addons).split(',').filter((s) => s.trim())
     : [];
-  return { plan: plan as PlanKey | 'enterprise', employees, typeId, addons };
+  return { plan: plan as PlanKey | 'enterprise', employees, typeIds, addons };
 }
 
 /** 문서 번호: 날짜 + param 기반 고정값 (새로고침해도 동일) */
@@ -71,16 +70,23 @@ interface PageProps {
 
 export default async function QuotePage({ searchParams }: PageProps) {
   const params = parseParams(await searchParams);
-  const { plan: planKey, employees, typeId, addons } = params;
+  const { plan: planKey, employees, typeIds, addons } = params;
 
-  const businessType = BUSINESS_TYPES.find((t) => t.id === typeId) ?? BUSINESS_TYPES[0];
+  const selectedTypes = BUSINESS_TYPES.filter((t) => typeIds.includes(t.id));
+  const primaryType = selectedTypes[0] ?? BUSINESS_TYPES[0];
+  const isCombo = selectedTypes.length > 1;
+
+  const comboResult = deriveComboPrice(selectedTypes, employees);
   const plan = planKey !== 'enterprise' ? PLANS[planKey as PlanKey] : null;
 
   const selectedAddons = ADDONS.filter((a) => addons.includes(a.id));
   const addonTotal = selectedAddons.reduce((s, a) => s + a.price, 0);
-  const monthlyTotal = (plan?.price ?? 0) + addonTotal;
+  const monthlyTotal = comboResult.totalMonthly + addonTotal;
   const yearlyTotal = Math.floor(monthlyTotal * 0.83 * 12);
   const perEmployee = employees > 0 ? Math.ceil(monthlyTotal / employees) : 0;
+  const typeLabel = isCombo
+    ? selectedTypes.map(t => `${t.icon} ${t.label}`).join(' + ')
+    : `${primaryType.icon} ${primaryType.label}`;
 
   const docNo = docNumber(planKey, employees, addons);
   const isEnterprise = planKey === 'enterprise';
@@ -111,7 +117,7 @@ export default async function QuotePage({ searchParams }: PageProps) {
             </Link>
             <span className="text-border">|</span>
             <span className="text-sm font-semibold text-text-primary hidden sm:block">
-              {businessType.label} 맞춤 견적서
+              {isCombo ? '복합 업종' : primaryType.label} 맞춤 견적서
             </span>
           </div>
 
@@ -179,7 +185,7 @@ export default async function QuotePage({ searchParams }: PageProps) {
                     <tr>
                       <td className="py-1 text-text-muted w-20">업종</td>
                       <td className="py-1 font-medium text-text-primary">
-                        {businessType.icon} {businessType.label}
+                        {typeLabel}
                       </td>
                     </tr>
                     <tr>
@@ -241,6 +247,23 @@ export default async function QuotePage({ searchParams }: PageProps) {
                     <td className="px-3 py-2.5 text-right text-text-muted text-xs">별도 협의</td>
                   </tr>
                 )}
+
+                {/* 복합 업종 추가 비용 */}
+                {comboResult.comboAddOns.map((a) => (
+                  <tr key={a.type.id} className="hover:bg-zinc-50 bg-violet-50/40">
+                    <td className="px-3 py-2.5 font-medium text-text-primary">
+                      {a.type.icon} {a.type.label} <span className="text-xs text-violet-600 font-semibold">추가</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-text-secondary text-xs">
+                      {a.type.featureModules.length}개 특화 기능 · {Math.round(a.discountPct * 100)}% 복합 할인 적용
+                    </td>
+                    <td className="px-3 py-2.5 text-center text-text-muted text-xs">월 정기결제</td>
+                    <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
+                      <span className="text-xs text-zinc-400 line-through mr-1">{fmt(a.originalPrice)}</span>
+                      {fmt(a.finalPrice)}
+                    </td>
+                  </tr>
+                ))}
 
                 {/* 추가 모듈 */}
                 {selectedAddons.map((addon) => (
@@ -313,12 +336,12 @@ export default async function QuotePage({ searchParams }: PageProps) {
               <span className="w-5 h-5 rounded bg-primary-600 text-white text-xs flex items-center justify-center font-bold">
                 {isEnterprise ? '2' : '3'}
               </span>
-              {businessType.label} 기본 포함 기능
+              {isCombo ? '복합 업종 포함 기능' : `${primaryType.label} 기본 포함 기능`}
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6">
               {/* 업종별 기능 */}
-              {businessType.included.map((feat) => (
+              {[...new Set(selectedTypes.flatMap(t => t.included))].map((feat) => (
                 <div key={feat} className="flex items-center gap-2 py-1">
                   <CheckIcon />
                   <span className="text-sm text-text-primary">{feat}</span>
@@ -438,7 +461,7 @@ export default async function QuotePage({ searchParams }: PageProps) {
             <div className="flex items-center gap-3 flex-shrink-0">
               <QuotePrintButton />
               <a
-                href="/auth/register"
+                href="/register"
                 className="inline-flex items-center gap-2 bg-zinc-800 hover:bg-zinc-900
                            text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors"
               >

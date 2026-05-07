@@ -7,8 +7,9 @@ import {
   User, Building2, Clock, MapPin, Bell, Image,
   Eye, EyeOff, Check, AlertTriangle, Smartphone, ChevronDown, X,
   Laptop, LandmarkIcon, HardHat, ShoppingBag, Navigation, HeartPulse,
-  GitBranch, Plus, Trash2, UserPlus, Users,
+  GitBranch, Plus, Trash2, UserPlus, Users, Puzzle,
 } from 'lucide-react';
+import Link from 'next/link';
 import { clsx } from 'clsx';
 import Card, { CardHeader } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -29,7 +30,7 @@ interface IndustryPreset {
   recommendedAttendanceMethods: string[];
 }
 
-type Section = 'profile' | 'company' | 'work' | 'gps' | 'attendance-methods' | 'it-settings' | 'public-sector' | 'shift-worker' | 'part-time' | 'field-visit' | 'care-worker' | 'notification' | 'branding' | 'locations';
+type Section = 'profile' | 'company' | 'work' | 'gps' | 'attendance-methods' | 'it-settings' | 'public-sector' | 'shift-worker' | 'part-time' | 'field-visit' | 'care-worker' | 'notification' | 'branding' | 'locations' | 'modules';
 
 type AttendanceMethod = 'manual' | 'gps' | 'wifi' | 'qr' | 'face';
 const ALL_METHODS: { value: AttendanceMethod; label: string; desc: string }[] = [
@@ -2680,6 +2681,7 @@ export default function SettingsPage() {
     { key: 'care-worker',        label: '의료·돌봄 설정', icon: HeartPulse,    ownerOnly: true },
     { key: 'locations',          label: '지점 관리',     icon: GitBranch,     ownerOnly: true },
     { key: 'notification',       label: '알림 설정',     icon: Bell },
+    { key: 'modules',            label: '모듈 관리',     icon: Puzzle,        ownerOnly: true },
   ];
   const menus = allMenus.filter((m) => !m.ownerOnly || isOwner);
 
@@ -2692,49 +2694,71 @@ export default function SettingsPage() {
           {/* ── 모바일 상단 탭 (md 미만) ── */}
           <div className="md:hidden mb-4">
             <nav className="flex gap-1 overflow-x-auto pb-1 scrollbar-hide">
-              {menus.map(({ key, label, icon: Icon, disabled }) => (
-                <button
-                  key={key}
-                  onClick={() => !disabled && setSection(key)}
-                  disabled={disabled}
-                  className={clsx(
-                    'flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold whitespace-nowrap flex-shrink-0 transition-colors',
-                    disabled
-                      ? 'text-text-muted cursor-not-allowed bg-gray-50'
-                      : section === key
-                        ? 'bg-primary-500 text-white shadow-sm'
-                        : 'bg-white border border-border text-text-secondary hover:bg-gray-50',
-                  )}
-                >
-                  <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-                  {label}
-                </button>
-              ))}
+              {menus.map(({ key, label, icon: Icon, disabled }) =>
+                key === 'modules' ? (
+                  <Link
+                    key={key}
+                    href="/settings/modules"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold whitespace-nowrap flex-shrink-0 transition-colors bg-white border border-border text-text-secondary hover:bg-gray-50"
+                  >
+                    <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                    {label}
+                  </Link>
+                ) : (
+                  <button
+                    key={key}
+                    onClick={() => !disabled && setSection(key)}
+                    disabled={disabled}
+                    className={clsx(
+                      'flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold whitespace-nowrap flex-shrink-0 transition-colors',
+                      disabled
+                        ? 'text-text-muted cursor-not-allowed bg-gray-50'
+                        : section === key
+                          ? 'bg-primary-500 text-white shadow-sm'
+                          : 'bg-white border border-border text-text-secondary hover:bg-gray-50',
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                    {label}
+                  </button>
+                ),
+              )}
             </nav>
           </div>
 
           {/* ── PC 좌측 메뉴 (md 이상) ── */}
           <div className="hidden md:block w-44 flex-shrink-0">
             <nav className="space-y-0.5">
-              {menus.map(({ key, label, icon: Icon, disabled }) => (
-                <button
-                  key={key}
-                  onClick={() => !disabled && setSection(key)}
-                  disabled={disabled}
-                  className={clsx(
-                    'flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left',
-                    disabled
-                      ? 'text-text-muted cursor-not-allowed'
-                      : section === key
-                        ? 'bg-primary-50 text-primary-500'
-                        : 'text-text-secondary hover:bg-background',
-                  )}
-                >
-                  <Icon className="h-4 w-4 flex-shrink-0" />
-                  <span className="flex-1">{label}</span>
-                  {disabled && <span className="text-xs text-text-muted">준비 중</span>}
-                </button>
-              ))}
+              {menus.map(({ key, label, icon: Icon, disabled }) =>
+                key === 'modules' ? (
+                  <Link
+                    key={key}
+                    href="/settings/modules"
+                    className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left text-text-secondary hover:bg-background"
+                  >
+                    <Icon className="h-4 w-4 flex-shrink-0" />
+                    <span className="flex-1">{label}</span>
+                  </Link>
+                ) : (
+                  <button
+                    key={key}
+                    onClick={() => !disabled && setSection(key)}
+                    disabled={disabled}
+                    className={clsx(
+                      'flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left',
+                      disabled
+                        ? 'text-text-muted cursor-not-allowed'
+                        : section === key
+                          ? 'bg-primary-50 text-primary-500'
+                          : 'text-text-secondary hover:bg-background',
+                    )}
+                  >
+                    <Icon className="h-4 w-4 flex-shrink-0" />
+                    <span className="flex-1">{label}</span>
+                    {disabled && <span className="text-xs text-text-muted">준비 중</span>}
+                  </button>
+                ),
+              )}
             </nav>
           </div>
 

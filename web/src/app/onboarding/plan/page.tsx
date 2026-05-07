@@ -1,12 +1,19 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 import { toast } from 'react-hot-toast';
 import { clsx } from 'clsx';
 import { Check, ChevronRight, FileText, Printer, ChevronDown, X } from 'lucide-react';
+import {
+  loadLandingIntent,
+  intentFromSearchParams,
+  clearLandingIntent,
+  WIZARD_TYPE_TO_INDUSTRY_CODE,
+  type LandingIntent,
+} from '@/lib/landing-intent';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -791,11 +798,19 @@ function Step5Payment({
 
 // ── 메인 페이지 ───────────────────────────────────────────────────────────────
 
-export default function PlanSelectionPage() {
+function PlanSelectionPageContent() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
 
-  // sessionStorage 복원
+  // 랜딩 PricingWizard 의도 — URL 쿼리 우선, 없으면 sessionStorage(landing-intent)
+  const landingIntent = useMemo<LandingIntent | null>(() => {
+    if (!searchParams) return loadLandingIntent();
+    const fromUrl = intentFromSearchParams(new URLSearchParams(searchParams.toString()));
+    return fromUrl ?? loadLandingIntent();
+  }, [searchParams]);
+
+  // sessionStorage 복원 (이 페이지의 진행상태)
   const restoreState = () => {
     try {
       const saved = sessionStorage.getItem(SESSION_KEY);
@@ -806,7 +821,9 @@ export default function PlanSelectionPage() {
   const saved = restoreState();
 
   const [step, setStep] = useState<number>(saved?.step ?? 1);
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>(saved?.billingCycle ?? 'monthly');
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>(
+    saved?.billingCycle ?? landingIntent?.billingCycle ?? 'monthly',
+  );
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(saved?.selectedPlanId ?? null);
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string | null>(saved?.selectedPaymentMethodId ?? null);
   const [couponCode, setCouponCode] = useState<string>(saved?.couponCode ?? '');
@@ -814,6 +831,7 @@ export default function PlanSelectionPage() {
   const [selectedPages, setSelectedPages] = useState<string[]>(saved?.selectedPages ?? []);
   const [agreedTerms, setAgreedTerms] = useState<boolean>(saved?.agreedTerms ?? false);
   const [agreedPrivacy, setAgreedPrivacy] = useState<boolean>(saved?.agreedPrivacy ?? false);
+  const [intentApplied, setIntentApplied] = useState<boolean>(false);
 
   // 상태 동기화
   useEffect(() => {
@@ -860,6 +878,34 @@ export default function PlanSelectionPage() {
     }
   }, [paymentMethods, selectedPaymentMethodId]);
 
+  // 랜딩 의도 자동 적용 — 플랜과 업종을 1회만 채움 (사용자가 변경한 경우 덮어쓰지 않음)
+  useEffect(() => {
+    if (intentApplied || !landingIntent) return;
+    const plansList = plansData?.plans ?? [];
+    if (plansList.length === 0 || presets.length === 0) return;
+
+    // (1) 플랜 자동 선택 — name 매칭 (free/basic/pro/enterprise)
+    if (!selectedPlanId) {
+      const matched = plansList.find(p => p.name === landingIntent.planKey);
+      if (matched) setSelectedPlanId(matched.id);
+    }
+
+    // (2) 업종 자동 매핑 — 첫 번째 선택 업종 사용
+    if (!selectedIndustry && landingIntent.typeIds.length > 0) {
+      const firstType = landingIntent.typeIds[0];
+      const industryCode = WIZARD_TYPE_TO_INDUSTRY_CODE[firstType];
+      if (industryCode) {
+        const preset = presets.find(p => p.code === industryCode);
+        if (preset) {
+          setSelectedIndustry(industryCode);
+          if (selectedPages.length === 0) setSelectedPages(preset.defaultPages);
+        }
+      }
+    }
+
+    setIntentApplied(true);
+  }, [landingIntent, plansData, presets, intentApplied, selectedPlanId, selectedIndustry, selectedPages.length]);
+
   // 업종 저장 (Step2 → Step3 진행 시)
   const saveIndustryMutation = useMutation({
     mutationFn: (industry: string) => api.patch('/workspace/settings', { industry }),
@@ -873,12 +919,19 @@ export default function PlanSelectionPage() {
         paymentMethodId: vars.paymentMethodId,
         billingCycle,
         couponCode: vars.couponCode || undefined,
+        // 랜딩에서 선택한 직원 수 → 백엔드 per-seat 가격에 반영
+        // (지점은 /billing 페이지에서 일할 결제로 후속 처리)
+        seatCount: landingIntent?.employees ?? 1,
+        extraLocations: 0,
       }),
     onSuccess: (res) => {
       const d = res.data.data;
       toast.success(`${d.plan} 플랜으로 전환되었습니다! (${Number(d.amount).toLocaleString()}원)`);
       try { sessionStorage.removeItem(SESSION_KEY); } catch {}
-      router.push('/subscription');
+      // 랜딩 의도 정리 — 추가 지점 등 후속 작업이 있으면 /billing으로, 아니면 /subscription
+      const hasExtras = (landingIntent?.extraLocations ?? 0) > 0;
+      clearLandingIntent();
+      router.push(hasExtras ? '/billing?from=onboarding' : '/subscription');
     },
     onError: (err: any) => toast.error(err.response?.data?.message ?? '결제 중 오류가 발생했습니다.'),
   });
@@ -928,6 +981,11 @@ export default function PlanSelectionPage() {
             <h1 className="text-3xl font-bold text-gray-900">구독 시작하기</h1>
             {currentSub && (
               <p className="text-gray-500 mt-2 text-sm">현재 {currentSub.plan_display_name} 플랜 이용 중</p>
+            )}
+            {landingIntent && intentApplied && (
+              <p className="mt-3 inline-block bg-blue-50 border border-blue-100 text-blue-700 text-xs font-medium px-3 py-1.5 rounded-full">
+                ✓ 랜딩 페이지에서 선택하신 내용이 자동으로 적용되었습니다
+              </p>
             )}
           </div>
 
@@ -996,5 +1054,17 @@ export default function PlanSelectionPage() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function PlanSelectionPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    }>
+      <PlanSelectionPageContent />
+    </Suspense>
   );
 }

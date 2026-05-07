@@ -4,6 +4,7 @@ import PricingWizard from '@/components/landing/PricingWizard';
 import SiteBanner from '@/components/marketing/SiteBanner';
 import SitePopup from '@/components/marketing/SitePopup';
 import { fetchBlocks, fetchActiveBanner, fetchActivePopups, b, type BlockMap } from '@/lib/marketing';
+import AuthRedirect from '@/components/layout/AuthRedirect';
 
 export const metadata: Metadata = {
   title: '관리왕 — 중소사업장 직원 관리 플랫폼',
@@ -49,13 +50,13 @@ function Nav() {
 
         <div className="flex items-center gap-2">
           <Link
-            href="/auth/login"
+            href="/login"
             className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors px-3 py-1.5"
           >
             로그인
           </Link>
           <Link
-            href="/auth/register"
+            href="/register"
             className="text-sm font-semibold text-white bg-primary-600 hover:bg-primary-700
                        transition-colors px-4 py-1.5 rounded-lg"
           >
@@ -117,7 +118,7 @@ function Hero({ bk }: { bk: BlockMap }) {
             {b(bk, 'hero', 'cta_primary', '내 업종 맞춤 가격 보기 ↓')}
           </a>
           <Link
-            href="/auth/register"
+            href="/register"
             className="w-full sm:w-auto bg-white/10 border border-white/30 text-white
                        font-semibold text-sm px-7 py-3.5 rounded-xl hover:bg-white/20 transition-colors"
           >
@@ -391,7 +392,7 @@ function CtaSection({ bk }: { bk: BlockMap }) {
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
-            href="/auth/register"
+            href="/register"
             className="w-full sm:w-auto bg-white text-primary-700 font-bold text-sm
                        px-8 py-3.5 rounded-xl hover:bg-primary-50 transition-colors shadow-lg"
           >
@@ -468,6 +469,7 @@ export default async function LandingPage() {
 
   return (
     <div className="min-h-screen">
+      <AuthRedirect />
       <SiteBanner banner={banner} />
       <Nav />
       <main>

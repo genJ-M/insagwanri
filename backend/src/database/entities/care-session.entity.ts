@@ -67,9 +67,21 @@ export class CareSession {
   @Column({ name: 'started_at', type: 'timestamptz' })
   startedAt: Date;
 
+  /** 예정 종료 시각 (UTC, null = 미설정) */
+  @Column({ name: 'planned_end_at', type: 'timestamptz', nullable: true })
+  plannedEndAt: Date | null;
+
   /** 세션 종료 시각 (UTC, null = 진행 중) */
   @Column({ name: 'ended_at', type: 'timestamptz', nullable: true })
   endedAt: Date | null;
+
+  /** 세션 시작 위치 위도 (부정 체크인 감지용) */
+  @Column({ name: 'checkin_lat', type: 'decimal', precision: 10, scale: 7, nullable: true })
+  checkinLat: number | null;
+
+  /** 세션 시작 위치 경도 */
+  @Column({ name: 'checkin_lng', type: 'decimal', precision: 10, scale: 7, nullable: true })
+  checkinLng: number | null;
 
   /** 세션 시간 (분, 종료 시 자동 계산) */
   @Column({ name: 'duration_min', type: 'smallint', nullable: true })

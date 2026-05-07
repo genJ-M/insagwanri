@@ -21,6 +21,76 @@ export class UpgradeSubscriptionDto {
   @IsOptional()
   @IsString()
   couponCode?: string;
+
+  /** 직원 수 (seat 기반 과금). 미지정 시 1명. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  seatCount?: number;
+
+  /** 추가 지점 수. 미지정 시 0. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(50)
+  extraLocations?: number;
+}
+
+export class PreviewSeatChangeDto {
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  newSeatCount: number;
+}
+
+export class AddSeatsDto {
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  newSeatCount: number;
+
+  @IsUUID()
+  paymentMethodId: string;
+}
+
+export class PreviewLocationChangeDto {
+  @IsInt()
+  @Min(0)
+  @Max(50)
+  newExtraLocations: number;
+}
+
+export class AddLocationsDto {
+  @IsInt()
+  @Min(0)
+  @Max(50)
+  newExtraLocations: number;
+
+  @IsUUID()
+  paymentMethodId: string;
+}
+
+/** 감소 예약 — 다음 청구주기부터 적용 */
+export class ScheduleSeatDecreaseDto {
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  newSeatCount: number;
+}
+
+export class ScheduleLocationDecreaseDto {
+  @IsInt()
+  @Min(0)
+  @Max(50)
+  newExtraLocations: number;
+}
+
+export class SetBillingDelegateDto {
+  /** null = 위임 해제 */
+  @IsOptional()
+  @IsUUID()
+  userId?: string | null;
 }
 
 export class IssueBillingKeyDto {

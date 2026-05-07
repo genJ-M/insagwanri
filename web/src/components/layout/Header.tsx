@@ -1,12 +1,146 @@
 'use client';
 import { useRef, useState, useEffect } from 'react';
-import { Menu, Bell, Search, Sparkles, User, Settings, MessageSquare, LogOut, ChevronDown } from 'lucide-react';
+import { Menu, Bell, Search, Sparkles, User, Settings, LogOut, ChevronDown } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { clsx } from 'clsx';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { formatDistanceToNow } from 'date-fns';
+import { ko } from 'date-fns/locale';
 import { useUiStore } from '@/store/ui.store';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
+
+/* ── 알림 딥링크 라우트 맵 ───────────────────────────────── */
+const NOTIFICATION_ROUTE: Record<string, (id: string | null) => string> = {
+  approval:       (id) => id ? `/approvals/${id}` : '/approvals',
+  vacation:       ()   => '/vacations',
+  salary:         ()   => '/salary',
+  attendance:     ()   => '/attendance',
+  contract:       (id) => id ? `/contracts/${id}` : '/contracts',
+  task:           (id) => id ? `/tasks/${id}` : '/tasks',
+  task_report:    ()   => '/tasks/reports',
+  schedule:       ()   => '/calendar',
+  payment:        ()   => '/subscription',
+  subscription:   ()   => '/subscription',
+  shift_handover: ()   => '/shift-schedule',
+  shift_swap:     ()   => '/shift-swap',
+  field_visit:    ()   => '/locations',
+  care_license:   ()   => '/team',
+  care_session:   ()   => '/team',
+};
+
+function getNotificationRoute(refType: string | null, refId: string | null): string {
+  if (!refType) return '/';
+  const resolver = NOTIFICATION_ROUTE[refType];
+  return resolver ? resolver(refId) : '/';
+}
+
+/* ── 알림 벨 드롭다운 ────────────────────────────────────── */
+function NotificationBell() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['notifications-header'],
+    queryFn: () => api.get('/notifications?limit=10').then(r => r.data.data),
+    enabled: open,
+    refetchInterval: open ? 30000 : false,
+  });
+
+  const notifications: any[] = data?.notifications ?? [];
+  const unreadCount: number = data?.unread_count ?? 0;
+
+  const markReadMut = useMutation({
+    mutationFn: (id: string) => api.patch(`/notifications/${id}/read`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications-header'] }),
+  });
+
+  const markAllReadMut = useMutation({
+    mutationFn: () => api.patch('/notifications/read-all'),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications-header'] }),
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const handleClick = (n: any) => {
+    if (!n.isRead) markReadMut.mutate(n.id);
+    const route = getNotificationRoute(n.refType, n.refId);
+    setOpen(false);
+    router.push(route);
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        aria-label="알림"
+        onClick={() => setOpen(v => !v)}
+        className="relative p-2 rounded-lg hover:bg-zinc-100 text-text-muted hover:text-text-secondary transition-colors"
+      >
+        <Bell className="h-[18px] w-[18px]" />
+        {unreadCount > 0 && (
+          <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-red-500 ring-2 ring-white" />
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-2xl shadow-lg border border-zinc-100 z-50 animate-fade-in overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+            <p className="text-sm font-semibold text-text-primary">알림</p>
+            {unreadCount > 0 && (
+              <button
+                onClick={() => markAllReadMut.mutate()}
+                className="text-xs text-primary-500 hover:text-primary-600 transition-colors"
+              >
+                모두 읽음
+              </button>
+            )}
+          </div>
+
+          <div className="max-h-80 overflow-y-auto">
+            {isLoading ? (
+              <p className="text-xs text-text-muted text-center py-6">불러오는 중...</p>
+            ) : notifications.length === 0 ? (
+              <p className="text-xs text-text-muted text-center py-6">새 알림이 없습니다.</p>
+            ) : (
+              notifications.map((n: any) => (
+                <button
+                  key={n.id}
+                  onClick={() => handleClick(n)}
+                  className={clsx(
+                    'w-full text-left px-4 py-3 hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-0',
+                    !n.isRead && 'bg-primary-50/40',
+                  )}
+                >
+                  <div className="flex items-start gap-2.5">
+                    {!n.isRead && (
+                      <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary-500 flex-shrink-0" />
+                    )}
+                    <div className={clsx('flex-1 min-w-0', n.isRead && 'pl-4')}>
+                      <p className="text-xs font-medium text-text-primary leading-snug truncate">{n.title}</p>
+                      <p className="text-xs text-text-muted mt-0.5 line-clamp-2 leading-snug">{n.body}</p>
+                      <p className="text-[10px] text-text-muted mt-1">
+                        {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true, locale: ko })}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ── 경로 → 타이틀 매핑 ─────────────────────────────────── */
 const ROUTE_TITLES: { pattern: RegExp; label: string }[] = [
@@ -18,7 +152,6 @@ const ROUTE_TITLES: { pattern: RegExp; label: string }[] = [
   { pattern: /^\/tasks\/[^/]+$/, label: '업무 상세' },
   { pattern: /^\/tasks/, label: '업무 관리' },
   { pattern: /^\/schedule/, label: '스케줄' },
-  { pattern: /^\/messages/, label: '메시지' },
   { pattern: /^\/ai/, label: 'AI 도구' },
   { pattern: /^\/team\/notes/, label: '인사 노트' },
   { pattern: /^\/team\/stats/, label: '조직 통계' },
@@ -132,7 +265,6 @@ function UserDropdown({ user }: { user: any }) {
           {/* 메뉴 아이템 */}
           <div className="py-1.5">
             <DropItem icon={User} label="내 프로필" desc="정보 수정 · 비밀번호" onClick={() => go('/settings')} />
-            <DropItem icon={MessageSquare} label="메시지" desc="채팅 · 알림" onClick={() => go('/messages')} />
             <DropItem icon={Settings} label="환경설정" desc="알림 · 테마 · 보안" onClick={() => go('/settings')} />
           </div>
 
@@ -229,13 +361,7 @@ export default function Header({ title }: HeaderProps) {
         </div>
 
         {/* 알림 */}
-        <button
-          aria-label="알림"
-          className="relative p-2 rounded-lg hover:bg-zinc-100 text-text-muted hover:text-text-secondary transition-colors"
-        >
-          <Bell className="h-[18px] w-[18px]" />
-          <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-red-500 ring-2 ring-white" />
-        </button>
+        <NotificationBell />
 
         {/* 구분선 */}
         <div className="w-px h-5 bg-border mx-1" />

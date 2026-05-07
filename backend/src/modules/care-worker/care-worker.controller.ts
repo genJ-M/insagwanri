@@ -10,7 +10,9 @@ import {
 } from './dto/care-worker.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../common/types/jwt-payload.type';
+import { RequireModule } from '../../common/decorators/require-module.decorator';
 
+@RequireModule('care_worker')
 @Controller('care-worker')
 export class CareWorkerController {
   constructor(private readonly svc: CareWorkerService) {}

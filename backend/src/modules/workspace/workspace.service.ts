@@ -7,6 +7,7 @@ import {
   UpdateWorkspaceDto, UpdateWorkSettingsDto, UpdateGpsSettingsDto, UpdateBrandingDto,
   UpdateAttendanceMethodsDto, UpdateItSettingsDto, UpdatePublicSectorSettingsDto,
   UpdateShiftWorkerSettingsDto, UpdatePartTimeSettingsDto, UpdateFieldVisitWorkspaceSettingsDto,
+  UpdateIndustrySettingsDto,
 } from './dto/workspace.dto';
 import { INDUSTRY_PRESETS } from './industry-presets.constant';
 
@@ -138,6 +139,28 @@ export class WorkspaceService {
       ...(dto.fieldVisitAutoTask  !== undefined && { fieldVisitAutoTask:  dto.fieldVisitAutoTask }),
       ...(dto.fieldVisitTaskTitle !== undefined && { fieldVisitTaskTitle: dto.fieldVisitTaskTitle }),
     });
+    return this.getSettings(currentUser);
+  }
+
+  // 업종별 5종 설정을 단일 update로 일괄 처리 — 분기 호출 제거용
+  async updateIndustrySettings(currentUser: AuthenticatedUser, dto: UpdateIndustrySettingsDto) {
+    this.requireOwner(currentUser);
+    const update: Record<string, unknown> = {};
+    const merge = (sub: Record<string, unknown> | undefined) => {
+      if (!sub) return;
+      for (const [k, v] of Object.entries(sub)) {
+        if (v !== undefined) update[k] = v;
+      }
+    };
+    merge(dto.it          as any);
+    merge(dto.publicSector as any);
+    merge(dto.shiftWorker as any);
+    merge(dto.partTime    as any);
+    merge(dto.fieldVisit  as any);
+
+    if (Object.keys(update).length > 0) {
+      await this.companyRepo.update(currentUser.companyId, update as any);
+    }
     return this.getSettings(currentUser);
   }
 

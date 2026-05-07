@@ -2,28 +2,28 @@ import {
   Entity, PrimaryGeneratedColumn, Column,
   CreateDateColumn, ManyToOne, JoinColumn, Index,
 } from 'typeorm';
-import { CalendarEvent } from './calendar-event.entity';
+import { Schedule } from './schedule.entity';
 import { User } from './user.entity';
 
-export enum ShareRecipientType {
+export enum ScheduleShareRecipientType {
   USER       = 'user',
   DEPARTMENT = 'department',
 }
 
-@Entity('calendar_event_shares')
-@Index(['eventId', 'revokedAt'])
+@Entity('schedule_shares')
+@Index(['scheduleId', 'revokedAt'])
 @Index(['companyId', 'recipientUserId', 'revokedAt'])
 @Index(['companyId', 'recipientDepartment', 'revokedAt'])
-export class CalendarEventShare {
+export class ScheduleShare {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'event_id' })
-  eventId: string;
+  @Column({ name: 'schedule_id' })
+  scheduleId: string;
 
-  @ManyToOne(() => CalendarEvent, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'event_id' })
-  event: CalendarEvent;
+  @ManyToOne(() => Schedule, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'schedule_id' })
+  schedule: Schedule;
 
   @Column({ name: 'company_id' })
   companyId: string;
@@ -37,7 +37,7 @@ export class CalendarEventShare {
 
   /** 'user' | 'department' */
   @Column({ name: 'recipient_type', type: 'varchar', length: 20 })
-  recipientType: ShareRecipientType;
+  recipientType: ScheduleShareRecipientType;
 
   /** user 공유 시 대상 userId */
   @Column({ name: 'recipient_user_id', type: 'uuid', nullable: true })

@@ -6,15 +6,15 @@ import { CalendarService } from './calendar.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
-import { ShareRecipientType } from '../../database/entities/calendar-event-share.entity';
+import { ScheduleShareRecipientType } from '../../database/entities/schedule-share.entity';
 import {
   CreateCalendarEventDto, UpdateCalendarEventDto, CalendarQueryDto,
 } from './dto/calendar.dto';
 import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 
 class ShareEventDto {
-  @IsEnum(ShareRecipientType)
-  recipient_type: ShareRecipientType;
+  @IsEnum(ScheduleShareRecipientType)
+  recipient_type: ScheduleShareRecipientType;
 
   @IsOptional() @IsUUID()
   recipient_user_id?: string;

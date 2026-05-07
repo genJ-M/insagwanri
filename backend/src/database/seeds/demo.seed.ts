@@ -32,7 +32,7 @@ import { VacationBalance } from '../entities/vacation-balance.entity';
 import { ApprovalDocument, ApprovalDocType, ApprovalDocStatus } from '../entities/approval-document.entity';
 import { ApprovalStep, StepStatus } from '../entities/approval-step.entity';
 import { Salary, SalaryStatus } from '../entities/salary.entity';
-import { CalendarEvent, CalendarEventScope } from '../entities/calendar-event.entity';
+import { Schedule, ScheduleScope, ScheduleType } from '../entities/schedule.entity';
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
 
@@ -111,7 +111,7 @@ async function main() {
   const approvalRepo = app.get<Repository<ApprovalDocument>>(getRepositoryToken(ApprovalDocument));
   const stepRepo     = app.get<Repository<ApprovalStep>>(getRepositoryToken(ApprovalStep));
   const salaryRepo   = app.get<Repository<Salary>>(getRepositoryToken(Salary));
-  const calRepo      = app.get<Repository<CalendarEvent>>(getRepositoryToken(CalendarEvent));
+  const calRepo      = app.get<Repository<Schedule>>(getRepositoryToken(Schedule));
 
   // 중복 실행 방지
   const existing = await companyRepo.findOne({ where: { businessNumber: '123-45-67890' } });
@@ -493,28 +493,28 @@ async function main() {
   // ── 9. 캘린더 이벤트 ─────────────────────────────────────────────────────
   console.log('📌 [9/9] 캘린더 이벤트 생성...');
   const calDefs = [
-    { creator: byName('김성준'), scope: CalendarEventScope.COMPANY, dept: null,
+    { creator: byName('김성준'), scope: ScheduleScope.COMPANY, dept: null,
       title: '4월 전사 타운홀 미팅',   start: '2026-04-10', end: '2026-04-10', color: '#3b82f6',
       desc: '전 직원 4월 목표 공유, 경영 현황 보고 및 Q&A' },
-    { creator: byName('김성준'), scope: CalendarEventScope.COMPANY, dept: null,
+    { creator: byName('김성준'), scope: ScheduleScope.COMPANY, dept: null,
       title: '창립기념일 (7주년)',      start: '2026-05-12', end: '2026-05-12', color: '#ec4899',
       desc: '(주)한빛솔루션 창립 7주년 기념 행사' },
-    { creator: byName('박지영'), scope: CalendarEventScope.COMPANY, dept: null,
+    { creator: byName('박지영'), scope: ScheduleScope.COMPANY, dept: null,
       title: '2분기 인사평가 기간',     start: '2026-04-21', end: '2026-04-25', color: '#06b6d4',
       desc: '자기평가(4/21~23) → 상사평가(4/24~25)' },
-    { creator: byName('배민준'), scope: CalendarEventScope.TEAM, dept: '개발팀',
+    { creator: byName('배민준'), scope: ScheduleScope.TEAM, dept: '개발팀',
       title: '개발팀 스프린트 리뷰',   start: '2026-04-14', end: '2026-04-14', color: '#8b5cf6',
       desc: '4월 1주차 스프린트 결과 데모 및 회고' },
-    { creator: byName('정민호'), scope: CalendarEventScope.TEAM, dept: '영업팀',
+    { creator: byName('정민호'), scope: ScheduleScope.TEAM, dept: '영업팀',
       title: '영업팀 4월 월례회의',    start: '2026-04-07', end: '2026-04-07', color: '#10b981',
       desc: '4월 목표 수주 계획 및 고객사 현황 공유' },
-    { creator: byName('홍길동'), scope: CalendarEventScope.TEAM, dept: '생산팀',
+    { creator: byName('홍길동'), scope: ScheduleScope.TEAM, dept: '생산팀',
       title: '생산팀 상반기 안전 교육', start: '2026-04-17', end: '2026-04-17', color: '#f59e0b',
       desc: '산업안전보건법 의무 교육 (외부 강사 초청)' },
-    { creator: byName('조나연'), scope: CalendarEventScope.TEAM, dept: 'CS팀',
+    { creator: byName('조나연'), scope: ScheduleScope.TEAM, dept: 'CS팀',
       title: 'CS팀 케이스 스터디',     start: '2026-04-16', end: '2026-04-16', color: '#10b981',
       desc: '3월 고객 불만 사례 분석 및 응대 개선 방안 논의' },
-    { creator: byName('박지영'), scope: CalendarEventScope.TEAM, dept: '인사팀',
+    { creator: byName('박지영'), scope: ScheduleScope.TEAM, dept: '인사팀',
       title: '인사팀 노무 세미나',      start: '2026-04-23', end: '2026-04-23', color: '#06b6d4',
       desc: '2026년 개정 근로기준법 주요 내용 교육' },
   ];
@@ -527,8 +527,11 @@ async function main() {
       targetDepartment: ev.dept,
       title:            ev.title,
       description:      ev.desc,
-      startDate:        ev.start,
-      endDate:          ev.end,
+      startAt:          new Date(`${ev.start}T00:00:00`),
+      endAt:            new Date(`${ev.end}T23:59:59`),
+      isAllDay:         true,
+      type:             ScheduleType.GENERAL,
+      targetUserId:     null,
       color:            ev.color,
     }));
   }

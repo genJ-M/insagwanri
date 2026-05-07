@@ -34,11 +34,61 @@ interface CalendarEvent {
   description: string | null;
   startDate: string;
   endDate: string;
+  startAt?: string;        // ISO — 시간 단위 이벤트 렌더링용
+  endAt?: string;
+  allDay: boolean;
   color: string | null;
+  recurrenceRule: string | null;
+  recurrenceEndAt: string | null;
+  notifyBeforeMin: number | null;
   isMine: boolean;
   isSharedToMe: boolean;
   shares: EventShare[];
   creator: { id: string; name: string } | null;
+}
+
+type RecurrenceFreq = '' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+
+const RECURRENCE_OPTIONS: { value: RecurrenceFreq; label: string }[] = [
+  { value: '',         label: '반복 없음' },
+  { value: 'DAILY',    label: '매일' },
+  { value: 'WEEKLY',   label: '매주' },
+  { value: 'MONTHLY',  label: '매월' },
+  { value: 'YEARLY',   label: '매년' },
+];
+
+const NOTIFY_OPTIONS: { value: number; label: string }[] = [
+  { value: 0,    label: '알림 없음' },
+  { value: 5,    label: '5분 전' },
+  { value: 10,   label: '10분 전' },
+  { value: 15,   label: '15분 전' },
+  { value: 30,   label: '30분 전' },
+  { value: 60,   label: '1시간 전' },
+  { value: 1440, label: '1일 전' },
+];
+
+/** RRULE 'FREQ=WEEKLY' → 'WEEKLY' */
+function parseRRuleFreq(rule: string | null): RecurrenceFreq {
+  if (!rule) return '';
+  const m = rule.match(/FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)/);
+  return (m?.[1] as RecurrenceFreq) ?? '';
+}
+
+/** Date | ISO → 'YYYY-MM-DDTHH:mm' (datetime-local input value) */
+function isoToLocalInput(iso: string | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// HH:mm — 시간 단위 이벤트 prefix 용
+function formatTimeHHMM(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
 }
 
 interface ShareRequest {
@@ -338,9 +388,21 @@ function EventModal({
   const [dept, setDept] = useState(editEvent?.targetDepartment ?? '');
   const [title, setTitle] = useState(editEvent?.title ?? '');
   const [desc, setDesc] = useState(editEvent?.description ?? '');
+  const [allDay, setAllDay] = useState<boolean>(editEvent?.allDay ?? true);
   const [startDate, setStartDate] = useState(editEvent?.startDate ?? defaultDate ?? '');
   const [endDate, setEndDate] = useState(editEvent?.endDate ?? defaultDate ?? '');
+  const [startDateTime, setStartDateTime] = useState(
+    editEvent && !editEvent.allDay ? isoToLocalInput(editEvent.startAt) : '',
+  );
+  const [endDateTime, setEndDateTime] = useState(
+    editEvent && !editEvent.allDay ? isoToLocalInput(editEvent.endAt) : '',
+  );
   const [color, setColor] = useState(editEvent?.color ?? '');
+  const [recurrenceFreq, setRecurrenceFreq] = useState<RecurrenceFreq>(
+    parseRRuleFreq(editEvent?.recurrenceRule ?? null),
+  );
+  const [recurrenceEndAt, setRecurrenceEndAt] = useState(editEvent?.recurrenceEndAt ?? '');
+  const [notifyBefore, setNotifyBefore] = useState<number>(editEvent?.notifyBeforeMin ?? 0);
   const [loading, setLoading] = useState(false);
 
   const availableScopes: EventScope[] = isAdmin
@@ -349,16 +411,34 @@ function EventModal({
 
   const handleSubmit = async () => {
     if (!title.trim()) { toast.error('제목을 입력하세요.'); return; }
-    if (!startDate || !endDate) { toast.error('날짜를 선택하세요.'); return; }
-    if (startDate > endDate) { toast.error('종료일은 시작일 이후여야 합니다.'); return; }
+
+    const body: Record<string, any> = {
+      scope, title,
+      description: desc || undefined,
+      target_department: scope === 'team' ? (dept || undefined) : undefined,
+      color: color || undefined,
+      all_day: allDay,
+      recurrence_rule:    recurrenceFreq ? `FREQ=${recurrenceFreq}` : undefined,
+      recurrence_end_at:  recurrenceFreq && recurrenceEndAt ? recurrenceEndAt : undefined,
+      notify_before_min:  notifyBefore > 0 ? notifyBefore : undefined,
+    };
+
+    if (allDay) {
+      if (!startDate || !endDate) { toast.error('날짜를 선택하세요.'); return; }
+      if (startDate > endDate) { toast.error('종료일은 시작일 이후여야 합니다.'); return; }
+      body.start_date = startDate;
+      body.end_date = endDate;
+    } else {
+      if (!startDateTime || !endDateTime) { toast.error('시작·종료 시간을 입력하세요.'); return; }
+      const startTs = new Date(startDateTime);
+      const endTs   = new Date(endDateTime);
+      if (endTs <= startTs) { toast.error('종료는 시작 이후여야 합니다.'); return; }
+      body.start_at = startTs.toISOString();
+      body.end_at   = endTs.toISOString();
+    }
+
     setLoading(true);
     try {
-      const body = {
-        scope, title, description: desc || undefined,
-        start_date: startDate, end_date: endDate,
-        target_department: scope === 'team' ? (dept || undefined) : undefined,
-        color: color || undefined,
-      };
       if (editEvent) {
         await api.patch(`/calendar/events/${editEvent.id}`, body);
       } else {
@@ -434,19 +514,83 @@ function EventModal({
             />
           </div>
 
+          {/* 종일 토글 */}
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox" checked={allDay}
+              onChange={e => setAllDay(e.target.checked)}
+              className="rounded border-gray-300 text-primary-500 focus:ring-primary-100"
+            />
+            <span className="text-[12px] text-gray-700">종일 일정</span>
+          </label>
+
           {/* 기간 */}
+          {allDay ? (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-500 mb-1.5">시작일</label>
+                <input type="date" value={startDate}
+                  onChange={e => { setStartDate(e.target.value); if (e.target.value > endDate) setEndDate(e.target.value); }}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-primary-400" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-500 mb-1.5">종료일</label>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-primary-400" />
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-500 mb-1.5">시작</label>
+                <input type="datetime-local" value={startDateTime}
+                  onChange={e => { setStartDateTime(e.target.value); if (e.target.value > endDateTime) setEndDateTime(e.target.value); }}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-primary-400" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-500 mb-1.5">종료</label>
+                <input type="datetime-local" value={endDateTime} min={startDateTime}
+                  onChange={e => setEndDateTime(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-primary-400" />
+              </div>
+            </div>
+          )}
+
+          {/* 반복 */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[11px] font-semibold text-gray-500 mb-1.5">시작일</label>
-              <input type="date" value={startDate}
-                onChange={e => { setStartDate(e.target.value); if (e.target.value > endDate) setEndDate(e.target.value); }}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-primary-400" />
+              <label className="block text-[11px] font-semibold text-gray-500 mb-1.5">반복</label>
+              <select
+                value={recurrenceFreq}
+                onChange={e => setRecurrenceFreq(e.target.value as RecurrenceFreq)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-primary-400 bg-white"
+              >
+                {RECURRENCE_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="block text-[11px] font-semibold text-gray-500 mb-1.5">종료일</label>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-primary-400" />
+              <label className="block text-[11px] font-semibold text-gray-500 mb-1.5">반복 종료 (선택)</label>
+              <input type="date" value={recurrenceEndAt}
+                disabled={!recurrenceFreq}
+                onChange={e => setRecurrenceEndAt(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-primary-400 disabled:bg-gray-50 disabled:text-gray-400" />
             </div>
+          </div>
+
+          {/* 알림 */}
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 mb-1.5">알림</label>
+            <select
+              value={notifyBefore}
+              onChange={e => setNotifyBefore(Number(e.target.value))}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-primary-400 bg-white"
+            >
+              {NOTIFY_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
           </div>
 
           {/* 내용 */}
@@ -756,7 +900,14 @@ export default function CalendarPage() {
                                 title={ev.isSharedToMe ? `[공유] ${ev.title}` : ev.title}
                               >
                                 {ev.isSharedToMe && <Share2 className="w-2 h-2 flex-shrink-0" />}
-                                <span className="truncate">{ev.title}</span>
+                                <span className="truncate">
+                                  {!ev.allDay && (
+                                    <span className="font-mono text-[10px] opacity-80 mr-1">
+                                      {formatTimeHHMM(ev.startAt)}
+                                    </span>
+                                  )}
+                                  {ev.title}
+                                </span>
                               </div>
                             );
                           })}

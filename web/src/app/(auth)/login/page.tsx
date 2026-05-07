@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
@@ -58,7 +58,8 @@ function LoginPageContent() {
         access_token: data.access_token,
         refresh_token: data.refresh_token,
       });
-      router.replace('/');
+      const redirectTo = searchParams?.get('redirect') ?? '/attendance';
+      router.replace(redirectTo);
     },
     onError: (err: any) => {
       const message: string = err.response?.data?.error?.message ?? '로그인에 실패했습니다.';
@@ -86,6 +87,17 @@ function LoginPageContent() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
+      {/* 뒤로가기 */}
+      <div className="w-full max-w-[400px] mb-4">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-secondary transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          홈으로
+        </Link>
+      </div>
+
       {/* 로고 */}
       <div className="flex items-center gap-2.5 mb-8">
         <div className="w-9 h-9 rounded-xl bg-primary-500 flex items-center justify-center shadow-sm">

@@ -11,7 +11,6 @@ import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { SchedulesModule } from './modules/schedules/schedules.module';
-import { CollaborationModule } from './modules/collaboration/collaboration.module';
 import { SocketModule } from './modules/socket/socket.module';
 import { AiModule } from './modules/ai/ai.module';
 import { HealthModule } from './modules/health/health.module';
@@ -41,6 +40,8 @@ import { UserSubscriber } from './database/subscribers/user.subscriber';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
+import { ModuleAccessGuard } from './common/guards/module-access.guard';
+import { SubscriptionStatusGuard } from './common/guards/subscription-status.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
@@ -52,10 +53,8 @@ import { AttendanceRecord } from './database/entities/attendance-record.entity';
 import { Task } from './database/entities/task.entity';
 import { TaskReport } from './database/entities/task-report.entity';
 import { Schedule } from './database/entities/schedule.entity';
-import { Channel } from './database/entities/channel.entity';
-import { ChannelMember } from './database/entities/channel-member.entity';
-import { Message } from './database/entities/message.entity';
-import { MessageRead } from './database/entities/message-read.entity';
+import { ScheduleShare } from './database/entities/schedule-share.entity';
+import { ScheduleShareRequest } from './database/entities/schedule-share-request.entity';
 import { AiRequest } from './database/entities/ai-request.entity';
 import { InviteToken } from './database/entities/invite-token.entity';
 import { EmailVerification } from './database/entities/email-verification.entity';
@@ -71,9 +70,6 @@ import { VacationBalance } from './database/entities/vacation-balance.entity';
 import { ApprovalDocument } from './database/entities/approval-document.entity';
 import { ApprovalStep } from './database/entities/approval-step.entity';
 import { Contract } from './database/entities/contract.entity';
-import { CalendarEvent } from './database/entities/calendar-event.entity';
-import { CalendarEventShare } from './database/entities/calendar-event-share.entity';
-import { CalendarShareRequest } from './database/entities/calendar-share-request.entity';
 import { EvaluationCycle } from './database/entities/evaluation-cycle.entity';
 import { Evaluation } from './database/entities/evaluation.entity';
 import { EvaluationAnswer } from './database/entities/evaluation-answer.entity';
@@ -106,6 +102,8 @@ import { UserLocation } from './database/entities/user-location.entity';
 import { ShiftSwapModule } from './modules/shift-swap/shift-swap.module';
 import { ShiftSwapRequest } from './database/entities/shift-swap-request.entity';
 import { MarketingModule } from './modules/marketing/marketing.module';
+import { CompanyModule as CompanyModuleEntity } from './modules/feature-modules/entities/company-module.entity';
+import { FeatureModulesModule } from './modules/feature-modules/feature-modules.module';
 
 @Module({
   imports: [
@@ -156,7 +154,8 @@ import { MarketingModule } from './modules/marketing/marketing.module';
             AttendanceRecord,
             Task, TaskReport,
             Schedule,
-            Channel, ChannelMember, Message, MessageRead,
+            ScheduleShare,
+            ScheduleShareRequest,
             RecurringCalendarEvent, DepartmentPageVisibility,
             AiRequest,
             InviteToken,
@@ -170,9 +169,6 @@ import { MarketingModule } from './modules/marketing/marketing.module';
             ApprovalDocument,
             ApprovalStep,
             Contract,
-            CalendarEvent,
-            CalendarEventShare,
-            CalendarShareRequest,
             EvaluationCycle,
             Evaluation,
             EvaluationAnswer,
@@ -199,6 +195,7 @@ import { MarketingModule } from './modules/marketing/marketing.module';
             BusinessLocation,
             UserLocation,
             ShiftSwapRequest,
+            CompanyModuleEntity,
           ],
           synchronize: false, // Migration으로 스키마 관리
           logging: config.get<string>('NODE_ENV') === 'development',
@@ -230,7 +227,6 @@ import { MarketingModule } from './modules/marketing/marketing.module';
     AttendanceModule,
     TasksModule,
     SchedulesModule,
-    CollaborationModule,
     SocketModule,
     AiModule,
     HealthModule,
@@ -259,6 +255,7 @@ import { MarketingModule } from './modules/marketing/marketing.module';
     LocationsModule,
     ShiftSwapModule,
     MarketingModule,
+    FeatureModulesModule,
 
     // 활동 로그 (통신비밀보호법, 전역)
     ActivityLogModule,
@@ -278,6 +275,17 @@ import { MarketingModule } from './modules/marketing/marketing.module';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    // 구독 상태 가드 — expired/suspended/canceled 회사의 핵심 기능 차단
+    // (JwtAuthGuard, RolesGuard 이후 / ModuleAccessGuard 이전에 실행)
+    {
+      provide: APP_GUARD,
+      useClass: SubscriptionStatusGuard,
+    },
+    // 모듈 접근 제어 (@RequireModule()이 있는 라우트에만 동작)
+    {
+      provide: APP_GUARD,
+      useClass: ModuleAccessGuard,
     },
     // 전역 예외 필터 (등록 역순으로 실행 — AllExceptions가 마지막 방어선)
     {

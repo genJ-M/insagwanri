@@ -10,7 +10,7 @@ import { ko } from 'date-fns/locale';
 import {
   LogIn, LogOut, MapPin, ChevronLeft, ChevronRight,
   Users, Clock, AlertTriangle, TrendingDown, QrCode, RefreshCw, Zap,
-  Home, Wifi, TriangleAlert, ShieldCheck, Printer, Moon,
+  Home, Wifi, TriangleAlert, ShieldCheck, Printer, Moon, Play, Navigation, Coffee,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { clsx } from 'clsx';
@@ -30,6 +30,18 @@ const STATUS_KO: Record<string, string> = {
   pending: '대기', normal: '정상', late: '지각',
   early_leave: '조퇴', absent: '결근', half_day: '반차', vacation: '휴가',
 };
+
+// ── 점심시간 설정 ─────────────────────────────────────────────
+function addMinutes(timeStr: string, minutes: number): string {
+  const [h, m] = timeStr.split(':').map(Number);
+  const total = h * 60 + m + minutes;
+  return `${Math.floor(total / 60).toString().padStart(2, '0')}:${(total % 60).toString().padStart(2, '0')}`;
+}
+// 09:00 ~ 15:00, 30분 단위 선택지
+const LUNCH_START_OPTIONS = Array.from({ length: 13 }, (_, i) => {
+  const total = 9 * 60 + i * 30;
+  return `${Math.floor(total / 60).toString().padStart(2, '0')}:${(total % 60).toString().padStart(2, '0')}`;
+});
 
 // ── 이 달 평일 수 계산 ──────────────────────────────────────
 function workingDaysInMonth(year: number, month: number): number {
@@ -546,6 +558,7 @@ function FieldVisitPanel({ userId, isManager }: { userId: string; isManager: boo
   const [date, setDate] = useState(today);
   const [checkInLat, setCheckInLat] = useState('');
   const [checkInLng, setCheckInLng] = useState('');
+  const [gpsLoading, setGpsLoading] = useState(false);
   const [purpose, setPurpose] = useState('');
   const [selectedLocId, setSelectedLocId] = useState('');
   const [showCheckInModal, setShowCheckInModal] = useState(false);
@@ -576,8 +589,35 @@ function FieldVisitPanel({ userId, isManager }: { userId: string; isManager: boo
     enabled: !!userId,
   });
 
-  // 현재 열린 방문 (체크아웃 안 한 것)
   const openVisit = (visits as any[]).find((v: any) => !v.checkedOutAt);
+
+  // GPS 자동 캡처 후 콜백 실행
+  const captureGps = (onSuccess?: (lat: string, lng: string) => void) => {
+    if (!navigator.geolocation) { toast.error('GPS를 지원하지 않는 브라우저입니다.'); return; }
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude.toFixed(7);
+        const lng = pos.coords.longitude.toFixed(7);
+        setCheckInLat(lat);
+        setCheckInLng(lng);
+        setGpsLoading(false);
+        toast.success('현재 위치 기록 완료');
+        onSuccess?.(lat, lng);
+      },
+      () => { setGpsLoading(false); toast.error('GPS 권한을 허용해주세요.'); },
+      { timeout: 8000 },
+    );
+  };
+
+  // 체크인 버튼 클릭 → GPS 자동 캡처 후 모달 열기
+  const openCheckInModal = (presetLocId?: string) => {
+    if (presetLocId) setSelectedLocId(presetLocId);
+    else setSelectedLocId('');
+    setPurpose('');
+    setShowCheckInModal(true);
+    captureGps();
+  };
 
   const checkInMut = useMutation({
     mutationFn: async () => {
@@ -599,32 +639,33 @@ function FieldVisitPanel({ userId, isManager }: { userId: string; isManager: boo
     onError: (e: any) => toast.error(e.response?.data?.message ?? '체크인 실패'),
   });
 
+  // 체크아웃 시에도 현재 GPS 자동 캡처
   const checkOutMut = useMutation({
     mutationFn: async (visitId: string) => {
-      await api.patch(`/field-visits/${visitId}/check-out`, {
-        lat: parseFloat(checkInLat) || 37.5,
-        lng: parseFloat(checkInLng) || 127.0,
+      return new Promise<void>((resolve, reject) => {
+        const doCheckout = (lat: number, lng: number) => {
+          api.patch(`/field-visits/${visitId}/check-out`, { lat, lng })
+            .then(() => resolve())
+            .catch(reject);
+        };
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => doCheckout(pos.coords.latitude, pos.coords.longitude),
+            () => doCheckout(37.5665, 126.9780),
+            { timeout: 5000 },
+          );
+        } else {
+          doCheckout(37.5665, 126.9780);
+        }
       });
     },
     onSuccess: () => {
-      toast.success('체크아웃 완료');
+      toast.success('체크아웃 완료 (위치 기록됨)');
       qc.invalidateQueries({ queryKey: ['field-visits'] });
       qc.invalidateQueries({ queryKey: ['field-visits-summary'] });
     },
     onError: (e: any) => toast.error(e.response?.data?.message ?? '체크아웃 실패'),
   });
-
-  const getGps = () => {
-    if (!navigator.geolocation) { toast.error('GPS를 지원하지 않는 브라우저입니다.'); return; }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCheckInLat(pos.coords.latitude.toFixed(7));
-        setCheckInLng(pos.coords.longitude.toFixed(7));
-        toast.success('GPS 좌표를 가져왔습니다.');
-      },
-      () => toast.error('GPS 권한을 허용해주세요.'),
-    );
-  };
 
   return (
     <div className="space-y-4">
@@ -657,7 +698,7 @@ function FieldVisitPanel({ userId, isManager }: { userId: string; isManager: boo
               <LogOut className="h-3.5 w-3.5 mr-1" /> 체크아웃
             </Button>
           ) : (
-            <Button size="sm" onClick={() => setShowCheckInModal(true)}>
+            <Button size="sm" onClick={() => openCheckInModal()}>
               <MapPin className="h-3.5 w-3.5 mr-1" /> 현장 체크인
             </Button>
           )}
@@ -680,7 +721,7 @@ function FieldVisitPanel({ userId, isManager }: { userId: string; isManager: boo
             const durMin  = outTime ? Math.round((outTime.getTime() - inTime.getTime()) / 60000) : null;
             return (
               <div key={v.id} className={clsx(
-                'bg-white rounded-xl border p-4 flex items-start gap-4 transition-shadow hover:shadow-sm',
+                'group bg-white rounded-xl border p-4 flex items-start gap-4 transition-shadow hover:shadow-sm',
                 !v.checkedOutAt ? 'border-blue-300 shadow-blue-50 shadow-sm' : 'border-border',
               )}>
                 <div className="w-9 h-9 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -697,7 +738,10 @@ function FieldVisitPanel({ userId, isManager }: { userId: string; isManager: boo
                       </span>
                     )}
                     {v.isOutOfRange && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                      <span
+                        title="등록된 방문지 반경 밖에서 체크인됨"
+                        className="cursor-help text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700"
+                      >
                         범위 밖 {v.inDistanceM}m
                       </span>
                     )}
@@ -717,6 +761,18 @@ function FieldVisitPanel({ userId, isManager }: { userId: string; isManager: boo
                     </span>
                   )}
                 </div>
+                {/* 호버 시 나타나는 간편 재체크인 버튼 */}
+                {v.checkedOutAt && !openVisit && (
+                  <button
+                    onClick={() => openCheckInModal(v.fieldLocation?.id)}
+                    title={`${v.fieldLocation?.name ?? '이 장소'}에 다시 체크인`}
+                    className="opacity-0 group-hover:opacity-100 flex-shrink-0 flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all self-center"
+                    aria-label="같은 장소 다시 체크인"
+                  >
+                    <Navigation className="h-3 w-3" />
+                    다시 체크인
+                  </button>
+                )}
               </div>
             );
           })}
@@ -745,24 +801,34 @@ function FieldVisitPanel({ userId, isManager }: { userId: string; isManager: boo
               className="w-full text-sm border border-border rounded-lg px-3 py-2 resize-none" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">GPS 좌표</label>
-            <div className="flex gap-2">
-              <input type="number" step="0.0000001" placeholder="위도" value={checkInLat}
-                onChange={e => setCheckInLat(e.target.value)}
-                className="flex-1 text-sm border border-border rounded-lg px-3 py-2" />
-              <input type="number" step="0.0000001" placeholder="경도" value={checkInLng}
-                onChange={e => setCheckInLng(e.target.value)}
-                className="flex-1 text-sm border border-border rounded-lg px-3 py-2" />
-              <Button size="sm" variant="secondary" onClick={getGps}>
-                <MapPin className="h-3.5 w-3.5" />
-              </Button>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-gray-500">현재 위치 (GPS)</label>
+              <button onClick={() => captureGps()} disabled={gpsLoading}
+                className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 disabled:opacity-50">
+                <Navigation className="h-3 w-3" />
+                {gpsLoading ? '위치 가져오는 중...' : '다시 가져오기'}
+              </button>
             </div>
-            <p className="text-xs text-text-muted mt-1">GPS 버튼을 눌러 현재 위치를 자동 입력하거나 직접 입력하세요.</p>
+            {gpsLoading ? (
+              <div className="flex items-center gap-2 py-2 text-sm text-text-muted">
+                <RefreshCw className="h-4 w-4 animate-spin" /> GPS 신호 수신 중...
+              </div>
+            ) : checkInLat && checkInLng ? (
+              <div className="flex items-center gap-2 py-2 px-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700">
+                <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="font-mono">{parseFloat(checkInLat).toFixed(5)}, {parseFloat(checkInLng).toFixed(5)}</span>
+                <span className="text-emerald-500 ml-auto">위치 확인됨</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 py-2 px-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                <AlertTriangle className="h-3.5 w-3.5" /> 위치를 가져오는 중이거나 GPS 권한이 필요합니다.
+              </div>
+            )}
           </div>
           <div className="flex gap-2 pt-1">
             <Button className="flex-1" variant="secondary" onClick={() => setShowCheckInModal(false)}>취소</Button>
             <Button className="flex-1" onClick={() => checkInMut.mutate()}
-              loading={checkInMut.isPending}
+              loading={checkInMut.isPending || gpsLoading}
               disabled={!checkInLat || !checkInLng}>
               체크인
             </Button>
@@ -1155,11 +1221,32 @@ function CareWorkerPanel({ userId }: { userId: string }) {
   const [date, setDate] = useState(today);
   const [activeTab, setActiveTab] = useState<'session' | 'license' | 'pay'>('session');
   const [showSessionModal, setShowSessionModal] = useState(false);
+  const [showQuickStartModal, setShowQuickStartModal] = useState(false);
   const [showLicenseModal, setShowLicenseModal] = useState(false);
   const [sessionForm, setSessionForm] = useState({ type: 'elderly_care', recipientName: '', recipientId: '', voucherCode: '' });
+  const [plannedEndTime, setPlannedEndTime] = useState(''); // HH:mm
+  const [sessionLat, setSessionLat] = useState<number | null>(null);
+  const [sessionLng, setSessionLng] = useState<number | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [quickStartFrom, setQuickStartFrom] = useState<any | null>(null);
   const [licenseForm, setLicenseForm] = useState({ type: 'care_worker', licenseNumber: '', label: '', issuedAt: '', expiresAt: '', issuer: '' });
   const [payRange, setPayRange] = useState({ start: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'), end: today });
   const qc = useQueryClient();
+
+  // GPS 캡처 (세션 시작 시 위치 기록)
+  const captureSessionGps = () => {
+    if (!navigator.geolocation) return;
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setSessionLat(pos.coords.latitude);
+        setSessionLng(pos.coords.longitude);
+        setGpsLoading(false);
+      },
+      () => setGpsLoading(false),
+      { timeout: 8000 },
+    );
+  };
 
   const { data: sessions = [], isLoading: sessLoading } = useQuery({
     queryKey: ['care-sessions', date, userId],
@@ -1192,12 +1279,51 @@ function CareWorkerPanel({ userId }: { userId: string }) {
 
   const openSession  = (sessions as any[]).find((s: any) => !s.endedAt);
 
+  const buildSessionPayload = (form: typeof sessionForm) => {
+    const payload: any = { ...form, sessionDate: date };
+    if (sessionLat != null) payload.lat = sessionLat;
+    if (sessionLng != null) payload.lng = sessionLng;
+    if (plannedEndTime) {
+      // plannedEndTime = "HH:mm", combine with today's date
+      const [hh, mm] = plannedEndTime.split(':').map(Number);
+      const planned = new Date();
+      planned.setHours(hh, mm, 0, 0);
+      payload.plannedEndAt = planned.toISOString();
+    }
+    return payload;
+  };
+
   const startMut = useMutation({
-    mutationFn: async () => api.post('/care-worker/sessions/start', { ...sessionForm, sessionDate: date }),
+    mutationFn: async () => api.post('/care-worker/sessions/start', buildSessionPayload(sessionForm)),
     onSuccess: () => {
       toast.success('세션 시작');
       setShowSessionModal(false);
       setSessionForm({ type: 'elderly_care', recipientName: '', recipientId: '', voucherCode: '' });
+      setPlannedEndTime('');
+      setSessionLat(null); setSessionLng(null);
+      qc.invalidateQueries({ queryKey: ['care-sessions'] });
+      qc.invalidateQueries({ queryKey: ['care-daily-summary'] });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? '세션 시작 실패'),
+  });
+
+  const quickStartMut = useMutation({
+    mutationFn: async () => {
+      if (!quickStartFrom) return;
+      const form = {
+        type: quickStartFrom.type,
+        recipientName: quickStartFrom.recipientName,
+        recipientId: quickStartFrom.recipientId ?? '',
+        voucherCode: quickStartFrom.voucherCode ?? '',
+      };
+      return api.post('/care-worker/sessions/start', buildSessionPayload(form));
+    },
+    onSuccess: () => {
+      toast.success('세션 시작');
+      setShowQuickStartModal(false);
+      setQuickStartFrom(null);
+      setPlannedEndTime('');
+      setSessionLat(null); setSessionLng(null);
       qc.invalidateQueries({ queryKey: ['care-sessions'] });
       qc.invalidateQueries({ queryKey: ['care-daily-summary'] });
     },
@@ -1301,7 +1427,7 @@ function CareWorkerPanel({ userId }: { userId: string }) {
                   <LogOut className="h-3.5 w-3.5 mr-1" /> 세션 종료
                 </Button>
               ) : (
-                <Button size="sm" onClick={() => setShowSessionModal(true)}>
+                <Button size="sm" onClick={() => { setShowSessionModal(true); captureSessionGps(); }}>
                   <Users className="h-3.5 w-3.5 mr-1" /> 세션 시작
                 </Button>
               )}
@@ -1321,9 +1447,10 @@ function CareWorkerPanel({ userId }: { userId: string }) {
                 const inT  = new Date(s.startedAt);
                 const outT = s.endedAt ? new Date(s.endedAt) : null;
                 const isOpen = !s.endedAt;
+                const plannedT = s.plannedEndAt ? new Date(s.plannedEndAt) : null;
                 return (
                   <div key={s.id} className={clsx(
-                    'bg-white rounded-xl border p-4 flex items-start gap-4 transition-shadow hover:shadow-sm',
+                    'group bg-white rounded-xl border p-4 flex items-start gap-4 transition-shadow hover:shadow-sm',
                     isOpen ? 'border-violet-300 shadow-violet-50 shadow-sm' : 'border-border',
                   )}>
                     <div className="w-9 h-9 rounded-full bg-violet-50 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -1349,9 +1476,32 @@ function CareWorkerPanel({ userId }: { userId: string }) {
                         {outT && <span>→ {outT.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span>}
                         {s.durationMin != null && <span className="font-semibold text-text-primary">{Math.floor(s.durationMin/60)}h {s.durationMin%60}m</span>}
                         {s.voucherCode && <span className="font-mono">바우처 {s.voucherCode}</span>}
+                        {plannedT && isOpen && (
+                          <span className="text-violet-600 font-medium">
+                            예정 {plannedT.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 종료
+                          </span>
+                        )}
                       </div>
                       {s.note && <p className="text-xs text-text-muted mt-1 truncate">{s.note}</p>}
                     </div>
+                    {/* 완료된 세션에만 간편 재시작 버튼 표시 */}
+                    {!isOpen && !openSession && (
+                      <button
+                        onClick={() => {
+                          setQuickStartFrom(s);
+                          setPlannedEndTime('');
+                          setSessionLat(null); setSessionLng(null);
+                          setShowQuickStartModal(true);
+                          captureSessionGps();
+                        }}
+                        title={`${s.recipientName}님 세션 다시 시작`}
+                        className="opacity-0 group-hover:opacity-100 flex-shrink-0 flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-100 transition-all self-center"
+                        aria-label="같은 수급자 세션 재시작"
+                      >
+                        <Play className="h-3 w-3" />
+                        다시 시작
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -1478,7 +1628,22 @@ function CareWorkerPanel({ userId }: { userId: string }) {
                 className="w-full text-sm border border-border rounded-lg px-3 py-2" />
             </div>
           </div>
-          <p className="text-xs text-text-muted">시작 시각은 현재 시각으로 자동 기록됩니다. 휴일 및 야간 가산은 종료 시 자동 계산됩니다.</p>
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 mb-1">예정 종료 시각 (선택)</label>
+            <input type="time" value={plannedEndTime} onChange={e => setPlannedEndTime(e.target.value)}
+              className="w-full text-sm border border-border rounded-lg px-3 py-2" />
+          </div>
+          {/* GPS 상태 */}
+          <div className={clsx(
+            'flex items-center gap-2 text-xs rounded-lg px-3 py-2',
+            gpsLoading ? 'bg-gray-50 text-gray-500' :
+            sessionLat ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+            'bg-amber-50 text-amber-700 border border-amber-200',
+          )}>
+            {gpsLoading ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> 위치 기록 중...</> :
+             sessionLat ? <><MapPin className="h-3.5 w-3.5" /> 위치 기록됨 ({sessionLat.toFixed(4)}, {sessionLng?.toFixed(4)})</> :
+             <><AlertTriangle className="h-3.5 w-3.5" /> GPS 권한을 허용하면 시작 위치가 자동 기록됩니다.</>}
+          </div>
           <div className="flex gap-2 pt-1">
             <Button className="flex-1" variant="secondary" onClick={() => setShowSessionModal(false)}>취소</Button>
             <Button className="flex-1" onClick={() => startMut.mutate()}
@@ -1487,6 +1652,44 @@ function CareWorkerPanel({ userId }: { userId: string }) {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* 간편 재시작 모달 */}
+      <Modal open={showQuickStartModal} onClose={() => setShowQuickStartModal(false)} title="돌봄 세션 재시작">
+        {quickStartFrom && (
+          <div className="space-y-4 p-1">
+            <div className="rounded-xl bg-violet-50 border border-violet-200 px-4 py-3 space-y-1">
+              <p className="text-sm font-semibold text-violet-900">{quickStartFrom.recipientName}</p>
+              <p className="text-xs text-violet-600">
+                {SESSION_TYPE_KO[quickStartFrom.type] ?? quickStartFrom.type}
+                {quickStartFrom.voucherCode && ` · 바우처 ${quickStartFrom.voucherCode}`}
+              </p>
+              <p className="text-xs text-violet-500">지금 시각부터 세션을 시작합니다.</p>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">예정 종료 시각 (선택)</label>
+              <input type="time" value={plannedEndTime} onChange={e => setPlannedEndTime(e.target.value)}
+                className="w-full text-sm border border-border rounded-lg px-3 py-2" />
+            </div>
+            {/* GPS 상태 */}
+            <div className={clsx(
+              'flex items-center gap-2 text-xs rounded-lg px-3 py-2',
+              gpsLoading ? 'bg-gray-50 text-gray-500' :
+              sessionLat ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+              'bg-amber-50 text-amber-700 border border-amber-200',
+            )}>
+              {gpsLoading ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> 위치 기록 중...</> :
+               sessionLat ? <><MapPin className="h-3.5 w-3.5" /> 위치 기록됨</> :
+               <><AlertTriangle className="h-3.5 w-3.5" /> GPS 권한 허용 시 위치 자동 기록</>}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button className="flex-1" variant="secondary" onClick={() => setShowQuickStartModal(false)}>취소</Button>
+              <Button className="flex-1" onClick={() => quickStartMut.mutate()} loading={quickStartMut.isPending}>
+                시작
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* 자격증 등록 모달 */}
@@ -1906,6 +2109,39 @@ export default function AttendancePage() {
   });
   const qrEnabled = attendanceMethods?.enabled?.includes('qr');
 
+  // ── 점심시간 설정 (localStorage 영속) ─────────────────────────
+  const [lunchSetting, setLunchSetting] = useState<{ start: string; durationMin: number } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('lunch-break-setting');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
+  const [showLunchSettings, setShowLunchSettings] = useState(false);
+  const [lunchDraft, setLunchDraft] = useState<{ start: string; durationMin: number }>({ start: '12:00', durationMin: 60 });
+
+  const saveLunchSetting = () => {
+    localStorage.setItem('lunch-break-setting', JSON.stringify(lunchDraft));
+    setLunchSetting(lunchDraft);
+    setShowLunchSettings(false);
+    toast.success('점심시간 설정이 저장되었습니다.');
+  };
+  const clearLunchSetting = () => {
+    localStorage.removeItem('lunch-break-setting');
+    setLunchSetting(null);
+    setShowLunchSettings(false);
+  };
+
+  // 현재 시각이 점심시간 범위 내인지 (근무 중일 때만 의미 있음)
+  const isLunchTime = useMemo(() => {
+    if (!lunchSetting || !myToday?.clockInAt || myToday?.clockOutAt) return false;
+    const [sh, sm] = lunchSetting.start.split(':').map(Number);
+    const startMin = sh * 60 + sm;
+    const endMin = startMin + lunchSetting.durationMin;
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    return nowMin >= startMin && nowMin < endMin;
+  }, [lunchSetting, myToday, now]);
+
   const [showQr, setShowQr] = useState(false);
   const { data: qrData, refetch: refetchQr, isFetching: qrFetching } = useQuery({
     queryKey: ['qr-token'],
@@ -1991,8 +2227,8 @@ export default function AttendancePage() {
         {/* ── 내 근태 탭 ── */}
         {tab === 'me' && (
           <div className="space-y-5">
-            <Card>
-              <div className="text-center py-4">
+            <Card padding="none">
+              <div className="text-center py-4 px-6">
                 <p className="text-sm text-text-secondary mb-1">
                   {format(now, 'yyyy년 M월 d일 (EEEE)', { locale: ko })}
                 </p>
@@ -2000,16 +2236,26 @@ export default function AttendancePage() {
                   {format(now, 'HH:mm:ss')}
                 </p>
 
-                {/* 이미 출근 → 근무중 상태 표시 */}
+                {/* 이미 출근 → 근무중 또는 점심시간 상태 표시 */}
                 {myToday?.clockInAt && !myToday?.clockOutAt ? (
                   <div className="flex flex-col items-center gap-3">
-                    <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl px-6 py-3 text-base font-semibold">
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-                      </span>
-                      근무중입니다
-                    </div>
+                    {isLunchTime ? (
+                      <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-2xl px-6 py-3 text-base font-semibold">
+                        <Coffee className="h-5 w-5" />
+                        점심시간 중입니다
+                        <span className="text-amber-500 text-xs font-normal ml-1">
+                          {lunchSetting && `~ ${addMinutes(lunchSetting.start, lunchSetting.durationMin)}`}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl px-6 py-3 text-base font-semibold">
+                        <span className="relative flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                        </span>
+                        근무중입니다
+                      </div>
+                    )}
                     <Button onClick={handleClockOut} loading={clockOutMutation.isPending} variant="secondary" size="lg" className="px-10">
                       <LogOut className="h-5 w-5" /> 퇴근
                     </Button>
@@ -2097,7 +2343,81 @@ export default function AttendancePage() {
                   </div>
                 )}
               </div>
+
+              {/* 점심시간 설정 스트립 */}
+              <div className="border-t border-border/60 px-5 py-3 flex items-center justify-between bg-gray-50/60 rounded-b-xl">
+                <div className="flex items-center gap-2 text-sm">
+                  <Coffee className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                  <span className="text-text-secondary">점심시간</span>
+                  {lunchSetting ? (
+                    <span className="font-medium text-text-primary">
+                      {lunchSetting.start} ~ {addMinutes(lunchSetting.start, lunchSetting.durationMin)}
+                      <span className="text-text-muted font-normal text-xs ml-1">({lunchSetting.durationMin}분)</span>
+                    </span>
+                  ) : (
+                    <span className="text-text-muted text-xs">설정하면 자동으로 표시됩니다</span>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    setLunchDraft(lunchSetting ?? { start: '12:00', durationMin: 60 });
+                    setShowLunchSettings(true);
+                  }}
+                  className="text-xs text-primary-600 font-medium px-2.5 py-1 rounded-lg hover:bg-primary-50 transition-colors"
+                >
+                  {lunchSetting ? '변경' : '설정'}
+                </button>
+              </div>
             </Card>
+
+            {/* 점심시간 설정 모달 */}
+            <Modal open={showLunchSettings} onClose={() => setShowLunchSettings(false)} title="점심시간 설정">
+              <div className="space-y-5 p-1">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-2">점심 시작 시간 (30분 단위)</label>
+                  <select
+                    value={lunchDraft.start}
+                    onChange={(e) => setLunchDraft((d) => ({ ...d, start: e.target.value }))}
+                    className="w-full text-sm border border-border rounded-lg px-3 py-2.5 bg-white"
+                  >
+                    {LUNCH_START_OPTIONS.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-2">점심 시간 길이</label>
+                  <div className="flex gap-2">
+                    {[30, 60, 90].map((min) => (
+                      <button
+                        key={min}
+                        onClick={() => setLunchDraft((d) => ({ ...d, durationMin: min }))}
+                        className={clsx(
+                          'flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors',
+                          lunchDraft.durationMin === min
+                            ? 'bg-primary-500 text-white border-primary-500'
+                            : 'border-border text-text-secondary hover:bg-gray-50',
+                        )}
+                      >
+                        {min}분
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-700">
+                  <b>미리보기</b>: {lunchDraft.start} ~ {addMinutes(lunchDraft.start, lunchDraft.durationMin)} 동안 "점심시간 중"으로 표시됩니다.
+                </div>
+                <div className="flex gap-2 pt-1">
+                  {lunchSetting && (
+                    <Button variant="secondary" onClick={clearLunchSetting}>
+                      설정 해제
+                    </Button>
+                  )}
+                  <Button className="flex-1" variant="secondary" onClick={() => setShowLunchSettings(false)}>취소</Button>
+                  <Button className="flex-1" onClick={saveLunchSetting}>저장</Button>
+                </div>
+              </div>
+            </Modal>
 
             {/* 52h 위젯 */}
             <WeeklyHoursWidget data={weeklyHours} />

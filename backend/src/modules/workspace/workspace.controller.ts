@@ -4,6 +4,7 @@ import {
   UpdateWorkspaceDto, UpdateWorkSettingsDto, UpdateGpsSettingsDto, UpdateBrandingDto,
   UpdateAttendanceMethodsDto, UpdateItSettingsDto, UpdatePublicSectorSettingsDto,
   UpdateShiftWorkerSettingsDto, UpdatePartTimeSettingsDto, UpdateFieldVisitWorkspaceSettingsDto,
+  UpdateIndustrySettingsDto,
 } from './dto/workspace.dto';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { AuthenticatedUser } from '../../common/types/jwt-payload.type';
@@ -87,6 +88,17 @@ export class WorkspaceController {
   @Patch('field-visit-settings')
   async updateFieldVisitSettings(@GetUser() user: AuthenticatedUser, @Body() dto: UpdateFieldVisitWorkspaceSettingsDto) {
     const data = await this.workspaceService.updateFieldVisitSettings(user, dto);
+    return { success: true, data };
+  }
+
+  /**
+   * PATCH /workspace/industry-settings — 업종별 특화 설정 일괄 업데이트 (owner)
+   * Body: { it?, publicSector?, shiftWorker?, partTime?, fieldVisit? }
+   * (개별 5종 PATCH의 통합 엔드포인트 — 프론트에서 분기 호출 제거)
+   */
+  @Patch('industry-settings')
+  async updateIndustrySettings(@GetUser() user: AuthenticatedUser, @Body() dto: UpdateIndustrySettingsDto) {
+    const data = await this.workspaceService.updateIndustrySettings(user, dto);
     return { success: true, data };
   }
 }

@@ -38,7 +38,7 @@ const PLANS = [
     price_monthly_krw: 0,
     price_yearly_krw: 0,
     yearly_discount_rate: 0,
-    max_employees: 5,
+    max_employees: 1,             // per-seat 모델: Free는 1명만
     ai_requests_per_day: 10,
     storage_limit_gb: 1,
     trial_days: 0,
@@ -48,9 +48,9 @@ const PLANS = [
   {
     name: 'basic',
     display_name: '베이직',
-    price_monthly_krw: 49000,
-    price_yearly_krw: 470400,   // 49,000 × 12 × 0.8
-    yearly_discount_rate: 20,
+    price_monthly_krw: 29000,     // 기본료 (1명 포함) — 인원 추가 시 SEAT_TIERS.basic 적용
+    price_yearly_krw: 290000,     // 기본료 × 10 (2개월 무료 = ~17%)
+    yearly_discount_rate: 17,
     max_employees: 30,
     ai_requests_per_day: 50,
     storage_limit_gb: 10,
@@ -61,9 +61,9 @@ const PLANS = [
   {
     name: 'pro',
     display_name: '프로',
-    price_monthly_krw: 99000,
-    price_yearly_krw: 950400,   // 99,000 × 12 × 0.8
-    yearly_discount_rate: 20,
+    price_monthly_krw: 49000,     // 기본료 (1명 포함) — 인원 추가 시 SEAT_TIERS.pro 적용
+    price_yearly_krw: 490000,     // 기본료 × 10
+    yearly_discount_rate: 17,
     max_employees: 100,
     ai_requests_per_day: 200,
     storage_limit_gb: 50,

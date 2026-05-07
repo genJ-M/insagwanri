@@ -118,6 +118,23 @@ export class StartCareSessionDto {
   @IsOptional()
   @IsUUID()
   attendanceRecordId?: string;
+
+  /** 세션 시작 위치 위도 (부정 체크인 감지용) */
+  @IsOptional()
+  @IsNumber()
+  @Min(-90) @Max(90)
+  lat?: number;
+
+  /** 세션 시작 위치 경도 */
+  @IsOptional()
+  @IsNumber()
+  @Min(-180) @Max(180)
+  lng?: number;
+
+  /** 예정 종료 시각 (ISO 8601, 선택) */
+  @IsOptional()
+  @IsDateString()
+  plannedEndAt?: string;
 }
 
 export class EndCareSessionDto {

@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
+import SubscriptionBanner from '@/components/layout/SubscriptionBanner';
 import CommandPalette from '@/components/ui/CommandPalette';
 import ContextMenu from '@/components/feedback/ContextMenu';
 import HelpButton from '@/components/feedback/HelpButton';
@@ -28,6 +29,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header는 layout에서 공통 렌더링 — 각 페이지에서 별도 import 불필요 */}
         <Header />
+        {/* 구독 상태 알림 배너 (expired/trialing 임박/past_due) */}
+        <SubscriptionBanner />
         <main className="flex-1 overflow-auto">
           {children}
         </main>

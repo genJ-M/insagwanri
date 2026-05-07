@@ -10,7 +10,9 @@ import {
 } from './dto/field-visits.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../common/types/jwt-payload.type';
+import { RequireModule } from '../../common/decorators/require-module.decorator';
 
+@RequireModule('field_visits')
 @Controller('field-visits')
 export class FieldVisitsController {
   constructor(private readonly svc: FieldVisitsService) {}

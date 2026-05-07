@@ -4,15 +4,17 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Clock, ClipboardList, FileText,
-  Calendar, MessageSquare, Sparkles, LogOut,
+  Calendar, Sparkles, LogOut,
   Users, Settings, Banknote, Umbrella, FilePen, FileSignature, Award,
   ClipboardCheck, BarChart2, GraduationCap, ChevronRight, ShieldCheck,
   Pencil, CalendarDays, SlidersHorizontal, Link2, Building2, ArrowLeftRight,
+  Lock, CreditCard, MapPin,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth.store';
 import { useUiStore } from '@/store/ui.store';
+import { useModules } from '@/hooks/useModules';
 import api from '@/lib/api';
 
 /* ── 타입 ──────────────────────────────────────────────── */
@@ -23,7 +25,8 @@ interface NavItem {
   exact?: boolean;
   matchPattern?: RegExp;
   roles?: string[] | null;
-  pageKey?: string; // 가시성 설정 키 (없으면 항상 표시)
+  pageKey?: string;    // 가시성 설정 키 (없으면 항상 표시)
+  moduleKey?: string;  // 모듈 활성화 키 (없으면 항상 표시)
 }
 
 interface NavGroup {
@@ -31,7 +34,8 @@ interface NavGroup {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  roles?: string[] | null;   // 그룹 자체를 숨길 역할 제한
+  roles?: string[] | null;
+  moduleKey?: string;  // 그룹 전체를 잠글 모듈 키
   items: NavItem[];
 }
 
@@ -43,6 +47,7 @@ interface NavSingle {
   exact?: boolean;
   roles?: string[] | null;
   pageKey?: string;
+  moduleKey?: string;
 }
 
 type NavEntry = NavGroup | NavSingle;
@@ -51,7 +56,7 @@ type NavEntry = NavGroup | NavSingle;
 const NAV: NavEntry[] = [
   {
     type: 'single',
-    href: '/',
+    href: '/attendance',
     icon: LayoutDashboard,
     label: '대시보드',
     exact: true,
@@ -62,9 +67,9 @@ const NAV: NavEntry[] = [
     label: '근태 관리',
     icon: Clock,
     items: [
-      { href: '/attendance', icon: Clock,     label: '출퇴근',   pageKey: '/attendance' },
-      { href: '/vacations',  icon: Umbrella,  label: '휴가 관리', pageKey: '/vacations' },
-      { href: '/calendar',   icon: Calendar,  label: '캘린더',   pageKey: '/calendar' },
+      { href: '/attendance', icon: Clock,    label: '출퇴근',   pageKey: '/attendance', moduleKey: 'attendance' },
+      { href: '/vacations',  icon: Umbrella, label: '휴가 관리', pageKey: '/vacations',  moduleKey: 'vacations' },
+      { href: '/calendar',   icon: Calendar, label: '캘린더',   pageKey: '/calendar',   moduleKey: 'calendar' },
     ],
   },
   {
@@ -73,19 +78,11 @@ const NAV: NavEntry[] = [
     label: '업무',
     icon: ClipboardList,
     items: [
-      { href: '/tasks', icon: ClipboardList, label: '업무 관리', pageKey: '/tasks', matchPattern: /^\/tasks(\/(?!reports)[^/]+)?$/ },
-      { href: '/tasks/reports', icon: FileText,     label: '업무 보고',  pageKey: '/tasks/reports' },
-      { href: '/schedule',       icon: Calendar,     label: '스케줄',     pageKey: '/schedule' },
-      { href: '/shift-schedule', icon: CalendarDays,     label: '팀 근무표',  pageKey: '/shift-schedule' },
-      { href: '/shift-swap',     icon: ArrowLeftRight,  label: '근무 교환',  pageKey: '/shift-swap' },
+      { href: '/tasks',          icon: ClipboardList,  label: '업무 관리',  pageKey: '/tasks',          moduleKey: 'tasks',          matchPattern: /^\/tasks(\/(?!reports)[^/]+)?$/ },
+      { href: '/tasks/reports',  icon: FileText,       label: '업무 보고',  pageKey: '/tasks/reports',  moduleKey: 'tasks' },
+      { href: '/shift-schedule', icon: CalendarDays,   label: '근무표·교대', pageKey: '/shift-schedule', moduleKey: 'shift_schedule' },
+      { href: '/shift-swap',     icon: ArrowLeftRight, label: '근무 교환',  pageKey: '/shift-swap',     moduleKey: 'shift_swap' },
     ],
-  },
-  {
-    type: 'single',
-    href: '/messages',
-    icon: MessageSquare,
-    label: '메시지',
-    pageKey: '/messages',
   },
   {
     type: 'group',
@@ -95,12 +92,13 @@ const NAV: NavEntry[] = [
     roles: ['owner', 'manager'],
     items: [
       { href: '/team',       icon: Users,         label: '직원 관리', pageKey: '/team',       roles: ['owner', 'manager'], matchPattern: /^\/team(\/(?!notes|stats)[^/]+)?$/ },
-      { href: '/team/notes', icon: FileText,       label: '인사 노트', pageKey: '/team/notes', roles: ['owner', 'manager'] },
+      { href: '/team/notes', icon: FileText,       label: '인사 노트', pageKey: '/team/notes', roles: ['owner', 'manager'], moduleKey: 'hr_notes' },
       { href: '/team/stats', icon: BarChart2,      label: '조직 통계', pageKey: '/team/stats', roles: ['owner', 'manager'] },
-      { href: '/salary',     icon: Banknote,       label: '급여 관리', pageKey: '/salary',     roles: ['owner', 'manager'] },
-      { href: '/contracts',    icon: FileSignature, label: '계약 관리',   pageKey: '/contracts',    roles: ['owner', 'manager'] },
-      { href: '/invitations',  icon: Link2,         label: '초대 링크',   pageKey: '/invitations',  roles: ['owner', 'manager'] },
-      { href: '/locations',    icon: Building2,     label: '지점 관리',   pageKey: '/locations',    roles: ['owner', 'manager'] },
+      { href: '/salary',     icon: Banknote,       label: '급여 관리', pageKey: '/salary',     roles: ['owner', 'manager'], moduleKey: 'salary' },
+      { href: '/contracts',    icon: FileSignature, label: '계약 관리', pageKey: '/contracts',    roles: ['owner', 'manager'], moduleKey: 'contracts' },
+      { href: '/invitations',  icon: Link2,         label: '초대 링크',     pageKey: '/invitations',  roles: ['owner', 'manager'] },
+      { href: '/locations',    icon: Building2,     label: '본사·지점',     pageKey: '/locations',    roles: ['owner', 'manager'], moduleKey: 'locations' },
+      { href: '/field-visits', icon: MapPin,        label: '외부 방문지',   pageKey: '/field-visits', roles: ['owner', 'manager'], moduleKey: 'field_visits' },
     ],
   },
   {
@@ -109,10 +107,10 @@ const NAV: NavEntry[] = [
     label: '결재 · 평가',
     icon: FilePen,
     items: [
-      { href: '/approvals',    icon: FilePen,        label: '전자결재',   pageKey: '/approvals' },
+      { href: '/approvals',    icon: FilePen,        label: '전자결재',   pageKey: '/approvals',    moduleKey: 'approvals' },
       { href: '/certificates', icon: Award,          label: '증명서 발급', pageKey: '/certificates' },
-      { href: '/evaluations',  icon: ClipboardCheck, label: '인사평가',   pageKey: '/evaluations' },
-      { href: '/training',     icon: GraduationCap,  label: '교육 관리',  pageKey: '/training' },
+      { href: '/evaluations',  icon: ClipboardCheck, label: '인사평가',   pageKey: '/evaluations',  moduleKey: 'evaluations' },
+      { href: '/training',     icon: GraduationCap,  label: '교육 관리',  pageKey: '/training',     moduleKey: 'training' },
     ],
   },
   {
@@ -122,8 +120,8 @@ const NAV: NavEntry[] = [
     icon: ShieldCheck,
     roles: ['owner', 'manager'],
     items: [
-      { href: '/tax-documents',    icon: ShieldCheck,        label: '세무·노무 서류', pageKey: '/tax-documents',    roles: ['owner', 'manager'] },
-      { href: '/calendar-settings', icon: SlidersHorizontal, label: '캘린더 설정',    pageKey: '/calendar-settings', roles: ['owner', 'manager'] },
+      { href: '/tax-documents',     icon: ShieldCheck,        label: '세무·노무 서류', pageKey: '/tax-documents',     roles: ['owner', 'manager'], moduleKey: 'tax_documents' },
+      { href: '/calendar-settings', icon: SlidersHorizontal,  label: '캘린더 설정',   pageKey: '/calendar-settings', roles: ['owner', 'manager'], moduleKey: 'calendar_settings' },
     ],
   },
   {
@@ -132,11 +130,13 @@ const NAV: NavEntry[] = [
     icon: Sparkles,
     label: 'AI 도구',
     pageKey: '/ai',
+    moduleKey: 'ai',
   },
 ];
 
 const BOTTOM_NAV: NavSingle[] = [
-  { type: 'single', href: '/settings', icon: Settings, label: '설정' },
+  { type: 'single', href: '/billing',  icon: CreditCard, label: '결제 관리', roles: ['owner'] },
+  { type: 'single', href: '/settings', icon: Settings,   label: '설정' },
 ];
 
 const ROLE_LABEL: Record<string, string> = {
@@ -159,17 +159,36 @@ function NavChild({
   userRole,
   onClose,
   isPageVisible,
+  isModuleActive,
 }: {
   item: NavItem;
   pathname: string;
   userRole: string;
   onClose: () => void;
   isPageVisible: (key: string | undefined) => boolean;
+  isModuleActive: (moduleKey: string | undefined) => boolean;
 }) {
   if (item.roles && !item.roles.includes(userRole)) return null;
   if (!isPageVisible(item.pageKey)) return null;
+
   const active = isPathActive(item, pathname);
+  const locked = !isModuleActive(item.moduleKey);
   const Icon = item.icon;
+
+  if (locked) {
+    return (
+      <Link
+        href="/subscription"
+        onClick={onClose}
+        className="group flex items-center gap-2.5 pl-9 pr-3 py-[7px] rounded-lg text-[13px] transition-all duration-150 text-text-muted hover:bg-zinc-50"
+        title="플랜 업그레이드 필요"
+      >
+        <Icon className="w-3.5 h-3.5 flex-shrink-0 text-zinc-300" />
+        <span className="flex-1 text-zinc-400">{item.label}</span>
+        <Lock className="w-3 h-3 text-zinc-300 flex-shrink-0" />
+      </Link>
+    );
+  }
 
   return (
     <Link
@@ -202,6 +221,7 @@ function NavGroupBlock({
   isOpen,
   onToggle,
   isPageVisible,
+  isModuleActive,
 }: {
   group: NavGroup;
   pathname: string;
@@ -210,11 +230,12 @@ function NavGroupBlock({
   isOpen: boolean;
   onToggle: (id: string) => void;
   isPageVisible: (key: string | undefined) => boolean;
+  isModuleActive: (moduleKey: string | undefined) => boolean;
 }) {
   // 그룹 역할 제한
   if (group.roles && !group.roles.includes(userRole)) return null;
 
-  // 보여줄 아이템이 하나도 없으면 숨김
+  // 보여줄 아이템이 하나도 없으면 숨김 (role + pageKey 체크, moduleKey는 잠금 표시이므로 제외)
   const visibleItems = group.items.filter(
     (item) => (!item.roles || item.roles.includes(userRole)) && isPageVisible(item.pageKey),
   );
@@ -268,6 +289,7 @@ function NavGroupBlock({
                   userRole={userRole}
                   onClose={onClose}
                   isPageVisible={isPageVisible}
+                  isModuleActive={isModuleActive}
                 />
               ))}
             </div>
@@ -284,15 +306,34 @@ function NavSingleItem({
   pathname,
   userRole,
   onClose,
+  isModuleActive,
 }: {
   item: NavSingle;
   pathname: string;
   userRole: string;
   onClose: () => void;
+  isModuleActive?: (moduleKey: string | undefined) => boolean;
 }) {
   if (item.roles && !item.roles.includes(userRole)) return null;
+
   const active = isPathActive(item, pathname);
+  const locked = isModuleActive ? !isModuleActive(item.moduleKey) : false;
   const Icon = item.icon;
+
+  if (locked) {
+    return (
+      <Link
+        href="/subscription"
+        onClick={onClose}
+        className="group flex items-center gap-2.5 px-3 py-[7px] rounded-lg text-[13px] font-medium transition-all duration-150 text-zinc-400 hover:bg-zinc-50"
+        title="플랜 업그레이드 필요"
+      >
+        <Icon className="w-[17px] h-[17px] flex-shrink-0 text-zinc-300" />
+        <span className="flex-1">{item.label}</span>
+        <Lock className="w-3.5 h-3.5 text-zinc-300 flex-shrink-0" />
+      </Link>
+    );
+  }
 
   return (
     <Link
@@ -397,8 +438,20 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { user, clearAuth } = useAuthStore();
   const { sidebarOpen, setSidebarOpen } = useUiStore();
+  const { isModuleActive } = useModules();
 
   const userRole = user?.role ?? 'employee';
+
+  // 결제 위임 여부 — 본인이 위임받은 계정이면 결제 메뉴 노출
+  const { data: delegateData } = useQuery<{ delegate: { userId: string } | null }>({
+    queryKey: ['billing-delegate-self'],
+    queryFn: () => api.get('/subscriptions/billing-delegate').then(r => r.data.data ?? r.data),
+    staleTime: 60_000,
+    enabled: !!user,
+  });
+  const isBillingDelegate = !!delegateData?.delegate && delegateData.delegate.userId === user?.id;
+  // /billing 메뉴 노출용 가상 role
+  const effectiveRoleForBilling = (userRole === 'owner' || isBillingDelegate) ? 'owner' : userRole;
 
   // 팀별 페이지 가시성 설정
   const { data: visibilityMap } = useQuery<Record<string, boolean>>({
@@ -410,8 +463,13 @@ export default function Sidebar() {
   });
 
   const isPageVisible = (pageKey: string | undefined) => {
-    if (!pageKey || !visibilityMap) return true; // 설정 없으면 기본 표시
+    if (!pageKey || !visibilityMap) return true;
     return visibilityMap[pageKey] !== false;
+  };
+
+  const checkModuleActive = (moduleKey: string | undefined) => {
+    if (!moduleKey) return true;
+    return isModuleActive(moduleKey);
   };
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), [setSidebarOpen]);
@@ -483,6 +541,7 @@ export default function Sidebar() {
                   pathname={pathname}
                   userRole={userRole}
                   onClose={closeSidebar}
+                  isModuleActive={checkModuleActive}
                 />
               ) : null
             ) : (
@@ -495,6 +554,7 @@ export default function Sidebar() {
                 isOpen={openGroupId === entry.id}
                 onToggle={handleGroupToggle}
                 isPageVisible={isPageVisible}
+                isModuleActive={checkModuleActive}
               />
             ),
           )}
@@ -507,8 +567,9 @@ export default function Sidebar() {
               key={item.href}
               item={item}
               pathname={pathname}
-              userRole={userRole}
+              userRole={item.href === '/billing' ? effectiveRoleForBilling : userRole}
               onClose={closeSidebar}
+              isModuleActive={checkModuleActive}
             />
           ))}
         </div>

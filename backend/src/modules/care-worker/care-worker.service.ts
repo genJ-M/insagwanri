@@ -180,7 +180,10 @@ export class CareWorkerService {
       recipientId:         dto.recipientId ?? null,
       voucherCode:         dto.voucherCode ?? null,
       startedAt:           new Date(),
+      plannedEndAt:        dto.plannedEndAt ? new Date(dto.plannedEndAt) : null,
       isHoliday,
+      checkinLat:          dto.lat  ?? null,
+      checkinLng:          dto.lng  ?? null,
       attendanceRecordId:  dto.attendanceRecordId ?? null,
     });
     return this.sessionRepo.save(session);

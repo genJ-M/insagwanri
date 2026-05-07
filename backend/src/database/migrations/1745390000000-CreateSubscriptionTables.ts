@@ -5,8 +5,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * - subscriptions, payment_methods, payments, coupons, addon_purchases
  * plans 테이블은 AdminTables(1741910401000)에서 이미 생성됨
  */
-export class CreateSubscriptionTables1745500000000 implements MigrationInterface {
-  name = 'CreateSubscriptionTables1745500000000';
+export class CreateSubscriptionTables1745390000000 implements MigrationInterface {
+  name = 'CreateSubscriptionTables1745390000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // plans 테이블에 features JSONB 컬럼 추가 (기존 테이블에 없으면)

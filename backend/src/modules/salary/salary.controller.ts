@@ -9,7 +9,9 @@ import { CalendarSettingsService } from '../calendar-settings/calendar-settings.
 import {
   CreateSalaryDto, UpdateSalaryDto, SalaryQueryDto, AutoCalculateDto,
 } from './dto/salary.dto';
+import { RequireModule } from '../../common/decorators/require-module.decorator';
 
+@RequireModule('salary')
 @Controller('salary')
 export class SalaryController {
   constructor(

@@ -14,7 +14,7 @@ import { User } from '../../database/entities/user.entity';
 import { AttendanceRecord, AttendanceStatus } from '../../database/entities/attendance-record.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
 import {
-  CreateVacationDto, RejectVacationDto, VacationQueryDto, SetBalanceDto,
+  CreateVacationDto, ApproveVacationDto, RejectVacationDto, VacationQueryDto, SetBalanceDto,
 } from './dto/vacation.dto';
 import { TeamsService } from '../teams/teams.service';
 
@@ -155,7 +155,7 @@ export class VacationsService {
   }
 
   // ─── 승인 ────────────────────────────────────────────
-  async approve(id: string, currentUser: AuthenticatedUser) {
+  async approve(id: string, dto: ApproveVacationDto, currentUser: AuthenticatedUser) {
     const req = await this.getReqOrFail(id, currentUser.companyId);
 
     if (currentUser.role === UserRole.EMPLOYEE) {
@@ -172,6 +172,7 @@ export class VacationsService {
     req.status = VacationStatus.APPROVED;
     req.approverId = currentUser.id;
     req.approvedAt = new Date();
+    req.approverComment = dto.comment ?? null;
     await this.reqRepo.save(req);
 
     // 연차 차감
@@ -396,6 +397,7 @@ export class VacationsService {
       reason: req.reason,
       status: req.status,
       rejectReason: req.rejectReason,
+      approverComment: req.approverComment,
       approvedAt: req.approvedAt,
       rejectedAt: req.rejectedAt,
       createdAt: req.createdAt,

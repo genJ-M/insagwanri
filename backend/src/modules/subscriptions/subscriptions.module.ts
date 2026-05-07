@@ -4,9 +4,10 @@ import { SubscriptionsService } from './subscriptions.service';
 import { SubscriptionBillingCronService } from './subscription-billing-cron.service';
 import { SubscriptionNotifyCronService } from './subscription-notify-cron.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { FeatureModulesModule } from '../feature-modules/feature-modules.module';
 
 @Module({
-  imports: [NotificationsModule],
+  imports: [NotificationsModule, FeatureModulesModule],
   controllers: [SubscriptionsController],
   providers: [
     SubscriptionsService,

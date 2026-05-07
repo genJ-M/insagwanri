@@ -14,10 +14,17 @@ export enum ScheduleType {
   HOLIDAY       = 'holiday',
 }
 
+export enum ScheduleScope {
+  COMPANY  = 'company',  // 전사 공개 — owner/manager 생성
+  TEAM     = 'team',     // 팀 공지    — owner/manager 생성, 팀원 열람
+  PERSONAL = 'personal', // 개인 일정 — 본인만 (targetUserId 사용)
+}
+
 @Entity('schedules')
 @Check('"end_at" > "start_at"')
 @Index(['companyId', 'startAt', 'endAt'])
 @Index(['targetUserId', 'startAt'])
+@Index(['companyId', 'scope'])
 export class Schedule {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -51,6 +58,14 @@ export class Schedule {
 
   @Column({ type: 'varchar', length: 20, default: ScheduleType.GENERAL })
   type: ScheduleType;
+
+  /** 가시성 범위 — calendar 통합 후 추가됨 */
+  @Column({ type: 'varchar', length: 20, default: ScheduleScope.COMPANY })
+  scope: ScheduleScope;
+
+  /** team scope 시 대상 부서명 (null = 전체 팀) */
+  @Column({ name: 'target_department', type: 'varchar', length: 100, nullable: true })
+  targetDepartment: string | null;
 
   @Column({ name: 'recurrence_rule', type: 'text', nullable: true })
   recurrenceRule: string | null;           // iCal RRULE

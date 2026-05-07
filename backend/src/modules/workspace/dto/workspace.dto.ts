@@ -279,3 +279,34 @@ export class UpdateFieldVisitWorkspaceSettingsDto {
   @MaxLength(200)
   fieldVisitTaskTitle?: string | null;
 }
+
+/**
+ * 업종별 특화 설정을 한 번에 PATCH하기 위한 통합 DTO.
+ * (it/public-sector/shift-worker/part-time/field-visit 5종을 한 호출로 갱신)
+ */
+export class UpdateIndustrySettingsDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdateItSettingsDto)
+  it?: UpdateItSettingsDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdatePublicSectorSettingsDto)
+  publicSector?: UpdatePublicSectorSettingsDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdateShiftWorkerSettingsDto)
+  shiftWorker?: UpdateShiftWorkerSettingsDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdatePartTimeSettingsDto)
+  partTime?: UpdatePartTimeSettingsDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdateFieldVisitWorkspaceSettingsDto)
+  fieldVisit?: UpdateFieldVisitWorkspaceSettingsDto;
+}

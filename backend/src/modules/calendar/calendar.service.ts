@@ -4,17 +4,14 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
-  CalendarEvent,
-  CalendarEventScope,
-} from '../../database/entities/calendar-event.entity';
+  Schedule, ScheduleScope, ScheduleType,
+} from '../../database/entities/schedule.entity';
 import {
-  CalendarEventShare,
-  ShareRecipientType,
-} from '../../database/entities/calendar-event-share.entity';
+  ScheduleShare, ScheduleShareRecipientType,
+} from '../../database/entities/schedule-share.entity';
 import {
-  CalendarShareRequest,
-  ShareRequestStatus,
-} from '../../database/entities/calendar-share-request.entity';
+  ScheduleShareRequest, ScheduleShareRequestStatus,
+} from '../../database/entities/schedule-share-request.entity';
 import { User } from '../../database/entities/user.entity';
 import { AttendanceRecord } from '../../database/entities/attendance-record.entity';
 import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type';
@@ -22,14 +19,19 @@ import {
   CreateCalendarEventDto, UpdateCalendarEventDto, CalendarQueryDto,
 } from './dto/calendar.dto';
 
+/**
+ * /calendar API의 내부 저장소를 schedules 도메인으로 통합한 버전 (Phase B).
+ * - 외부 응답 형태는 기존 calendar API와 호환 (startDate/endDate 'YYYY-MM-DD' 문자열).
+ * - 시간 단위 일정(is_all_day=false)도 같은 캘린더 뷰에 노출되며, 캘린더에서는 dates 변경을 거부.
+ */
 @Injectable()
 export class CalendarService {
   constructor(
-    @InjectRepository(CalendarEvent) private eventRepo: Repository<CalendarEvent>,
-    @InjectRepository(CalendarEventShare) private shareRepo: Repository<CalendarEventShare>,
-    @InjectRepository(CalendarShareRequest) private shareRequestRepo: Repository<CalendarShareRequest>,
-    @InjectRepository(User)          private userRepo: Repository<User>,
-    @InjectRepository(AttendanceRecord) private attendanceRepo: Repository<AttendanceRecord>,
+    @InjectRepository(Schedule)             private scheduleRepo: Repository<Schedule>,
+    @InjectRepository(ScheduleShare)        private shareRepo: Repository<ScheduleShare>,
+    @InjectRepository(ScheduleShareRequest) private shareRequestRepo: Repository<ScheduleShareRequest>,
+    @InjectRepository(User)                 private userRepo: Repository<User>,
+    @InjectRepository(AttendanceRecord)     private attendanceRepo: Repository<AttendanceRecord>,
   ) {}
 
   // ─── 이벤트 목록 (프라이버시 강화: 팀 격리) ──────────
@@ -37,25 +39,15 @@ export class CalendarService {
     const { startDate, endDate } = this.monthRange(query.year, query.month);
     const myDept = currentUser.department ?? null;
 
-    /*
-     * 접근 가능 이벤트:
-     * 1. COMPANY scope — 전사 공개
-     * 2. TEAM scope    — 내 소속 부서(or 내가 관리하는 부서)의 이벤트만
-     * 3. PERSONAL scope — 내가 만든 이벤트만
-     * 4. 공유받은 이벤트 (calendar_event_shares 테이블, revoked_at IS NULL)
-     */
-
-    // 공유받은 이벤트 ID 수집
     const sharedEventIds = await this.getSharedEventIds(currentUser);
 
-    const qb = this.eventRepo.createQueryBuilder('e')
+    const qb = this.scheduleRepo.createQueryBuilder('e')
       .leftJoinAndSelect('e.creator', 'creator')
       .where('e.company_id = :cid', { cid: currentUser.companyId })
-      .andWhere('e.start_date <= :end', { end: endDate })
-      .andWhere('e.end_date >= :start', { start: startDate })
+      .andWhere('e.start_at::date <= :end', { end: endDate })
+      .andWhere('e.end_at::date   >= :start', { start: startDate })
       .andWhere('e.deleted_at IS NULL');
 
-    // 내가 속한 부서 + 내가 관리하는 부서 목록
     const myDepts: string[] = [];
     if (myDept) myDepts.push(myDept);
     if (currentUser.managedDepartments?.length) {
@@ -63,60 +55,56 @@ export class CalendarService {
     }
 
     if (sharedEventIds.length > 0) {
-      // 공유 이벤트 포함 조건
       qb.andWhere(
         `(
           e.scope = :company
-          OR (e.scope = :team AND (e.target_department IN (:...myDepts) OR e.target_department IS NULL AND :hasDepts = false))
+          OR (e.scope = :team AND (e.target_department IN (:...myDepts) OR (e.target_department IS NULL AND :hasDepts = false)))
           OR (e.scope = :personal AND e.creator_id = :me)
           OR e.id IN (:...sharedIds)
         )`,
         {
-          company: CalendarEventScope.COMPANY,
-          team: CalendarEventScope.TEAM,
+          company: ScheduleScope.COMPANY,
+          team: ScheduleScope.TEAM,
           myDepts: myDepts.length > 0 ? myDepts : ['__none__'],
           hasDepts: myDepts.length > 0,
-          personal: CalendarEventScope.PERSONAL,
+          personal: ScheduleScope.PERSONAL,
           me: currentUser.id,
           sharedIds: sharedEventIds,
         },
       );
+    } else if (myDepts.length > 0) {
+      qb.andWhere(
+        `(
+          e.scope = :company
+          OR (e.scope = :team AND e.target_department IN (:...myDepts))
+          OR (e.scope = :personal AND e.creator_id = :me)
+        )`,
+        {
+          company: ScheduleScope.COMPANY,
+          team: ScheduleScope.TEAM,
+          myDepts,
+          personal: ScheduleScope.PERSONAL,
+          me: currentUser.id,
+        },
+      );
     } else {
-      if (myDepts.length > 0) {
-        qb.andWhere(
-          `(
-            e.scope = :company
-            OR (e.scope = :team AND e.target_department IN (:...myDepts))
-            OR (e.scope = :personal AND e.creator_id = :me)
-          )`,
-          {
-            company: CalendarEventScope.COMPANY,
-            team: CalendarEventScope.TEAM,
-            myDepts,
-            personal: CalendarEventScope.PERSONAL,
-            me: currentUser.id,
-          },
-        );
-      } else {
-        qb.andWhere(
-          `(e.scope = :company OR (e.scope = :personal AND e.creator_id = :me))`,
-          { company: CalendarEventScope.COMPANY, personal: CalendarEventScope.PERSONAL, me: currentUser.id },
-        );
-      }
+      qb.andWhere(
+        `(e.scope = :company OR (e.scope = :personal AND e.creator_id = :me))`,
+        {
+          company: ScheduleScope.COMPANY,
+          personal: ScheduleScope.PERSONAL,
+          me: currentUser.id,
+        },
+      );
     }
 
     if (query.department && [UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role)) {
-      // 관리자가 특정 팀 필터 적용 — 단 해당 팀 관리 권한 확인
-      const canSee = this.canManageDepartment(currentUser, query.department);
-      if (canSee) {
-        // 이미 위 where에서 myDepts에 포함돼 있으면 ok
-      }
+      this.canManageDepartment(currentUser, query.department);
     }
 
-    qb.orderBy('e.start_date', 'ASC');
+    qb.orderBy('e.start_at', 'ASC');
     const events = await qb.getMany();
 
-    // 공유 여부 표시
     const sharesByEventId = await this.getSharesByEventIds(
       events.map(e => e.id),
       currentUser.companyId,
@@ -184,31 +172,59 @@ export class CalendarService {
   async createEvent(dto: CreateCalendarEventDto, currentUser: AuthenticatedUser) {
     const isAdmin = [UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role);
 
-    if (dto.scope === CalendarEventScope.COMPANY && !isAdmin) {
+    if (dto.scope === ScheduleScope.COMPANY && !isAdmin) {
       throw new ForbiddenException('전사 공지는 관리자만 작성할 수 있습니다.');
     }
-    if (dto.scope === CalendarEventScope.TEAM && !isAdmin) {
+    if (dto.scope === ScheduleScope.TEAM && !isAdmin) {
       throw new ForbiddenException('팀 공지는 관리자만 작성할 수 있습니다.');
     }
-    if (dto.start_date > dto.end_date) {
-      throw new BadRequestException('종료일은 시작일 이후여야 합니다.');
+
+    const allDay = dto.all_day ?? true;
+    let startAt: Date;
+    let endAt: Date;
+
+    if (!allDay) {
+      if (!dto.start_at || !dto.end_at) {
+        throw new BadRequestException('시간 단위 일정은 start_at / end_at 이 필요합니다.');
+      }
+      startAt = new Date(dto.start_at);
+      endAt   = new Date(dto.end_at);
+    } else {
+      // start_at 가 들어오면 그것의 날짜 부분을, 아니면 start_date 사용
+      const startBase = dto.start_at ?? dto.start_date;
+      const endBase   = dto.end_at   ?? dto.end_date;
+      if (!startBase || !endBase) {
+        throw new BadRequestException('일정 기간을 입력해 주세요.');
+      }
+      startAt = this.dateToStartTs(startBase.slice(0, 10));
+      endAt   = this.dateToEndTs(endBase.slice(0, 10));
     }
 
-    const event = this.eventRepo.create({
-      companyId: currentUser.companyId,
-      creatorId: currentUser.id,
-      scope: dto.scope,
+    if (endAt <= startAt) {
+      throw new BadRequestException('종료는 시작 이후여야 합니다.');
+    }
+
+    const schedule = this.scheduleRepo.create({
+      companyId:        currentUser.companyId,
+      creatorId:        currentUser.id,
+      scope:            dto.scope,
       targetDepartment: dto.target_department ?? null,
-      title: dto.title,
-      description: dto.description ?? null,
-      startDate: dto.start_date,
-      endDate: dto.end_date,
-      allDay: dto.all_day ?? true,
-      color: dto.color ?? null,
+      title:            dto.title,
+      description:      dto.description ?? null,
+      location:         null,
+      targetUserId:     dto.scope === ScheduleScope.PERSONAL ? currentUser.id : null,
+      startAt,
+      endAt,
+      isAllDay:         allDay,
+      type:             ScheduleType.GENERAL,
+      color:            dto.color ?? null,
+      recurrenceRule:   dto.recurrence_rule ?? null,
+      recurrenceEndAt:  dto.recurrence_end_at ?? null,
+      notifyBeforeMin:  dto.notify_before_min ?? null,
     });
-    const saved = await this.eventRepo.save(event);
-    const loaded = await this.eventRepo.findOne({ where: { id: saved.id }, relations: ['creator'] });
-    return this.toResponse(loaded!, currentUser.id, [], {});
+    const saved = await this.scheduleRepo.save(schedule);
+    const loaded = await this.scheduleRepo.findOne({ where: { id: saved.id }, relations: ['creator'] });
+    return this.toResponse(loaded!, currentUser.id, [], []);
   }
 
   // ─── 이벤트 수정 ────────────────────────────────────
@@ -218,16 +234,35 @@ export class CalendarService {
     if (!isAdmin && event.creatorId !== currentUser.id) {
       throw new ForbiddenException('수정 권한이 없습니다.');
     }
-    Object.assign(event, {
-      ...(dto.title       !== undefined && { title:       dto.title }),
-      ...(dto.description !== undefined && { description: dto.description ?? null }),
-      ...(dto.start_date  !== undefined && { startDate:   dto.start_date }),
-      ...(dto.end_date    !== undefined && { endDate:     dto.end_date }),
-      ...(dto.color       !== undefined && { color:       dto.color ?? null }),
-    });
-    await this.eventRepo.save(event);
-    const loaded = await this.eventRepo.findOne({ where: { id }, relations: ['creator'] });
-    return this.toResponse(loaded!, currentUser.id, [], {});
+
+    if (dto.title             !== undefined) event.title           = dto.title;
+    if (dto.description       !== undefined) event.description     = dto.description ?? null;
+    if (dto.color             !== undefined) event.color           = dto.color ?? null;
+    if (dto.recurrence_rule   !== undefined) event.recurrenceRule  = dto.recurrence_rule ?? null;
+    if (dto.recurrence_end_at !== undefined) event.recurrenceEndAt = dto.recurrence_end_at ?? null;
+    if (dto.notify_before_min !== undefined) event.notifyBeforeMin = dto.notify_before_min ?? null;
+
+    // all_day 또는 시간 변경
+    if (dto.all_day !== undefined) event.isAllDay = dto.all_day;
+
+    if (dto.start_at) {
+      event.startAt = new Date(dto.start_at);
+    } else if (dto.start_date) {
+      event.startAt = this.dateToStartTs(dto.start_date);
+    }
+    if (dto.end_at) {
+      event.endAt = new Date(dto.end_at);
+    } else if (dto.end_date) {
+      event.endAt = this.dateToEndTs(dto.end_date);
+    }
+
+    if (event.endAt <= event.startAt) {
+      throw new BadRequestException('종료는 시작 이후여야 합니다.');
+    }
+
+    await this.scheduleRepo.save(event);
+    const loaded = await this.scheduleRepo.findOne({ where: { id }, relations: ['creator'] });
+    return this.toResponse(loaded!, currentUser.id, [], []);
   }
 
   // ─── 이벤트 삭제 ────────────────────────────────────
@@ -237,7 +272,7 @@ export class CalendarService {
     if (!isAdmin && event.creatorId !== currentUser.id) {
       throw new ForbiddenException('삭제 권한이 없습니다.');
     }
-    await this.eventRepo.softDelete(id);
+    await this.scheduleRepo.softDelete(id);
     return { id };
   }
 
@@ -256,80 +291,83 @@ export class CalendarService {
   async shareEvent(
     eventId: string,
     currentUser: AuthenticatedUser,
-    recipientType: ShareRecipientType,
+    recipientType: ScheduleShareRecipientType,
     recipientUserId?: string,
     recipientDepartment?: string,
     note?: string,
   ) {
     const event = await this.loadOrFail(eventId, currentUser.companyId);
 
-    if (event.scope === CalendarEventScope.COMPANY) {
+    if (event.scope === ScheduleScope.COMPANY) {
       throw new BadRequestException('전사 공지는 공유 설정이 필요 없습니다.');
     }
 
     // PERSONAL 이벤트: 본인만 공유 가능, user 타입만 가능
-    if (event.scope === CalendarEventScope.PERSONAL) {
+    if (event.scope === ScheduleScope.PERSONAL) {
       if (event.creatorId !== currentUser.id) {
         throw new ForbiddenException('본인 이벤트만 공유할 수 있습니다.');
       }
-      if (recipientType !== ShareRecipientType.USER || !recipientUserId) {
+      if (recipientType !== ScheduleShareRecipientType.USER || !recipientUserId) {
         throw new BadRequestException('개인 일정은 특정 사용자에게만 공유할 수 있습니다.');
       }
-      // 중복 공유 방지
       const existing = await this.shareRepo.findOne({
-        where: { eventId, recipientUserId, revokedAt: undefined as any },
+        where: { scheduleId: eventId, recipientUserId, revokedAt: undefined as any },
       });
       if (existing && !existing.revokedAt) {
         throw new BadRequestException('이미 공유 중인 사용자입니다.');
       }
       const share = this.shareRepo.create({
-        eventId, companyId: currentUser.companyId,
-        sharedBy: currentUser.id,
-        recipientType: ShareRecipientType.USER,
+        scheduleId:          eventId,
+        companyId:           currentUser.companyId,
+        sharedBy:            currentUser.id,
+        recipientType:       ScheduleShareRecipientType.USER,
         recipientUserId,
         recipientDepartment: null,
-        revokedAt: null,
+        revokedAt:           null,
       });
       return this.shareRepo.save(share);
     }
 
     // TEAM 이벤트: 팀장(이 팀의 manager)만 직접 공유, 팀원은 요청
-    if (event.scope === CalendarEventScope.TEAM) {
-      if (recipientType !== ShareRecipientType.DEPARTMENT || !recipientDepartment) {
+    if (event.scope === ScheduleScope.TEAM) {
+      if (recipientType !== ScheduleShareRecipientType.DEPARTMENT || !recipientDepartment) {
         throw new BadRequestException('팀 일정은 다른 부서와 공유할 수 있습니다.');
       }
       const isTeamLeader = this.canManageDepartment(currentUser, event.targetDepartment ?? '');
       if (isTeamLeader) {
-        // 팀장: 직접 공유
         const existing = await this.shareRepo.findOne({
-          where: { eventId, recipientDepartment },
+          where: { scheduleId: eventId, recipientDepartment },
         });
         if (existing && !existing.revokedAt) {
           throw new BadRequestException('이미 해당 부서에 공유 중입니다.');
         }
         const share = this.shareRepo.create({
-          eventId, companyId: currentUser.companyId,
-          sharedBy: currentUser.id,
-          recipientType: ShareRecipientType.DEPARTMENT,
-          recipientUserId: null,
+          scheduleId:          eventId,
+          companyId:           currentUser.companyId,
+          sharedBy:            currentUser.id,
+          recipientType:       ScheduleShareRecipientType.DEPARTMENT,
+          recipientUserId:     null,
           recipientDepartment,
-          revokedAt: null,
+          revokedAt:           null,
         });
         return this.shareRepo.save(share);
       } else {
-        // 팀원: 팀장 승인 요청 생성
         const existingReq = await this.shareRequestRepo.findOne({
-          where: { eventId, targetDepartment: recipientDepartment, status: ShareRequestStatus.PENDING },
+          where: {
+            scheduleId: eventId, targetDepartment: recipientDepartment,
+            status: ScheduleShareRequestStatus.PENDING,
+          },
         });
         if (existingReq) {
           throw new BadRequestException('이미 해당 부서에 대한 공유 요청이 진행 중입니다.');
         }
         const req = this.shareRequestRepo.create({
-          eventId, companyId: currentUser.companyId,
-          requestedBy: currentUser.id,
+          scheduleId:       eventId,
+          companyId:        currentUser.companyId,
+          requestedBy:      currentUser.id,
           targetDepartment: recipientDepartment,
-          status: ShareRequestStatus.PENDING,
-          note: note ?? null,
+          status:           ScheduleShareRequestStatus.PENDING,
+          note:             note ?? null,
         });
         return { type: 'request', data: await this.shareRequestRepo.save(req) };
       }
@@ -340,13 +378,12 @@ export class CalendarService {
   async revokeShare(shareId: string, currentUser: AuthenticatedUser) {
     const share = await this.shareRepo.findOne({
       where: { id: shareId, companyId: currentUser.companyId },
-      relations: ['event'],
+      relations: ['schedule'],
     });
     if (!share) throw new NotFoundException('공유 정보를 찾을 수 없습니다.');
     if (share.revokedAt) throw new BadRequestException('이미 철회된 공유입니다.');
 
-    // 공유자 또는 이벤트 생성자만 철회 가능
-    if (share.sharedBy !== currentUser.id && share.event.creatorId !== currentUser.id) {
+    if (share.sharedBy !== currentUser.id && share.schedule.creatorId !== currentUser.id) {
       const isAdmin = [UserRole.OWNER, UserRole.MANAGER].includes(currentUser.role);
       if (!isAdmin) throw new ForbiddenException('공유 철회 권한이 없습니다.');
     }
@@ -362,7 +399,7 @@ export class CalendarService {
       throw new ForbiddenException('공유 목록 조회 권한이 없습니다.');
     }
     return this.shareRepo.find({
-      where: { eventId, companyId: currentUser.companyId },
+      where: { scheduleId: eventId, companyId: currentUser.companyId },
       relations: ['sharedByUser', 'recipientUser'],
       order: { sharedAt: 'DESC' },
     });
@@ -376,32 +413,30 @@ export class CalendarService {
   ) {
     const req = await this.shareRequestRepo.findOne({
       where: { id: requestId, companyId: currentUser.companyId },
-      relations: ['event'],
+      relations: ['schedule'],
     });
     if (!req) throw new NotFoundException('공유 요청을 찾을 수 없습니다.');
-    if (req.status !== ShareRequestStatus.PENDING) {
+    if (req.status !== ScheduleShareRequestStatus.PENDING) {
       throw new BadRequestException('이미 처리된 요청입니다.');
     }
 
-    // 팀장 확인: 이벤트 소속 팀의 manager
-    const isTeamLeader = this.canManageDepartment(currentUser, req.event.targetDepartment ?? '');
+    const isTeamLeader = this.canManageDepartment(currentUser, req.schedule.targetDepartment ?? '');
     if (!isTeamLeader) throw new ForbiddenException('팀장만 공유 요청을 처리할 수 있습니다.');
 
-    req.status = approve ? ShareRequestStatus.APPROVED : ShareRequestStatus.REJECTED;
+    req.status = approve ? ScheduleShareRequestStatus.APPROVED : ScheduleShareRequestStatus.REJECTED;
     req.decidedBy = currentUser.id;
     req.decidedAt = new Date();
     await this.shareRequestRepo.save(req);
 
     if (approve) {
-      // 공유 레코드 생성
       const share = this.shareRepo.create({
-        eventId: req.eventId,
-        companyId: currentUser.companyId,
-        sharedBy: currentUser.id,
-        recipientType: ShareRecipientType.DEPARTMENT,
-        recipientUserId: null,
+        scheduleId:          req.scheduleId,
+        companyId:           currentUser.companyId,
+        sharedBy:            currentUser.id,
+        recipientType:       ScheduleShareRecipientType.DEPARTMENT,
+        recipientUserId:     null,
         recipientDepartment: req.targetDepartment,
-        revokedAt: null,
+        revokedAt:           null,
       });
       await this.shareRepo.save(share);
     }
@@ -417,14 +452,13 @@ export class CalendarService {
     const managedDepts = currentUser.managedDepartments ?? [];
     if (managedDepts.length === 0) return [];
 
-    // 내가 관리하는 부서의 팀 이벤트에 대한 대기 중 요청
     return this.shareRequestRepo
       .createQueryBuilder('r')
-      .leftJoinAndSelect('r.event', 'event')
+      .leftJoinAndSelect('r.schedule', 'schedule')
       .leftJoinAndSelect('r.requester', 'requester')
       .where('r.company_id = :cid', { cid: currentUser.companyId })
-      .andWhere('r.status = :status', { status: ShareRequestStatus.PENDING })
-      .andWhere('event.target_department IN (:...depts)', { depts: managedDepts })
+      .andWhere('r.status = :status', { status: ScheduleShareRequestStatus.PENDING })
+      .andWhere('schedule.target_department IN (:...depts)', { depts: managedDepts })
       .orderBy('r.created_at', 'DESC')
       .getMany();
   }
@@ -439,8 +473,18 @@ export class CalendarService {
     };
   }
 
-  private async loadOrFail(id: string, companyId: string): Promise<CalendarEvent> {
-    const e = await this.eventRepo.findOne({ where: { id, companyId } });
+  /** 'YYYY-MM-DD' → 'YYYY-MM-DD 00:00:00' (현지) */
+  private dateToStartTs(d: string): Date {
+    return new Date(`${d}T00:00:00`);
+  }
+
+  /** 'YYYY-MM-DD' → 'YYYY-MM-DD 23:59:59' (현지) */
+  private dateToEndTs(d: string): Date {
+    return new Date(`${d}T23:59:59`);
+  }
+
+  private async loadOrFail(id: string, companyId: string): Promise<Schedule> {
+    const e = await this.scheduleRepo.findOne({ where: { id, companyId } });
     if (!e) throw new NotFoundException('일정을 찾을 수 없습니다.');
     return e;
   }
@@ -460,7 +504,7 @@ export class CalendarService {
     const myDept = user.department;
     const qb = this.shareRepo
       .createQueryBuilder('s')
-      .select('s.event_id', 'eventId')
+      .select('s.schedule_id', 'scheduleId')
       .where('s.company_id = :cid', { cid: user.companyId })
       .andWhere('s.revoked_at IS NULL');
 
@@ -474,45 +518,50 @@ export class CalendarService {
     }
 
     const rows = await qb.getRawMany();
-    return rows.map(r => r.eventId as string);
+    return rows.map(r => r.scheduleId as string);
   }
 
   /** 이벤트 ID 목록에 대한 공유 정보 Map */
   private async getSharesByEventIds(
     eventIds: string[],
     companyId: string,
-  ): Promise<Record<string, CalendarEventShare[]>> {
+  ): Promise<Record<string, ScheduleShare[]>> {
     if (eventIds.length === 0) return {};
     const shares = await this.shareRepo.find({
       where: { companyId },
       relations: ['recipientUser'],
     });
-    const filtered = shares.filter(s => eventIds.includes(s.eventId) && !s.revokedAt);
-    const map: Record<string, CalendarEventShare[]> = {};
+    const filtered = shares.filter(s => eventIds.includes(s.scheduleId) && !s.revokedAt);
+    const map: Record<string, ScheduleShare[]> = {};
     for (const s of filtered) {
-      if (!map[s.eventId]) map[s.eventId] = [];
-      map[s.eventId].push(s);
+      if (!map[s.scheduleId]) map[s.scheduleId] = [];
+      map[s.scheduleId].push(s);
     }
     return map;
   }
 
   private toResponse(
-    e: CalendarEvent,
+    e: Schedule,
     myId: string,
     sharedEventIds: string[],
-    shares: Record<string, CalendarEventShare[]> | CalendarEventShare[],
+    eventShares: ScheduleShare[],
   ) {
-    const eventShares = Array.isArray(shares) ? shares : (shares[e.id] ?? []);
     return {
       id: e.id,
       scope: e.scope,
       targetDepartment: e.targetDepartment,
       title: e.title,
       description: e.description,
-      startDate: e.startDate,
-      endDate: e.endDate,
-      allDay: e.allDay,
+      startDate: this.dateOnly(e.startAt),
+      endDate:   this.dateOnly(e.endAt),
+      // 시간 단위 이벤트(allDay=false) 렌더링용 — ISO 문자열
+      startAt:   e.startAt instanceof Date ? e.startAt.toISOString() : new Date(e.startAt).toISOString(),
+      endAt:     e.endAt   instanceof Date ? e.endAt.toISOString()   : new Date(e.endAt).toISOString(),
+      allDay: e.isAllDay,
       color: e.color,
+      recurrenceRule:  e.recurrenceRule,
+      recurrenceEndAt: e.recurrenceEndAt,
+      notifyBeforeMin: e.notifyBeforeMin,
       createdAt: e.createdAt,
       isMine: e.creatorId === myId,
       isSharedToMe: sharedEventIds.includes(e.id),
@@ -529,5 +578,11 @@ export class CalendarService {
         ? { id: e.creator.id, name: e.creator.name }
         : null,
     };
+  }
+
+  /** Date | string → 'YYYY-MM-DD' */
+  private dateOnly(d: Date | string): string {
+    if (typeof d === 'string') return d.slice(0, 10);
+    return new Date(d).toISOString().slice(0, 10);
   }
 }

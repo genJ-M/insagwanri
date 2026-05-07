@@ -10,7 +10,9 @@ import { AuthenticatedUser, UserRole } from '../../common/types/jwt-payload.type
 import {
   CreateApprovalDto, UpdateApprovalDto, ActApprovalDto, ApprovalQueryDto,
 } from './dto/approval.dto';
+import { RequireModule } from '../../common/decorators/require-module.decorator';
 
+@RequireModule('approvals')
 @Controller('approvals')
 export class ApprovalsController {
   constructor(private readonly svc: ApprovalsService) {}

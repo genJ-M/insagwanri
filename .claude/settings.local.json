@@ -113,7 +113,11 @@
       "Bash(echo \"backend: $?\")",
       "Bash(echo \"web: $?\")",
       "Bash(pkill -f \"next dev\")",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Bash(awk '{print $NF}')",
+      "Bash(powershell.exe -Command \"Get-Content 'C:\\\\Users\\\\coghd\\\\gwanri_wang\\\\backend\\\\src\\\\modules\\\\attendance\\\\attendance.controller.ts' -TotalCount 20\")",
+      "Bash(powershell.exe -Command \"Get-ChildItem -Recurse 'C:\\\\Users\\\\coghd\\\\gwanri_wang\\\\web\\\\src\\\\app' -Filter 'page.tsx' | Where-Object FullName -match 'settings' | Select-Object FullName\")",
+      "Bash(git *)"
     ]
   }
 }

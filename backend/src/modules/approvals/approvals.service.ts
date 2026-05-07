@@ -165,7 +165,7 @@ export class ApprovalsService {
         type:      'task_assigned',
         title:     '결재 요청이 도착했습니다',
         body:      `${author?.name ?? ''}님이 "${doc.title}" 결재를 요청했습니다.`,
-        refType:   'task',
+        refType:   'approval',
         refId:     doc.id,
       }).catch(() => {});
     }
@@ -220,7 +220,7 @@ export class ApprovalsService {
         type:      'task_completed',
         title:     '결재가 승인되었습니다 ✅',
         body:      `"${doc.title}" 결재가 최종 승인되었습니다.`,
-        refType:   'task',
+        refType:   'approval',
         refId:     doc.id,
       }).catch(() => {});
     }
@@ -232,7 +232,7 @@ export class ApprovalsService {
         type:      'task_assigned',
         title:     '결재 차례가 되었습니다',
         body:      `"${doc.title}" 결재를 검토해주세요.`,
-        refType:   'task',
+        refType:   'approval',
         refId:     doc.id,
       }).catch(() => {});
     }
@@ -264,7 +264,7 @@ export class ApprovalsService {
       type:      'task_urgent',
       title:     '결재가 반려되었습니다 ❌',
       body:      `"${doc.title}" 결재가 반려되었습니다.${step.comment ? ` 사유: ${step.comment}` : ''}`,
-      refType:   'task',
+      refType:   'approval',
       refId:     doc.id,
     }).catch(() => {});
 

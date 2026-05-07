@@ -35,6 +35,9 @@ export class SubscriptionNotifyCronService {
       this.notifyRenewalSoon(),
       this.notifyTrialEnding(),
       this.notifyExpiringCard(),
+      this.expireTrialsAndNotify(),
+      this.notifyDataPurgeSoon(),    // D-7 사전 알림
+      this.purgeExpiredCompanies(),  // 60일 경과 시 데이터 삭제 (soft)
     ]);
     this.logger.log('구독 사전 알림 Cron 완료');
   }
@@ -207,6 +210,174 @@ export class SubscriptionNotifyCronService {
   }
 
   // ──────────────────────────────────────────────
+  // 2-2. 체험 기간 만료 처리 + 차단 알림
+  // status='trialing' AND trial_end_at <= NOW() → status='expired' 변경 + 알림
+  // 자동 결제는 하지 않음 (정책)
+  // ──────────────────────────────────────────────
+  private async expireTrialsAndNotify(): Promise<void> {
+    const expired = await this.dataSource.query(`
+      SELECT
+        s.id, s.company_id, s.trial_end_at,
+        p.display_name AS plan_name,
+        u.id AS owner_id, u.email AS owner_email, u.name AS owner_name,
+        c.name AS company_name,
+        COALESCE(s.renewal_notified_days, '[]'::jsonb) AS notified_days
+      FROM subscriptions s
+      JOIN plans p ON p.id = s.plan_id
+      JOIN companies c ON c.id = s.company_id AND c.deleted_at IS NULL
+      JOIN users u ON u.company_id = s.company_id AND u.role = 'owner' AND u.deleted_at IS NULL
+      WHERE s.status = 'trialing'
+        AND s.trial_end_at <= NOW()
+        AND NOT (COALESCE(s.renewal_notified_days, '[]'::jsonb) @> '["trial_expired"]'::jsonb)
+    `);
+
+    for (const sub of expired) {
+      const endDateStr = format(new Date(sub.trial_end_at), 'M월 d일', { locale: ko });
+      const title = '[관리왕] 무료 체험이 종료되어 서비스가 일시 정지되었습니다';
+      const body = `${sub.plan_name} 무료 체험이 ${endDateStr}에 종료되었습니다. 결제 또는 무료 플랜 전환 후 다시 사용하실 수 있습니다.`;
+
+      try {
+        // 1) status를 expired로 변경
+        await this.dataSource.query(`
+          UPDATE subscriptions
+             SET status                = 'expired',
+                 renewal_notified_days = COALESCE(renewal_notified_days, '[]'::jsonb) || '["trial_expired"]'::jsonb,
+                 updated_at            = NOW()
+           WHERE id = $1
+        `, [sub.id]);
+
+        // 2) 인앱 알림
+        await this.notificationsService.dispatch({
+          userId:    sub.owner_id,
+          companyId: sub.company_id,
+          type:      'trial_expired',
+          title,
+          body,
+          refType:   'subscription',
+          refId:     sub.id,
+        });
+
+        // 3) 이메일
+        await this.emailService.sendRaw({
+          to: sub.owner_email,
+          subject: title,
+          html: this.buildTrialExpiredHtml({
+            ownerName:   sub.owner_name,
+            companyName: sub.company_name,
+            planName:    sub.plan_name,
+            endDate:     endDateStr,
+          }),
+        });
+
+        this.logger.log(`체험 만료 처리 + 차단 알림 companyId=${sub.company_id}`);
+      } catch (err) {
+        this.logger.warn(`체험 만료 처리 실패 subscriptionId=${sub.id}: ${err}`);
+      }
+    }
+  }
+
+  // ──────────────────────────────────────────────
+  // 2-3. 데이터 삭제 D-7 사전 알림
+  //   expired 상태에서 53일이 지난 회사에 "7일 후 데이터 삭제" 메일 발송
+  // ──────────────────────────────────────────────
+  private async notifyDataPurgeSoon(): Promise<void> {
+    const candidates = await this.dataSource.query(`
+      SELECT s.id AS sub_id, s.company_id, s.trial_end_at,
+             c.name AS company_name,
+             u.id AS owner_id, u.email AS owner_email, u.name AS owner_name,
+             COALESCE(s.renewal_notified_days, '[]'::jsonb) AS notified_days
+        FROM subscriptions s
+        JOIN companies c ON c.id = s.company_id AND c.deleted_at IS NULL
+        JOIN users u ON u.company_id = s.company_id AND u.role = 'owner' AND u.deleted_at IS NULL
+       WHERE s.status = 'expired'
+         AND s.trial_end_at < NOW() - INTERVAL '53 days'
+         AND s.trial_end_at >= NOW() - INTERVAL '60 days'
+         AND NOT (COALESCE(s.renewal_notified_days, '[]'::jsonb) @> '["purge_d7"]'::jsonb)
+    `);
+
+    for (const c of candidates) {
+      try {
+        await this.notificationsService.dispatch({
+          userId:    c.owner_id,
+          companyId: c.company_id,
+          type:      'trial_expired',
+          title:     '[관리왕] 7일 후 회사 데이터가 삭제됩니다',
+          body:      '결제하거나 무료 플랜으로 전환하지 않으면 7일 후 회사 데이터가 모두 삭제됩니다.',
+          refType:   'subscription',
+          refId:     c.sub_id,
+        });
+        await this.emailService.sendRaw({
+          to: c.owner_email,
+          subject: '[관리왕] 7일 후 회사 데이터가 영구 삭제됩니다',
+          html: this.buildDataPurgeSoonHtml({
+            ownerName: c.owner_name,
+            companyName: c.company_name,
+          }),
+        });
+        await this.dataSource.query(`
+          UPDATE subscriptions
+             SET renewal_notified_days = COALESCE(renewal_notified_days, '[]'::jsonb) || '["purge_d7"]'::jsonb,
+                 updated_at = NOW()
+           WHERE id = $1
+        `, [c.sub_id]);
+        this.logger.log(`삭제 D-7 알림 companyId=${c.company_id}`);
+      } catch (err) {
+        this.logger.warn(`삭제 D-7 알림 실패 subscriptionId=${c.sub_id}: ${err}`);
+      }
+    }
+  }
+
+  // ──────────────────────────────────────────────
+  // 2-4. 60일 경과 회사 soft delete + 최종 알림
+  // ──────────────────────────────────────────────
+  private async purgeExpiredCompanies(): Promise<void> {
+    const candidates = await this.dataSource.query(`
+      SELECT s.id AS sub_id, s.company_id, s.trial_end_at,
+             c.name AS company_name,
+             u.id AS owner_id, u.email AS owner_email, u.name AS owner_name
+        FROM subscriptions s
+        JOIN companies c ON c.id = s.company_id AND c.deleted_at IS NULL
+        JOIN users u ON u.company_id = s.company_id AND u.role = 'owner' AND u.deleted_at IS NULL
+       WHERE s.status = 'expired'
+         AND s.trial_end_at < NOW() - INTERVAL '60 days'
+    `);
+
+    for (const c of candidates) {
+      try {
+        await this.dataSource.transaction(async (em) => {
+          // 회사 soft delete — 모든 child 데이터는 외래키 cascade로 처리되거나 deleted_at로 함께 무효화
+          await em.query(
+            `UPDATE companies SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1`,
+            [c.company_id],
+          );
+          // 구독을 canceled로 마킹
+          await em.query(`
+            UPDATE subscriptions
+               SET status      = 'canceled',
+                   canceled_at = NOW(),
+                   updated_at  = NOW()
+             WHERE id = $1
+          `, [c.sub_id]);
+        });
+
+        // 최종 알림은 회사 삭제 후 — 인앱은 의미 없으므로 메일만
+        await this.emailService.sendRaw({
+          to: c.owner_email,
+          subject: '[관리왕] 회사 데이터 삭제 완료 안내',
+          html: this.buildDataPurgedHtml({
+            ownerName: c.owner_name,
+            companyName: c.company_name,
+          }),
+        });
+
+        this.logger.log(`60일 경과 회사 삭제 companyId=${c.company_id}`);
+      } catch (err) {
+        this.logger.error(`회사 삭제 실패 companyId=${c.company_id}: ${err}`);
+      }
+    }
+  }
+
+  // ──────────────────────────────────────────────
   // 3. 카드 유효기간 당월 만료 알림 (매월 1일에 발송)
   // ──────────────────────────────────────────────
   private async notifyExpiringCard(): Promise<void> {
@@ -315,6 +486,108 @@ export class SubscriptionNotifyCronService {
   </div>
   <div style="padding:16px 32px 24px;border-top:1px solid #E4E4E7;text-align:center">
     <p style="margin:0;font-size:12px;color:#A1A1AA">${opts.companyName} · 관리왕 구독 관련 문의: support@insagwanri.com</p>
+  </div>
+</div></body></html>`;
+  }
+
+  private buildTrialExpiredHtml(opts: {
+    ownerName: string; companyName: string; planName: string; endDate: string;
+  }): string {
+    return `<!DOCTYPE html><html lang="ko"><body style="font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;background:#f4f4f6;padding:32px 0">
+<div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+  <div style="background:#EF4444;padding:28px 32px">
+    <p style="margin:0;color:#fff;font-size:22px;font-weight:700">관리왕</p>
+    <p style="margin:4px 0 0;color:#FEE2E2;font-size:14px">무료 체험 종료 — 서비스 일시 정지</p>
+  </div>
+  <div style="padding:32px">
+    <p style="margin:0 0 16px;font-size:15px;color:#18181B">${opts.ownerName}님, 안녕하세요.</p>
+    <div style="background:#FEF2F2;border-radius:8px;padding:18px;margin-bottom:20px">
+      <p style="margin:0 0 8px;font-size:13px;color:#EF4444;font-weight:600">서비스 사용이 일시 정지되었습니다</p>
+      <p style="margin:0;font-size:14px;color:#18181B;line-height:1.6">
+        ${opts.planName} 무료 체험이 <strong>${opts.endDate}</strong>에 종료되어, 자동결제 정책에 따라 결제 없이 사용이 정지되었습니다.
+      </p>
+    </div>
+    <p style="font-size:14px;color:#52525B;line-height:1.7">
+      다음 중 하나를 선택하시면 서비스를 다시 이용하실 수 있습니다.
+    </p>
+    <ul style="font-size:14px;color:#18181B;line-height:1.8;padding-left:18px">
+      <li><strong>유료 플랜으로 전환</strong> — 카드 등록 후 베이직 또는 프로 결제</li>
+      <li><strong>무료 플랜으로 전환</strong> — 직원 1명까지 카드 등록 없이 무료 사용</li>
+    </ul>
+    <div style="text-align:center;margin:28px 0">
+      <a href="https://insagwanri-nine.vercel.app/billing" style="display:inline-block;background:#EF4444;color:#fff;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;text-decoration:none">결제 관리 페이지로 이동 →</a>
+    </div>
+    <p style="font-size:12px;color:#A1A1AA;line-height:1.6;margin-top:24px;border-top:1px solid #F4F4F5;padding-top:16px">
+      체험 기간 중 등록한 데이터는 <strong>60일간</strong> 안전하게 보관됩니다. 그 안에 결제 또는 무료 플랜 전환 시 즉시 복원되며, 60일이 지나면 영구 삭제됩니다.
+    </p>
+  </div>
+  <div style="padding:16px 32px 24px;border-top:1px solid #E4E4E7;text-align:center">
+    <p style="margin:0;font-size:12px;color:#A1A1AA">${opts.companyName} · 관리왕 구독 관련 문의: support@insagwanri.com</p>
+  </div>
+</div></body></html>`;
+  }
+
+  private buildDataPurgeSoonHtml(opts: {
+    ownerName: string; companyName: string;
+  }): string {
+    return `<!DOCTYPE html><html lang="ko"><body style="font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;background:#f4f4f6;padding:32px 0">
+<div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+  <div style="background:#DC2626;padding:28px 32px">
+    <p style="margin:0;color:#fff;font-size:22px;font-weight:700">관리왕</p>
+    <p style="margin:4px 0 0;color:#FECACA;font-size:14px">7일 후 회사 데이터 영구 삭제</p>
+  </div>
+  <div style="padding:32px">
+    <p style="margin:0 0 16px;font-size:15px;color:#18181B">${opts.ownerName}님, 안녕하세요.</p>
+    <div style="background:#FEF2F2;border-radius:8px;padding:18px;margin-bottom:20px;border-left:4px solid #DC2626">
+      <p style="margin:0;font-size:14px;color:#18181B;line-height:1.6">
+        <strong>${opts.companyName}</strong>의 무료 체험 종료 후 53일이 경과했습니다.<br />
+        <strong>7일 후 회사 데이터가 영구 삭제됩니다.</strong>
+      </p>
+    </div>
+    <p style="font-size:14px;color:#52525B;line-height:1.7">
+      삭제를 원하지 않으시면 7일 안에 다음 중 하나를 진행해 주세요.
+    </p>
+    <ul style="font-size:14px;color:#18181B;line-height:1.8;padding-left:18px">
+      <li>유료 플랜으로 전환 — 카드 등록 후 결제</li>
+      <li>무료 플랜으로 전환 — 직원 1명까지 카드 없이 무료</li>
+    </ul>
+    <div style="text-align:center;margin:28px 0">
+      <a href="https://insagwanri-nine.vercel.app/billing" style="display:inline-block;background:#DC2626;color:#fff;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;text-decoration:none">결제 관리 페이지로 이동 →</a>
+    </div>
+    <p style="font-size:12px;color:#A1A1AA;line-height:1.6;margin-top:24px;border-top:1px solid #F4F4F5;padding-top:16px">
+      삭제된 데이터는 복구되지 않습니다. 출퇴근·근무·급여 등 모든 기록이 함께 사라지므로 이 기간 안에 처리해 주세요.
+    </p>
+  </div>
+  <div style="padding:16px 32px 24px;border-top:1px solid #E4E4E7;text-align:center">
+    <p style="margin:0;font-size:12px;color:#A1A1AA">${opts.companyName} · 관리왕 구독 관련 문의: support@insagwanri.com</p>
+  </div>
+</div></body></html>`;
+  }
+
+  private buildDataPurgedHtml(opts: {
+    ownerName: string; companyName: string;
+  }): string {
+    return `<!DOCTYPE html><html lang="ko"><body style="font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;background:#f4f4f6;padding:32px 0">
+<div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+  <div style="background:#52525B;padding:28px 32px">
+    <p style="margin:0;color:#fff;font-size:22px;font-weight:700">관리왕</p>
+    <p style="margin:4px 0 0;color:#D4D4D8;font-size:14px">회사 데이터 삭제 완료</p>
+  </div>
+  <div style="padding:32px">
+    <p style="margin:0 0 16px;font-size:15px;color:#18181B">${opts.ownerName}님, 안녕하세요.</p>
+    <p style="font-size:15px;color:#18181B;line-height:1.7">
+      <strong>${opts.companyName}</strong>의 무료 체험 종료 후 60일이 경과하여,
+      관리왕 정책에 따라 회사 데이터를 안전하게 삭제하였음을 알려드립니다.
+    </p>
+    <p style="font-size:14px;color:#52525B;line-height:1.6;margin-top:20px">
+      그동안 관리왕을 이용해 주셔서 감사합니다. 다시 시작하고 싶으시면 언제든 회원가입을 통해 새로 시작하실 수 있습니다.
+    </p>
+    <div style="text-align:center;margin:28px 0">
+      <a href="https://insagwanri-nine.vercel.app/" style="display:inline-block;background:#7C3AED;color:#fff;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;text-decoration:none">관리왕 다시 시작하기</a>
+    </div>
+  </div>
+  <div style="padding:16px 32px 24px;border-top:1px solid #E4E4E7;text-align:center">
+    <p style="margin:0;font-size:12px;color:#A1A1AA">관리왕 구독 관련 문의: support@insagwanri.com</p>
   </div>
 </div></body></html>`;
   }

@@ -24,6 +24,12 @@ export class CreateVacationDto {
   reason?: string;
 }
 
+export class ApproveVacationDto {
+  @IsOptional()
+  @IsString()
+  comment?: string;
+}
+
 export class RejectVacationDto {
   @IsOptional()
   @IsString()

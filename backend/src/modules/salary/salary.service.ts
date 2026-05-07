@@ -367,6 +367,7 @@ export class SalaryService {
         department: s.user.department,
         position:   s.user.position,
         role:       s.user.role,
+        hourlyRate: s.user.hourlyRate ?? null,
       } : undefined,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
