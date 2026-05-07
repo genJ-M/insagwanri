@@ -3,10 +3,10 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft, ChevronRight, Plus, X, Building2, Users, User as UserIcon,
-  Pencil, Trash2, CalendarDays, Table2, Share2, Lock, Bell,
+  Pencil, Trash2, CalendarDays, Table2, Share2, Lock, Bell, Columns3,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { format, getDaysInMonth, startOfMonth, getDay, addMonths, subMonths } from 'date-fns';
+import { format, getDaysInMonth, startOfMonth, getDay, addMonths, subMonths, addDays, startOfWeek } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -646,7 +646,7 @@ export default function CalendarPage() {
   const year  = currentDate.getFullYear();
   const month = currentDate.getMonth() + 1;
 
-  const [view, setView] = useState<'events' | 'attendance'>('events');
+  const [view, setView] = useState<'events' | 'week' | 'attendance'>('events');
   const [deptFilter, setDeptFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editEvent, setEditEvent] = useState<CalendarEvent | undefined>();
@@ -663,8 +663,8 @@ export default function CalendarPage() {
     enabled: isAdmin,
   });
 
-  // 이벤트
-  const { data: events = [] } = useQuery<CalendarEvent[]>({
+  // 이벤트 (월간)
+  const { data: monthEvents = [] } = useQuery<CalendarEvent[]>({
     queryKey: ['calendar', 'events', year, month, deptFilter],
     queryFn: () =>
       api.get(`/calendar/events?year=${year}&month=${month}${deptFilter ? `&department=${deptFilter}` : ''}`).then(r => r.data.data),
@@ -699,10 +699,10 @@ export default function CalendarPage() {
   // 공휴일 맵 (key: YYYY-MM-DD, value: 공휴일명)
   const holidayMap = useMemo(() => getHolidayMap(year, month), [year, month]);
 
-  // 날짜별 이벤트 맵
+  // 날짜별 이벤트 맵 — 월간 뷰 전용. 주간 뷰는 events 합친 별도 표시.
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
-    for (const ev of events) {
+    for (const ev of monthEvents) {
       const s = new Date(ev.startDate);
       const e = new Date(ev.endDate);
       const cur = new Date(s);
@@ -714,11 +714,36 @@ export default function CalendarPage() {
       }
     }
     return map;
-  }, [events]);
+  }, [monthEvents]);
 
-  const prevMonth = () => setCurrentDate(d => subMonths(d, 1));
-  const nextMonth = () => setCurrentDate(d => addMonths(d, 1));
+  const prevMonth = () => setCurrentDate(d => view === 'week' ? addDays(d, -7) : subMonths(d, 1));
+  const nextMonth = () => setCurrentDate(d => view === 'week' ? addDays(d, 7)  : addMonths(d, 1));
   const goToday  = () => setCurrentDate(new Date());
+
+  // 주간 뷰 — 주의 시작/종료, 7일 배열, 헤더 라벨
+  const weekStart  = startOfWeek(currentDate, { weekStartsOn: 0 });
+  const weekDates  = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const weekEnd    = weekDates[6];
+  const weekLabel  = view === 'week'
+    ? `${format(weekStart, 'M월 d일', { locale: ko })} ~ ${format(weekEnd, 'M월 d일', { locale: ko })}`
+    : null;
+
+  // 주가 인접 월에 걸친 경우 — 추가 month query (월간 뷰에선 불필요)
+  const adjacentYear  = weekStart.getMonth() + 1 !== month ? weekStart.getFullYear()    : weekEnd.getFullYear();
+  const adjacentMonth = weekStart.getMonth() + 1 !== month ? weekStart.getMonth() + 1   : weekEnd.getMonth() + 1;
+  const needsAdjacent = view === 'week' && (adjacentYear !== year || adjacentMonth !== month);
+
+  const { data: adjacentEvents = [] } = useQuery<CalendarEvent[]>({
+    queryKey: ['calendar', 'events', adjacentYear, adjacentMonth, deptFilter],
+    queryFn: () =>
+      api.get(`/calendar/events?year=${adjacentYear}&month=${adjacentMonth}${deptFilter ? `&department=${deptFilter}` : ''}`).then(r => r.data.data),
+    enabled: needsAdjacent,
+  });
+
+  // 합치기 — 주간 뷰는 두 month를, 그 외는 monthEvents
+  const events = view === 'week' && needsAdjacent
+    ? Array.from(new Map([...monthEvents, ...adjacentEvents].map(e => [e.id, e])).values())
+    : monthEvents;
 
   const handleDayClick = (dateStr: string) => {
     setClickedDate(dateStr);
@@ -736,8 +761,8 @@ export default function CalendarPage() {
               <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="text-[18px] font-bold text-gray-900 w-28 text-center">
-                {format(currentDate, 'yyyy년 M월', { locale: ko })}
+              <span className={clsx('text-[18px] font-bold text-gray-900 text-center', view === 'week' ? 'min-w-[180px]' : 'w-28')}>
+                {view === 'week' ? weekLabel : format(currentDate, 'yyyy년 M월', { locale: ko })}
               </span>
               <button onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
                 <ChevronRight className="w-4 h-4" />
@@ -758,27 +783,26 @@ export default function CalendarPage() {
               </select>
             )}
 
-            {/* 뷰 전환 (관리자) */}
-            {isAdmin && (
-              <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
-                {[
-                  { id: 'events', label: '일정', Icon: CalendarDays },
-                  { id: 'attendance', label: '근태', Icon: Table2 },
-                ].map(v => (
-                  <button
-                    key={v.id}
-                    onClick={() => setView(v.id as 'events' | 'attendance')}
-                    className={clsx(
-                      'flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all',
-                      view === v.id ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500',
-                    )}
-                  >
-                    <v.Icon className="w-3.5 h-3.5" />
-                    {v.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* 뷰 전환 — events/week 전체 노출, attendance만 관리자 */}
+            <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+              {([
+                { id: 'events',     label: '월',   Icon: CalendarDays },
+                { id: 'week',       label: '주',   Icon: Columns3 },
+                ...(isAdmin ? [{ id: 'attendance', label: '근태', Icon: Table2 }] : []),
+              ] as { id: 'events' | 'week' | 'attendance'; label: string; Icon: any }[]).map(v => (
+                <button
+                  key={v.id}
+                  onClick={() => setView(v.id)}
+                  className={clsx(
+                    'flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all',
+                    view === v.id ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500',
+                  )}
+                >
+                  <v.Icon className="w-3.5 h-3.5" />
+                  {v.label}
+                </button>
+              ))}
+            </div>
 
             {/* 공유 요청 알림 (팀장) */}
             {isAdmin && pendingRequests.length > 0 && (
@@ -921,6 +945,96 @@ export default function CalendarPage() {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* ── 주간 카드 뷰 ── */}
+        {view === 'week' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-7 gap-2 max-w-7xl mx-auto">
+            {weekDates.map((d, i) => {
+              const dStr = format(d, 'yyyy-MM-dd');
+              const isToday = format(new Date(), 'yyyy-MM-dd') === dStr;
+              const isWeekend = i === 0 || i === 6;
+              const dayEvents = events.filter(ev => ev.startDate <= dStr && ev.endDate >= dStr);
+              const dow = WEEKDAYS[d.getDay()];
+              return (
+                <div
+                  key={dStr}
+                  className={clsx(
+                    'bg-white rounded-2xl border overflow-hidden flex flex-col min-h-[220px]',
+                    isToday ? 'border-primary-300 ring-2 ring-primary-100' : 'border-gray-200',
+                  )}
+                >
+                  <div
+                    className={clsx(
+                      'px-3 py-2 border-b border-gray-100 flex items-center justify-between',
+                      isWeekend ? 'bg-gray-50' : 'bg-white',
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className={clsx(
+                        'text-[11px] font-semibold',
+                        i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-500',
+                      )}>
+                        {dow}
+                      </span>
+                      <span className={clsx(
+                        'text-[15px] font-bold',
+                        isToday ? 'text-primary-600' : 'text-gray-900',
+                      )}>
+                        {format(d, 'd')}
+                      </span>
+                    </div>
+                    {dayEvents.length > 0 && (
+                      <span className="text-[10px] font-semibold text-text-muted">
+                        {dayEvents.length}건
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="p-2 space-y-1.5 flex-1 overflow-y-auto">
+                    {dayEvents.length === 0 ? (
+                      <div className="py-6 text-center">
+                        <p className="text-[11px] text-gray-300">일정 없음</p>
+                      </div>
+                    ) : (
+                      dayEvents.map(ev => {
+                        const c = ev.color ?? (
+                          ev.scope === 'company' ? '#3b82f6' :
+                          ev.scope === 'team' ? '#14b8a6' : '#8b5cf6'
+                        );
+                        return (
+                          <button
+                            key={ev.id}
+                            onClick={() => { setEditEvent(ev); setShowModal(true); }}
+                            className="w-full text-left rounded-lg border-l-4 px-2 py-1.5 bg-white hover:bg-gray-50 transition-colors"
+                            style={{ borderLeftColor: c }}
+                            title={ev.isSharedToMe ? `[공유] ${ev.title}` : ev.title}
+                          >
+                            <div className="flex items-center gap-1">
+                              {ev.isSharedToMe && <Share2 className="w-2.5 h-2.5 text-text-muted flex-shrink-0" />}
+                              <span className="text-[12px] font-semibold text-gray-800 truncate">
+                                {ev.title}
+                              </span>
+                            </div>
+                            {!ev.allDay && (
+                              <div className="text-[10px] text-text-muted font-mono mt-0.5">
+                                {formatTimeHHMM(ev.startAt)} ~ {formatTimeHHMM(ev.endAt)}
+                              </div>
+                            )}
+                            {ev.scope === 'team' && ev.targetDepartment && (
+                              <div className="text-[10px] text-text-muted mt-0.5 truncate">
+                                {ev.targetDepartment}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
